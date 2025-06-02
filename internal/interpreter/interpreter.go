@@ -3,7 +3,6 @@ package interpreter
 import (
 	"fmt"
 	"go/ast"
-	"go/token"
 	"log"
 
 	"github.com/podhmo/goat/internal/metadata"
@@ -42,7 +41,7 @@ func InterpretInitializer(
 	for _, opt := range options {
 		optionsMap[opt.Name] = opt
 	}
-	
+
 	// TODO: This is a very simplified interpreter.
 	// It should handle variable assignments that eventually set fields on the options struct.
 	// For now, let's assume direct assignment like:
@@ -110,7 +109,7 @@ func extractMarkerInfo(valueExpr ast.Expr, optMeta *metadata.OptionMetadata, fil
 
 	markerFuncName, markerPkgAlias := astutils.GetFullFunctionName(callExpr.Fun)
 	actualMarkerPkgPath := astutils.GetImportPath(fileAst, markerPkgAlias)
-	
+
 	if actualMarkerPkgPath != markerPkgImportPath {
 		// log.Printf("Skipping call to %s.%s, not the target marker package (%s vs %s)", markerPkgAlias, markerFuncName, actualMarkerPkgPath, markerPkgImportPath)
 		return

@@ -1,16 +1,19 @@
 package codegen
 
 import (
-	// "fmt"
-	// "go/ast"
-	// "go/token"
-	// "os"
+	"go/ast"
+	"go/token"
 )
 
 // WriteMain takes the original file's AST, the new main function content (as string),
 // and the position of the old main function, then writes the modified content.
 // This is a placeholder for future implementation.
-func WriteMain(filePath string, fileAst /* *ast.File */, newMainContent string, mainFuncPos /* *token.Position */) error {
+func WriteMain(
+	filePath string,
+	fileAst *ast.File,
+	newMainContent string,
+	mainFuncPos *token.Position,
+) error {
 	// TODO: Implement the logic to:
 	// 1. Read the original file content.
 	// 2. Identify the start and end byte offsets of the existing main() function using fileAst and mainFuncPos.

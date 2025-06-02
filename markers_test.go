@@ -45,16 +45,24 @@ func TestEnum(t *testing.T) {
 					switch v[0].(type) {
 					case string:
 						typedInput := make([]string, len(v))
-						for i, item := range v { typedInput[i] = item.(string) }
+						for i, item := range v {
+							typedInput[i] = item.(string)
+						}
 						resultTyped := Enum(typedInput)
 						result = make([]any, len(resultTyped))
-						for i, item := range resultTyped { result[i] = item }
+						for i, item := range resultTyped {
+							result[i] = item
+						}
 					case int:
 						typedInput := make([]int, len(v))
-						for i, item := range v { typedInput[i] = item.(int) }
+						for i, item := range v {
+							typedInput[i] = item.(int)
+						}
 						resultTyped := Enum(typedInput)
 						result = make([]any, len(resultTyped))
-						for i, item := range resultTyped { result[i] = item }
+						for i, item := range resultTyped {
+							result[i] = item
+						}
 					default:
 						if v == nil || len(v) == 0 { // Handle empty or nil explicitly
 							result = Enum(v) // Call with []any if it works or specific typed nil
@@ -70,7 +78,6 @@ func TestEnum(t *testing.T) {
 					}
 				}
 
-
 			default:
 				if tc.input == nil {
 					result = Enum[any](nil) // Test with nil explicitly typed
@@ -78,7 +85,6 @@ func TestEnum(t *testing.T) {
 					t.Fatalf("Unsupported input type for Enum test: %T", tc.input)
 				}
 			}
-
 
 			if !reflect.DeepEqual(result, tc.expected) {
 				t.Errorf("Enum(%v) = %v, want %v", tc.input, result, tc.expected)
@@ -90,10 +96,10 @@ func TestEnum(t *testing.T) {
 // Test for Default marker function
 func TestDefault(t *testing.T) {
 	testCases := []struct {
-		name             string
-		defaultValue     any
-		enumConstraint   [][]any // Outer slice for varargs, inner for the actual enum values
-		expectedReturn   any
+		name           string
+		defaultValue   any
+		enumConstraint [][]any // Outer slice for varargs, inner for the actual enum values
+		expectedReturn any
 	}{
 		{
 			name:           "string default no enum",
@@ -158,11 +164,15 @@ func TestDefault(t *testing.T) {
 						for i, subSlice := range ec {
 							if subSlice != nil {
 								typedEc[i] = make([]string, len(subSlice))
-								for j, item := range subSlice { typedEc[i][j] = item.(string) }
+								for j, item := range subSlice {
+									typedEc[i][j] = item.(string)
+								}
 							}
 						}
 					}
-					if len(typedEc) > 0 { return Default(val, typedEc[0]) }
+					if len(typedEc) > 0 {
+						return Default(val, typedEc[0])
+					}
 					return Default(val)
 				case int:
 					var typedEc [][]int
@@ -171,11 +181,15 @@ func TestDefault(t *testing.T) {
 						for i, subSlice := range ec {
 							if subSlice != nil {
 								typedEc[i] = make([]int, len(subSlice))
-								for j, item := range subSlice { typedEc[i][j] = item.(int) }
+								for j, item := range subSlice {
+									typedEc[i][j] = item.(int)
+								}
 							}
 						}
 					}
-					if len(typedEc) > 0 { return Default(val, typedEc[0]) }
+					if len(typedEc) > 0 {
+						return Default(val, typedEc[0])
+					}
 					return Default(val)
 				case bool:
 					// Enum for bool is less common but testable
@@ -185,11 +199,15 @@ func TestDefault(t *testing.T) {
 						for i, subSlice := range ec {
 							if subSlice != nil {
 								typedEc[i] = make([]bool, len(subSlice))
-								for j, item := range subSlice { typedEc[i][j] = item.(bool) }
+								for j, item := range subSlice {
+									typedEc[i][j] = item.(bool)
+								}
 							}
 						}
 					}
-					if len(typedEc) > 0 { return Default(val, typedEc[0]) }
+					if len(typedEc) > 0 {
+						return Default(val, typedEc[0])
+					}
 					return Default(val)
 				default:
 					t.Fatalf("Unsupported type for Default test: %T", dv)

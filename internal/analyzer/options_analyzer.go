@@ -21,7 +21,6 @@ func AnalyzeOptions(fileAst *ast.File, optionsTypeName string, packageName strin
 	parts := strings.Split(optionsTypeName, ".")
 	typeNameOnly := parts[len(parts)-1]
 
-
 	ast.Inspect(fileAst, func(n ast.Node) bool {
 		if ts, ok := n.(*ast.TypeSpec); ok {
 			if ts.Name.Name == typeNameOnly {
@@ -46,15 +45,15 @@ func AnalyzeOptions(fileAst *ast.File, optionsTypeName string, packageName strin
 	}
 
 	var extractedOptions []*metadata.OptionMetadata
-	for _, field := fieldLoop := structType.Fields.List {
-		if field.Names == nil || len(field.Names) == 0 {
+	for _, field := range structType.Fields.List {
+		if len(field.Names) == 0 {
 			// Embedded struct, skip for now or handle later if needed
-			continue fieldLoop
+			continue
 		}
 		fieldName := field.Names[0].Name
 		if !ast.IsExported(fieldName) {
 			// Skip unexported fields
-			continue fieldLoop
+			continue
 		}
 
 		opt := &metadata.OptionMetadata{
@@ -73,7 +72,6 @@ func AnalyzeOptions(fileAst *ast.File, optionsTypeName string, packageName strin
 			opt.HelpText = strings.TrimSpace(opt.HelpText + "\n" + field.Comment.Text())
 			opt.HelpText = strings.TrimSpace(opt.HelpText)
 		}
-
 
 		if field.Tag != nil {
 			tagStr := strings.Trim(field.Tag.Value, "`")
