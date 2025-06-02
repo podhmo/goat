@@ -1,103 +1,66 @@
 package help
 
 import (
-	"bytes"
 	"fmt"
+	"io"
 	"strings"
-	"text/template"
 
 	"github.com/podhmo/goat/internal/metadata"
 )
 
-const helpTemplate = `{{.CommandName}} - {{.CommandDescription}}
-
-Usage:
-  {{.CommandName}} [flags] {{.CommandArgsPlaceholder}}
-
-Flags:
-{{range .Options}}
-  --{{.CliName}} {{.TypeIndicator}} {{.HelpText}}{{if .IsRequired}} (required){{end}}{{if .DefaultValue}} (default: {{.DefaultValue | QuoteIfString}}){{end}}{{if .EnvVar}} (env: {{.EnvVar}}){{end}}{{if .EnumValues}} (allowed: {{.EnumValues | JoinStrings ", "}}){{end}}
-{{end}}
-  -h, --help             Show this help message and exit
-`
-
-// FuncMap for the template
-var funcMap = template.FuncMap{
-	"QuoteIfString": func(v any) string {
-		if s, ok := v.(string); ok {
-			return fmt.Sprintf("%q", s)
-		}
-		return fmt.Sprintf("%v", v)
-	},
-	"JoinStrings": func(values []any, sep string) string {
-		var s []string
-		for _, v := range values {
-			s = append(s, fmt.Sprintf("%v", v)) // QuoteIfString could be used here too if enums are strings
-		}
-		return strings.Join(s, sep)
-	},
-}
-
-// GenerateHelp creates a formatted help message string from CommandMetadata.
+// GenerateHelp writes a formatted help message to the given io.Writer from CommandMetadata.
 func GenerateHelp(cmdMeta *metadata.CommandMetadata) string {
 	if cmdMeta == nil {
-		return "Error: Command metadata is nil."
+		return "<error>" // Handle nil case gracefully
 	}
 
-	type templateOption struct {
-		CliName       string
-		TypeIndicator string // e.g. "string", "int", "bool"
-		HelpText      string
-		IsRequired    bool
-		DefaultValue  any
-		EnvVar        string
-		EnumValues    []any
-	}
+	var sb strings.Builder
+	generateHelp(&sb, cmdMeta)
+	return sb.String()
+}
 
-	var tplOptions []templateOption
+func generateHelp(w io.Writer, cmdMeta *metadata.CommandMetadata) {
+	fmt.Fprintf(w, "%s - %s\n\n", cmdMeta.Name, strings.ReplaceAll(cmdMeta.Description, "\n", "\n         "))
+	fmt.Fprintf(w, "Usage:\n  %s [flags] %s\n\n", cmdMeta.Name, "") // CommandArgsPlaceholder is empty for now
+	fmt.Fprintln(w, "Flags:")
+
 	for _, opt := range cmdMeta.Options {
-		tplOpt := templateOption{
-			CliName:      opt.CliName,
-			HelpText:     strings.ReplaceAll(opt.HelpText, "\n", "\n                           "), // Indent multi-line help
-			IsRequired:   opt.IsRequired,
-			DefaultValue: opt.DefaultValue,
-			EnvVar:       opt.EnvVar,
-			EnumValues:   opt.EnumValues,
-		}
-		// Simplify type indicator for help message
-		baseType := strings.TrimPrefix(opt.TypeName, "*") // Remove pointer indicator for base type
-		baseType = strings.TrimPrefix(baseType, "[]")     // Remove slice indicator
+		// Type indicator
+		baseType := strings.TrimPrefix(opt.TypeName, "*")
+		baseType = strings.TrimPrefix(baseType, "[]")
 		parts := strings.Split(baseType, ".")
-		tplOpt.TypeIndicator = strings.ToLower(parts[len(parts)-1]) // Show simple type like "string", "int"
+		typeIndicator := strings.ToLower(parts[len(parts)-1])
 		if strings.HasPrefix(opt.TypeName, "[]") {
-			tplOpt.TypeIndicator += "s" // e.g. strings, ints
+			typeIndicator += "s"
 		}
 
-		tplOptions = append(tplOptions, tplOpt)
+		helpText := strings.ReplaceAll(opt.HelpText, "\n", "\n                           ")
+		fmt.Fprintf(w, "  --%s %s %s", opt.CliName, typeIndicator, helpText)
+		if opt.IsRequired {
+			fmt.Fprint(w, " (required)")
+		}
+		if opt.DefaultValue != nil && opt.DefaultValue != "" {
+			if s, ok := opt.DefaultValue.(string); ok {
+				fmt.Fprintf(w, " (default: %q)", s)
+			} else {
+				fmt.Fprintf(w, " (default: %v)", opt.DefaultValue)
+			}
+		}
+		if opt.EnvVar != "" {
+			fmt.Fprintf(w, " (env: %s)", opt.EnvVar)
+		}
+		if len(opt.EnumValues) > 0 {
+			var enumStrs []string
+			for _, v := range opt.EnumValues {
+				if s, ok := v.(string); ok {
+					enumStrs = append(enumStrs, fmt.Sprintf("%q", s))
+				} else {
+					enumStrs = append(enumStrs, fmt.Sprintf("%v", v))
+				}
+			}
+			fmt.Fprintf(w, " (allowed: %s)", strings.Join(enumStrs, ", "))
+		}
+		fmt.Fprintln(w)
 	}
-
-	// Prepare data for the template
-	data := struct {
-		CommandName            string
-		CommandDescription     string
-		CommandArgsPlaceholder string // TODO: if command takes positional args
-		Options                []templateOption
-	}{
-		CommandName:            cmdMeta.Name,                                                 // Or a more specific CLI executable name
-		CommandDescription:     strings.ReplaceAll(cmdMeta.Description, "\n", "\n         "), // Indent multi-line desc
-		CommandArgsPlaceholder: "",                                                           // Placeholder for now
-		Options:                tplOptions,
-	}
-
-	tmpl, err := template.New("help").Funcs(funcMap).Parse(helpTemplate)
-	if err != nil {
-		return fmt.Sprintf("Error parsing help template: %v", err)
-	}
-
-	var buf bytes.Buffer
-	if err := tmpl.Execute(&buf, data); err != nil {
-		return fmt.Sprintf("Error executing help template: %v", err)
-	}
-
-	return buf.String()
+	fmt.Fprintln(w, "  -h, --help             Show this help message and exit")
 }
