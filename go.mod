@@ -1,3 +1,5 @@
 module github.com/podhmo/goat
 
-go 1.20
+// tool golang.org/x/tools/cmd/goimports
+
+go 1.22
