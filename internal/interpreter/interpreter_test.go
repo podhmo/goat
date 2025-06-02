@@ -1,6 +1,7 @@
 package interpreter
 
 import (
+	"go/ast"
 	"go/parser"
 	"go/token"
 	"reflect"
@@ -151,7 +152,6 @@ func New() *Options {
 		t.Errorf("Path: Expected default '/tmp', got '%v'", optionsMeta[0].DefaultValue)
 	}
 }
-
 
 func TestInterpretInitializer_NonGoatPackageCall(t *testing.T) {
 	content := `

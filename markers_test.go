@@ -37,52 +37,41 @@ func TestEnum(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			var result []any // Adapt based on type of tc.input if needed, or keep generic
-			switch v := tc.input.(type) {
-			case []any: // This path matches our test case structure
-				// To call the generic Enum, we need a typed slice.
-				// This test primarily checks if Enum returns its input, type conversion is for test setup.
-				if len(v) > 0 {
-					switch v[0].(type) {
-					case string:
-						typedInput := make([]string, len(v))
-						for i, item := range v {
-							typedInput[i] = item.(string)
-						}
-						resultTyped := Enum(typedInput)
-						result = make([]any, len(resultTyped))
-						for i, item := range resultTyped {
-							result[i] = item
-						}
-					case int:
-						typedInput := make([]int, len(v))
-						for i, item := range v {
-							typedInput[i] = item.(int)
-						}
-						resultTyped := Enum(typedInput)
-						result = make([]any, len(resultTyped))
-						for i, item := range resultTyped {
-							result[i] = item
-						}
-					default:
-						if v == nil || len(v) == 0 { // Handle empty or nil explicitly
-							result = Enum(v) // Call with []any if it works or specific typed nil
-						} else {
-							t.Skipf("Test setup for type %T not fully implemented for Enum test", v[0])
-						}
+			v := tc.input
+			if len(v) > 0 {
+				switch v[0].(type) {
+				case string:
+					typedInput := make([]string, len(v))
+					for i, item := range v {
+						typedInput[i] = item.(string)
 					}
-				} else { // empty or nil slice
-					if v == nil {
-						result = Enum[any](nil) // Explicitly type for nil
+					resultTyped := Enum(typedInput)
+					result = make([]any, len(resultTyped))
+					for i, item := range resultTyped {
+						result[i] = item
+					}
+				case int:
+					typedInput := make([]int, len(v))
+					for i, item := range v {
+						typedInput[i] = item.(int)
+					}
+					resultTyped := Enum(typedInput)
+					result = make([]any, len(resultTyped))
+					for i, item := range resultTyped {
+						result[i] = item
+					}
+				default:
+					if v == nil || len(v) == 0 { // Handle empty or nil explicitly
+						result = Enum(v) // Call with []any if it works or specific typed nil
 					} else {
-						result = Enum(v) // for empty []any{}
+						t.Skipf("Test setup for type %T not fully implemented for Enum test", v[0])
 					}
 				}
-
-			default:
-				if tc.input == nil {
-					result = Enum[any](nil) // Test with nil explicitly typed
+			} else { // empty or nil slice
+				if v == nil {
+					result = Enum[any](nil) // Explicitly type for nil
 				} else {
-					t.Fatalf("Unsupported input type for Enum test: %T", tc.input)
+					result = Enum(v) // for empty []any{}
 				}
 			}
 

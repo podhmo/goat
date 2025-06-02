@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"flag"
 	"fmt"
+	"io"
 	"log"
 	"os"
 	"path/filepath"
@@ -15,7 +16,6 @@ import (
 
 // Helper function to capture stdout and stderr
 func captureOutput(f func()) (string, string) {
-	var stdoutBuf, stderrBuf bytes.Buffer
 	oldStdout := os.Stdout
 	oldStderr := os.Stderr
 	oldLogOutput := log.Writer()
@@ -96,7 +96,7 @@ func main() { /* Will be replaced */ }
 	stdout, stderr := captureOutput(func() {
 		if err := runGoat(cfg); err != nil {
 			// In a real CLI, this would log.Fatal. For test, we check err.
-			t.Errorf("runGoat returned an error: %v. Stderr: %s", err, stderr)
+			t.Errorf("runGoat returned an error: +%v", err)
 		}
 	})
 
@@ -104,7 +104,6 @@ func main() { /* Will be replaced */ }
 	if strings.Contains(stderr, "Error:") && !strings.Contains(stderr, "runGoat returned an error:") { // don't double count if t.Errorf already fired
 		t.Logf("runGoat produced log errors/warnings: %s", stderr)
 	}
-
 
 	// Verify stdout for help message content
 	if !strings.Contains(stdout, "-------------------- Generated Help Message --------------------") {
@@ -143,14 +142,13 @@ func ExampleMain_NoArgs() {
 	fs.StringVar(&runFuncName, "run", "run", "")
 	fs.StringVar(&optionsInitializerName, "initializer", "NewOptions", "")
 
-
 	var errBuf bytes.Buffer
 	fs.SetOutput(&errBuf) // Capture flag parsing errors/usage
 
 	// Manually call main's core logic after flag setup if possible,
 	// or test a sub-function. Here, we simulate flag parsing leading to error.
 	err := fs.Parse(os.Args[1:]) // This will error due to missing target file
-	
+
 	// Since main() calls os.Exit(1), we can't directly call it and check output easily.
 	// Instead, we check the expected error from flag parsing when no args are given.
 	// In the actual main(), flag.Parse() is called on the global CommandLine.
@@ -180,7 +178,6 @@ func ExampleMain_NoArgs() {
 		fmt.Println("Usage: goat [options] <target_gofile.go>")
 		// ... plus default flag output ...
 	}
-
 
 	// Output:
 	// Error: Target Go file must be specified.

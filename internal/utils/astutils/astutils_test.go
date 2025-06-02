@@ -1,6 +1,7 @@
 package astutils
 
 import (
+	"go/ast"
 	"go/parser"
 	"go/token"
 	"reflect"
@@ -71,58 +72,55 @@ func TestIsPointerType(t *testing.T) {
 	}
 }
 
-
 func parseAndFindFirstCallExprFun(t *testing.T, code string, targetVar string) ast.Expr {
-    t.Helper()
-    fset := token.NewFileSet()
-    f, err := parser.ParseFile(fset, "test.go", code, 0)
-    if err != nil {
-        t.Fatalf("Failed to parse code: %v", err)
-    }
-    var targetExpr ast.Expr
-    ast.Inspect(f, func(n ast.Node) bool {
-        if assign, ok := n.(*ast.AssignStmt); ok {
-            if len(assign.Lhs) == 1 && len(assign.Rhs) == 1 {
-                if ident, ok := assign.Lhs[0].(*ast.Ident); ok && ident.Name == targetVar {
-                    if call, ok := assign.Rhs[0].(*ast.CallExpr); ok {
-                        targetExpr = call.Fun
-                        return false
-                    }
-                }
-            }
-        }
-        return true
-    })
-    if targetExpr == nil {
-        t.Fatalf("Could not find call expression assigned to %s", targetVar)
-    }
-    return targetExpr
+	t.Helper()
+	fset := token.NewFileSet()
+	f, err := parser.ParseFile(fset, "test.go", code, 0)
+	if err != nil {
+		t.Fatalf("Failed to parse code: %v", err)
+	}
+	var targetExpr ast.Expr
+	ast.Inspect(f, func(n ast.Node) bool {
+		if assign, ok := n.(*ast.AssignStmt); ok {
+			if len(assign.Lhs) == 1 && len(assign.Rhs) == 1 {
+				if ident, ok := assign.Lhs[0].(*ast.Ident); ok && ident.Name == targetVar {
+					if call, ok := assign.Rhs[0].(*ast.CallExpr); ok {
+						targetExpr = call.Fun
+						return false
+					}
+				}
+			}
+		}
+		return true
+	})
+	if targetExpr == nil {
+		t.Fatalf("Could not find call expression assigned to %s", targetVar)
+	}
+	return targetExpr
 }
-
 
 func TestGetFullFunctionName(t *testing.T) {
-    testCases := []struct {
-        name         string
-        code         string
-        varToInspect string // Variable whose assigned CallExpr.Fun we inspect
-        expectedName string
-        expectedPkg  string
-    }{
-        {"LocalFunc", `package main; func local() {}; func T() { x := local() }`, "x", "local", ""},
-        {"PkgFunc", `package main; import p "pkg.com/lib"; func T() { y := p.Remote() }`, "y", "Remote", "p"},
-    }
+	testCases := []struct {
+		name         string
+		code         string
+		varToInspect string // Variable whose assigned CallExpr.Fun we inspect
+		expectedName string
+		expectedPkg  string
+	}{
+		{"LocalFunc", `package main; func local() {}; func T() { x := local() }`, "x", "local", ""},
+		{"PkgFunc", `package main; import p "pkg.com/lib"; func T() { y := p.Remote() }`, "y", "Remote", "p"},
+	}
 
-    for _, tc := range testCases {
-        t.Run(tc.name, func(t *testing.T) {
-            callFunExpr := parseAndFindFirstCallExprFun(t, tc.code, tc.varToInspect)
-            actualName, actualPkg := GetFullFunctionName(callFunExpr)
-            if actualName != tc.expectedName || actualPkg != tc.expectedPkg {
-                t.Errorf("Expected (%s, %s), got (%s, %s)", tc.expectedName, tc.expectedPkg, actualName, actualPkg)
-            }
-        })
-    }
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			callFunExpr := parseAndFindFirstCallExprFun(t, tc.code, tc.varToInspect)
+			actualName, actualPkg := GetFullFunctionName(callFunExpr)
+			if actualName != tc.expectedName || actualPkg != tc.expectedPkg {
+				t.Errorf("Expected (%s, %s), got (%s, %s)", tc.expectedName, tc.expectedPkg, actualName, actualPkg)
+			}
+		})
+	}
 }
-
 
 func parseFileForImports(t *testing.T, code string) *ast.File {
 	fset := token.NewFileSet()
@@ -154,7 +152,7 @@ import (
 		{"fmt", "fmt"},
 		{"myio", "io"},
 		{"os", "os"},
-		{"pq", "github.com/lib/pq"}, // Assumes alias matches last part if Name is nil
+		{"pq", "github.com/lib/pq"},          // Assumes alias matches last part if Name is nil
 		{"ginkgo", "github.com/onsi/ginkgo"}, // for dot import, alias is package name
 		{"custom_path", "github.com/custom/module/v2"},
 		{"nonexistent", ""},

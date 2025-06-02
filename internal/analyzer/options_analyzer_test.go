@@ -3,7 +3,9 @@ package analyzer
 import (
 	// "go/parser" // Already imported in run_func_analyzer_test.go, helper can be shared
 	// "go/token"
-	"reflect"
+
+	"fmt"
+	"strings"
 	"testing"
 
 	"github.com/podhmo/goat/internal/metadata"
@@ -28,14 +30,14 @@ type Config struct {
 `
 	// Test with and without tags to ensure tags are parsed if present
 	testCases := []struct {
-		nameTag  string
-		ageTag   string
-		adminTag string
-		featTag  string
+		nameTag         string
+		ageTag          string
+		adminTag        string
+		featTag         string
 		expectedOptions []*metadata.OptionMetadata
 	}{
 		{
-			nameTag:  ` %s`, ageTag: ` %s`, adminTag: ` %s`, featTag: ` %s`,
+			nameTag: ` %s`, ageTag: ` %s`, adminTag: ` %s`, featTag: ` %s`,
 			expectedOptions: []*metadata.OptionMetadata{
 				{Name: "Name", CliName: "name", TypeName: "string", HelpText: "Name of the user.", IsRequired: true},
 				{Name: "Age", CliName: "age", TypeName: "*int", HelpText: "Age of the user, optional.", IsPointer: true, IsRequired: false},
@@ -44,7 +46,7 @@ type Config struct {
 			},
 		},
 		{
-			nameTag:  ` %s`, ageTag: ` %s`, adminTag: ` %s`, featTag: ` %s`,
+			nameTag: ` %s`, ageTag: ` %s`, adminTag: ` %s`, featTag: ` %s`,
 			expectedOptions: []*metadata.OptionMetadata{
 				{Name: "Name", CliName: "name", TypeName: "string", HelpText: "Name of the user.", IsRequired: true, EnvVar: "APP_NAME"},
 				{Name: "Age", CliName: "age", TypeName: "*int", HelpText: "Age of the user, optional.", IsPointer: true, IsRequired: false, EnvVar: "USER_AGE"},
@@ -53,7 +55,7 @@ type Config struct {
 			},
 		},
 	}
-	
+
 	// Inject tags into content format string
 	testCases[0].nameTag = ""
 	testCases[0].ageTag = ""
@@ -65,11 +67,10 @@ type Config struct {
 	testCases[1].adminTag = ""
 	testCases[1].featTag = "`env:\"APP_FEATURES\"`"
 
-
 	for i, tc := range testCases {
-		formattedContent := Sprintf(content, tc.nameTag, tc.ageTag, tc.adminTag, tc.featTag)
+		formattedContent := fmt.Sprintf(content, tc.nameTag, tc.ageTag, tc.adminTag, tc.featTag)
 		fileAst := parseTestFile(t, formattedContent) // Assuming parseTestFile is available
-		
+
 		options, structName, err := AnalyzeOptions(fileAst, "Config", "main")
 		if err != nil {
 			t.Fatalf("Test case %d: AnalyzeOptions failed: %v", i, err)

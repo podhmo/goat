@@ -1,13 +1,11 @@
 package analyzer
 
 import (
+	"go/ast"
 	"go/parser"
 	"go/token"
-	"reflect"
 	"strings"
 	"testing"
-
-	"github.com/podhmo/goat/internal/metadata"
 )
 
 func parseTestFile(t *testing.T, content string) *ast.File {
