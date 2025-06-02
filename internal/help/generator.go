@@ -24,6 +24,14 @@ func generateHelp(w io.Writer, cmdMeta *metadata.CommandMetadata) {
 	fmt.Fprintf(w, "Usage:\n  %s [flags] %s\n\n", cmdMeta.Name, "") // CommandArgsPlaceholder is empty for now
 	fmt.Fprintln(w, "Flags:")
 
+	// Find max length of option names for alignment (include -h, --help)
+	maxNameLen := len("h, --help")
+	for _, opt := range cmdMeta.Options {
+		if l := len(opt.CliName); l > maxNameLen {
+			maxNameLen = l
+		}
+	}
+
 	for _, opt := range cmdMeta.Options {
 		// Type indicator
 		baseType := strings.TrimPrefix(opt.TypeName, "*")
@@ -34,8 +42,8 @@ func generateHelp(w io.Writer, cmdMeta *metadata.CommandMetadata) {
 			typeIndicator += "s"
 		}
 
-		helpText := strings.ReplaceAll(opt.HelpText, "\n", "\n                           ")
-		fmt.Fprintf(w, "  --%s %s %s", opt.CliName, typeIndicator, helpText)
+		helpText := strings.ReplaceAll(opt.HelpText, "\n", "\n"+strings.Repeat(" ", maxNameLen+15))
+		fmt.Fprintf(w, "  --%-*s %s %s", maxNameLen, opt.CliName, typeIndicator, helpText)
 		if opt.IsRequired {
 			fmt.Fprint(w, " (required)")
 		}
@@ -62,5 +70,10 @@ func generateHelp(w io.Writer, cmdMeta *metadata.CommandMetadata) {
 		}
 		fmt.Fprintln(w)
 	}
-	fmt.Fprintln(w, "  -h, --help             Show this help message and exit")
+
+	// Print help option aligned
+	fmt.Fprintln(w, "")
+	helpName := "h, --help"
+	helpText := "Show this help message and exit"
+	fmt.Fprintf(w, "  -%-*s %s\n", maxNameLen, helpName, helpText)
 }
