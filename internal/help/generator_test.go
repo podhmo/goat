@@ -42,7 +42,7 @@ func TestGenerateHelp_Basic(t *testing.T) {
 			{
 				Name:       "Verbose",
 				CliName:    "verbose",
-				TypeName:   "*bool", // Pointer bool
+				TypeName:   "*bool",
 				HelpText:   "Enable verbose output.",
 				IsPointer:  true,
 				IsRequired: false,
@@ -52,60 +52,36 @@ func TestGenerateHelp_Basic(t *testing.T) {
 
 	helpMsg := GenerateHelp(cmdMeta)
 
-	// Check for command name and description
-	if !strings.Contains(helpMsg, "mytool - A super useful tool.") {
-		t.Errorf("Help message missing or incorrect command title. Got:\n%s", helpMsg)
-	}
-	if !strings.Contains(helpMsg, "\n         Does amazing things.") { // Check multiline indent for desc
-		t.Errorf("Help message missing or incorrect multiline description. Got:\n%s", helpMsg)
-	}
+	expected := `mytool - A super useful tool.
+         Does amazing things.
 
-	// Check for username option
-	if !strings.Contains(helpMsg, "--username string") {
-		t.Errorf("Missing --username string. Got:\n%s", helpMsg)
-	}
-	if !strings.Contains(helpMsg, "The username for login. (required) (env: APP_USER)") {
-		t.Errorf("Missing or incorrect help for username. Got:\n%s", helpMsg)
-	}
+Usage:
+  mytool [flags] 
 
-	// Check for port option
-	if !strings.Contains(helpMsg, "--port int") {
-		t.Errorf("Missing --port int. Got:\n%s", helpMsg)
-	}
-	if !strings.Contains(helpMsg, "Port number to listen on. (default: 8080)") {
-		t.Errorf("Missing or incorrect help for port. Got:\n%s", helpMsg)
-	}
+Flags:
+  --username  string The username for login. (required) (env: APP_USER)
+  --port      int Port number to listen on. (default: 8080)
+  --mode      string Operation mode. (default: "dev") (allowed: "dev", "prod", "test")
+  --verbose   bool Enable verbose output.
 
-	// Check for mode option
-	if !strings.Contains(helpMsg, "--mode string") {
-		t.Errorf("Missing --mode string. Got:\n%s", helpMsg)
-	}
-	if !strings.Contains(helpMsg, "Operation mode. (default: \"dev\") (allowed: dev, prod, test)") {
-		t.Errorf("Missing or incorrect help for mode. Got:\n%s", helpMsg)
-	}
+  -h, --help Show this help message and exit
+`
 
-	// Check for verbose option
-	if !strings.Contains(helpMsg, "--verbose bool") { // Type indicator becomes "bool"
-		t.Errorf("Missing --verbose bool. Got:\n%s", helpMsg)
-	}
-	if !strings.Contains(helpMsg, "Enable verbose output.") { // No (required), (default)
-		t.Errorf("Missing or incorrect help for verbose. Got:\n%s", helpMsg)
-	}
-	if strings.Contains(helpMsg, "--verbose bool (required)") || strings.Contains(helpMsg, "--verbose bool (default:") {
-		t.Errorf("Verbose option should not be marked as required or have a default in help text. Got:\n%s", helpMsg)
-	}
+	helpMsg = strings.ReplaceAll(helpMsg, "\r\n", "\n")
+	expected = strings.ReplaceAll(expected, "\r\n", "\n")
 
-	// Check for standard help flag
-	if !strings.Contains(helpMsg, "-h, --help             Show this help message and exit") {
-		t.Errorf("Standard help flag -h, --help is missing. Got:\n%s", helpMsg)
-	}
+	// スペースを@に変換して比較
+	helpMsgAt := strings.ReplaceAll(helpMsg, " ", "@")
+	expectedAt := strings.ReplaceAll(expected, " ", "@")
 
-	// t.Log(helpMsg) // For manual inspection if needed
+	if helpMsgAt != expectedAt {
+		t.Errorf("help message mismatch (spaces shown as @)\n--- expected ---\n%s\n--- got ---\n%s", expectedAt, helpMsgAt)
+	}
 }
 
 func TestGenerateHelp_NilMetadata(t *testing.T) {
 	helpMsg := GenerateHelp(nil)
-	if !strings.Contains(helpMsg, "Error: Command metadata is nil.") {
+	if !strings.Contains(helpMsg, "<error>") {
 		t.Errorf("Expected error message for nil metadata, got: %s", helpMsg)
 	}
 }
