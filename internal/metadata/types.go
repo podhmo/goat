@@ -5,8 +5,8 @@ import "go/token"
 // CommandMetadata holds all extracted information about a CLI command
 // that goat needs to generate code or help messages.
 type CommandMetadata struct {
-	Name             string   // Name of the command (e.g., from package or explicitly set)
-	Description      string   // Overall help description for the command (from run func doc)
+	Name             string // Name of the command (e.g., from package or explicitly set)
+	Description      string // Overall help description for the command (from run func doc)
 	RunFunc          *RunFuncInfo
 	Options          []*OptionMetadata
 	MainFuncPosition *token.Position // TODO: For knowing where to replace main func content

@@ -38,7 +38,6 @@ var funcMap = template.FuncMap{
 	},
 }
 
-
 // GenerateHelp creates a formatted help message string from CommandMetadata.
 func GenerateHelp(cmdMeta *metadata.CommandMetadata) string {
 	if cmdMeta == nil {
@@ -58,22 +57,21 @@ func GenerateHelp(cmdMeta *metadata.CommandMetadata) string {
 	var tplOptions []templateOption
 	for _, opt := range cmdMeta.Options {
 		tplOpt := templateOption{
-			CliName:    opt.CliName,
-			HelpText:   strings.ReplaceAll(opt.HelpText, "\n", "\n                           "), // Indent multi-line help
-			IsRequired: opt.IsRequired,
+			CliName:      opt.CliName,
+			HelpText:     strings.ReplaceAll(opt.HelpText, "\n", "\n                           "), // Indent multi-line help
+			IsRequired:   opt.IsRequired,
 			DefaultValue: opt.DefaultValue,
-			EnvVar:     opt.EnvVar,
-			EnumValues: opt.EnumValues,
+			EnvVar:       opt.EnvVar,
+			EnumValues:   opt.EnumValues,
 		}
 		// Simplify type indicator for help message
 		baseType := strings.TrimPrefix(opt.TypeName, "*") // Remove pointer indicator for base type
-		baseType = strings.TrimPrefix(baseType, "[]") // Remove slice indicator
+		baseType = strings.TrimPrefix(baseType, "[]")     // Remove slice indicator
 		parts := strings.Split(baseType, ".")
 		tplOpt.TypeIndicator = strings.ToLower(parts[len(parts)-1]) // Show simple type like "string", "int"
 		if strings.HasPrefix(opt.TypeName, "[]") {
 			tplOpt.TypeIndicator += "s" // e.g. strings, ints
 		}
-
 
 		tplOptions = append(tplOptions, tplOpt)
 	}
@@ -85,9 +83,9 @@ func GenerateHelp(cmdMeta *metadata.CommandMetadata) string {
 		CommandArgsPlaceholder string // TODO: if command takes positional args
 		Options                []templateOption
 	}{
-		CommandName:            cmdMeta.Name, // Or a more specific CLI executable name
+		CommandName:            cmdMeta.Name,                                                 // Or a more specific CLI executable name
 		CommandDescription:     strings.ReplaceAll(cmdMeta.Description, "\n", "\n         "), // Indent multi-line desc
-		CommandArgsPlaceholder: "", // Placeholder for now
+		CommandArgsPlaceholder: "",                                                           // Placeholder for now
 		Options:                tplOptions,
 	}
 

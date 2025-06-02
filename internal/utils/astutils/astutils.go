@@ -80,7 +80,6 @@ func GetImportPath(fileAst *ast.File, pkgAlias string) string {
 	return "" // Alias not found in imports
 }
 
-
 // EvaluateArg tries to evaluate an AST expression (typically a function argument)
 // to a Go literal value. It supports basic literals.
 // Returns the evaluated value or nil if not a simple literal.

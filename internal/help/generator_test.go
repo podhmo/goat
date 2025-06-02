@@ -32,12 +32,12 @@ func TestGenerateHelp_Basic(t *testing.T) {
 				DefaultValue: 8080,
 			},
 			{
-				Name:       "Mode",
-				CliName:    "mode",
-				TypeName:   "string",
-				HelpText:   "Operation mode.",
+				Name:         "Mode",
+				CliName:      "mode",
+				TypeName:     "string",
+				HelpText:     "Operation mode.",
 				DefaultValue: "dev",
-				EnumValues: []any{"dev", "prod", "test"},
+				EnumValues:   []any{"dev", "prod", "test"},
 			},
 			{
 				Name:       "Verbose",
@@ -75,7 +75,7 @@ func TestGenerateHelp_Basic(t *testing.T) {
 	if !strings.Contains(helpMsg, "Port number to listen on. (default: 8080)") {
 		t.Errorf("Missing or incorrect help for port. Got:\n%s", helpMsg)
 	}
-	
+
 	// Check for mode option
 	if !strings.Contains(helpMsg, "--mode string") {
 		t.Errorf("Missing --mode string. Got:\n%s", helpMsg)
@@ -83,7 +83,7 @@ func TestGenerateHelp_Basic(t *testing.T) {
 	if !strings.Contains(helpMsg, "Operation mode. (default: \"dev\") (allowed: dev, prod, test)") {
 		t.Errorf("Missing or incorrect help for mode. Got:\n%s", helpMsg)
 	}
-	
+
 	// Check for verbose option
 	if !strings.Contains(helpMsg, "--verbose bool") { // Type indicator becomes "bool"
 		t.Errorf("Missing --verbose bool. Got:\n%s", helpMsg)
@@ -94,7 +94,6 @@ func TestGenerateHelp_Basic(t *testing.T) {
 	if strings.Contains(helpMsg, "--verbose bool (required)") || strings.Contains(helpMsg, "--verbose bool (default:") {
 		t.Errorf("Verbose option should not be marked as required or have a default in help text. Got:\n%s", helpMsg)
 	}
-
 
 	// Check for standard help flag
 	if !strings.Contains(helpMsg, "-h, --help             Show this help message and exit") {

@@ -36,7 +36,7 @@ func Analyze(fileAst *ast.File, runFuncName string) (*metadata.CommandMetadata, 
 	} else {
 		return nil, "", fmt.Errorf("run function '%s' or its options parameter not found or not in expected format", runFuncName)
 	}
-	
+
 	// 3. TODO: Find the main function to get its position for future code replacement
 	// mainFuncPos, err := FindMainFuncPosition(fileAst)
 	// if err != nil {
