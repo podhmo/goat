@@ -59,32 +59,45 @@ func WriteMain(
 			originalContent = append(originalContent, '\n')
 			newContent = append(originalContent, []byte(newMainContent)...)
 		} else {
-			// Determine start and end of the main function in the original source
-			// Start of the function (including doc comments if any)
-			// We take the position of the 'func' keyword as the definitive start of what we replace.
-			// If there are doc comments, ast.Node.Pos() for FuncDecl usually includes them.
-			// Let's use the provided mainFuncPos as the start of replacement.
-			startOffset := mainFuncPos.Offset
+			// New line-by-line replacement logic
+			originalLines := strings.Split(string(originalContent), "\n")
+			mainDeclStartLine := fileSet.Position(mainFuncNode.Pos()).Line // 1-based
+			mainDeclEndLine := fileSet.Position(mainFuncNode.Body.Rbrace).Line // 1-based
 
-			// End of the function (the closing '}')
-			// mainFuncNode.End() gives the position immediately after the closing brace.
-			endTokenPos := mainFuncNode.Body.Rbrace
-			endOffset := fileSet.Position(endTokenPos).Offset + 1 // +1 to include the brace itself
+			var builder strings.Builder
 
-			if startOffset < 0 || endOffset < startOffset || endOffset > len(originalContent) {
-				return fmt.Errorf("invalid offsets for main function replacement: start=%d, end=%d, file_len=%d", startOffset, endOffset, len(originalContent))
+			// Append lines before main function declaration
+			// (mainDeclStartLine is 1-based, originalLines is 0-indexed)
+			for i := 0; i < mainDeclStartLine-1; i++ {
+				builder.WriteString(originalLines[i])
+				builder.WriteString("\n")
 			}
 
-			var buf bytes.Buffer
-			buf.Write(originalContent[:startOffset])
-			buf.WriteString(newMainContent)
-			// Add a newline after the new main content if it doesn't end with one,
-			// and if there's content following it, or if it's at the EOF.
+			// Append the new main function content
+			builder.WriteString(newMainContent)
 			if !strings.HasSuffix(newMainContent, "\n") {
-				buf.WriteString("\n")
+				builder.WriteString("\n")
 			}
-			buf.Write(originalContent[endOffset:])
-			newContent = buf.Bytes()
+
+			// Append lines after the main function's original closing brace.
+			// mainDeclEndLine is the 1-based line number of the original main func's closing '}'.
+			// originalLines is 0-indexed. Lines from index mainDeclEndLine onwards in originalLines
+			// are the lines that came *after* the original main function's body.
+			if mainDeclEndLine < len(originalLines) {
+				for i := mainDeclEndLine; i < len(originalLines); i++ {
+					builder.WriteString(originalLines[i])
+					// Add a newline after each line, except if it's the last line from split()
+					// and that last line is empty (which indicates the original file ended with a newline).
+					// format.Source will handle the final trailing newline for the whole file.
+					if i < len(originalLines)-1 || originalLines[i] != "" {
+						builder.WriteString("\n")
+					}
+				}
+			}
+			
+			// The call to format.Source later will ensure Go-specific formatting,
+			// including a single trailing newline if appropriate for Go files.
+			newContent = []byte(builder.String())
 		}
 	}
 
