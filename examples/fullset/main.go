@@ -8,14 +8,11 @@ import (
 	"github.com/podhmo/goat/goat" // Assuming goat markers are in this path
 )
 
-//go:generate goat -run RunSimpleApp -initializer NewSimpleOptions main.go
-// An alternative could be:
-//go:generate ../../goat_tool -run RunSimpleApp -initializer NewSimpleOptions main.go
-// (if goat_tool is built to project root)
+//go:generate goat -run run -initializer newOptions main.go
 
-// SimpleOptions defines the command line options for this simple example tool.
+// Options defines the command line options for this simple example tool.
 // This tool demonstrates the basic capabilities of goat for CLI generation.
-type SimpleOptions struct {
+type Options struct {
 	// Name of the person to greet. This is a mandatory field.
 	Name string `env:"SIMPLE_NAME"`
 
@@ -41,10 +38,10 @@ type SimpleOptions struct {
 	SuperVerbose bool `env:"SIMPLE_SUPER_VERBOSE"`
 }
 
-// NewSimpleOptions initializes SimpleOptions with default values and enum constraints.
+// newOptions initializes SimpleOptions with default values and enum constraints.
 // This function will be "interpreted" by the goat tool.
-func NewSimpleOptions() *SimpleOptions {
-	return &SimpleOptions{
+func newOptions() *Options {
+	return &Options{
 		Name:      goat.Default("World"), // Default name
 		LogLevel:  goat.Default("info", goat.Enum([]string{"debug", "info", "warning", "error"})),
 		OutputDir: goat.Default("output"),
@@ -55,10 +52,10 @@ func NewSimpleOptions() *SimpleOptions {
 	}
 }
 
-// RunSimpleApp is the core logic for this simple CLI tool.
+// run is the core logic for this simple CLI tool.
 // It receives the parsed and validated options.
 // This function's doc comment is used as the main help text for the command.
-func RunSimpleApp(opts SimpleOptions) error {
+func run(opts Options) error {
 	fmt.Printf("Hello, %s!\n", opts.Name)
 
 	if opts.Age != nil {
@@ -76,7 +73,7 @@ func RunSimpleApp(opts SimpleOptions) error {
 	} else {
 		fmt.Println("No special features enabled.")
 	}
-	
+
 	if opts.SuperVerbose {
 		fmt.Println("Super verbose mode is ON!")
 	}
@@ -94,8 +91,8 @@ func RunSimpleApp(opts SimpleOptions) error {
 func main() {
 	log.Println("Original main: This will be replaced by goat.")
 	// Example of how you might run it manually during development:
-	// opts := NewSimpleOptions()
-	// if err := RunSimpleApp(*opts); err != nil {
+	// opts := newOptions()
+	// if err := run(*opts); err != nil {
 	// 	fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 	// 	os.Exit(1)
 	// }
@@ -105,8 +102,8 @@ func main() {
 	// You would need to parse flags manually here if you want to test that aspect
 	// without running `go generate` yet. For simplicity, we just use defaults.
 	fmt.Println("Simulating execution with default options before `go generate`:")
-	defaultOpts := NewSimpleOptions()
-	if err := RunSimpleApp(*defaultOpts); err != nil {
+	defaultOpts := newOptions()
+	if err := run(*defaultOpts); err != nil {
 		fmt.Fprintf(os.Stderr, "Application error: %v\n", err)
 		os.Exit(1)
 	}

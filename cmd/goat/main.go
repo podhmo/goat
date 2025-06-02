@@ -24,7 +24,7 @@ func main() {
 	)
 
 	flag.StringVar(&runFuncName, "run", "run", "Name of the function to be treated as the entrypoint (e.g., run(Options) error)")
-	flag.StringVar(&optionsInitializerName, "initializer", "NewOptions", "Name of the function that initializes the options struct (e.g., NewOptions() *Options)")
+	flag.StringVar(&optionsInitializerName, "initializer", "newOptions", "Name of the function that initializes the options struct (e.g., newOptions() *Options)")
 	// TODO: add more flags for goat's configuration if needed
 
 	flag.Usage = func() {
@@ -68,7 +68,7 @@ func runGoat(cfg *config.Config) error {
 	}
 	log.Printf("Goat: Command metadata extracted for command: %s", cmdMetadata.Name)
 
-	// 3. Interpret the options initializer function (e.g., NewOptions)
+	// 3. Interpret the options initializer function (e.g., newOptions)
 	// This step evaluates goat.Default() and goat.Enum() calls to populate default values and enum choices.
 	if cfg.OptionsInitializerName != "" && optionsStructName != "" {
 		err = interpreter.InterpretInitializer(fileAST, optionsStructName, cfg.OptionsInitializerName, cmdMetadata.Options, "github.com/podhmo/goat/goat") // Pass marker package path
@@ -80,13 +80,11 @@ func runGoat(cfg *config.Config) error {
 		log.Printf("Goat: Skipping options initializer interpretation (initializer name or options struct not found/specified).")
 	}
 
-
 	// 4. Generate help message
 	helpMsg := help.GenerateHelp(cmdMetadata)
 	fmt.Println("-------------------- Generated Help Message --------------------")
 	fmt.Println(helpMsg)
 	fmt.Println("----------------------------------------------------------------")
-
 
 	// 5. TODO: Generate new main.go content (Future Step)
 	// newMainContent, err := codegen.GenerateMain(cmdMetadata)

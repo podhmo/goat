@@ -1,4 +1,5 @@
 //go:build ignore
+
 // The line above ensures this file is not part of the normal build.
 
 // This file is solely for demonstrating/triggering `go generate`.
