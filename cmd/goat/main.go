@@ -24,7 +24,7 @@ func main() {
 	)
 
 	flag.StringVar(&runFuncName, "run", "run", "Name of the function to be treated as the entrypoint (e.g., run(Options) error)")
-	flag.StringVar(&optionsInitializerName, "initializer", "newOptions", "Name of the function that initializes the options struct (e.g., newOptions() *Options)")
+	flag.StringVar(&optionsInitializerName, "initializer", "", "Name of the function that initializes the options struct (e.g., newOptions() *Options)")
 	// TODO: add more flags for goat's configuration if needed
 
 	flag.Usage = func() {
