@@ -218,6 +218,112 @@ func main() {
 	}
 }
 
+func TestWriteMain_LineByLine_PreserveFormatting(t *testing.T) {
+	initialContent := `package main
+
+import "fmt"
+
+// Comment before main line 1
+// Comment before main line 2
+
+// Another comment block
+// with multiple lines.
+
+func main() {
+	// Old main content
+	// To be replaced completely.
+	fmt.Println("Old Main Content Here")
+	// Another line in old main.
+}
+
+// Comment immediately after main's original closing brace.
+// Another comment after main.
+
+var GlobalVarAfterMain = "test value"
+
+// Func after main
+func AnotherFunctionAfterMain() {
+	fmt.Println("This is another function, after main.")
+}
+
+// Trailing comment at EOF.
+`
+	newMainContent := `func main() {
+	fmt.Println("New Main Content Here")
+	// New main has its own comments.
+}`
+	// Expected content after WriteMain, assuming gofmt formatting.
+	// format.Source in WriteMain will handle gofmt.
+	expectedContentAfterWrite := `package main
+
+import "fmt"
+
+// Comment before main line 1
+// Comment before main line 2
+
+// Another comment block
+// with multiple lines.
+
+func main() {
+	fmt.Println("New Main Content Here")
+	// New main has its own comments.
+}
+
+// Comment immediately after main's original closing brace.
+// Another comment after main.
+
+var GlobalVarAfterMain = "test value"
+
+// Func after main
+func AnotherFunctionAfterMain() {
+	fmt.Println("This is another function, after main.")
+}
+
+// Trailing comment at EOF.
+`
+	tempFilePath := createTempFile(t, initialContent)
+	fset := token.NewFileSet()
+
+	// Provide initial content bytes to ParseFile, as it might be modified by WriteMain
+	initialBytes, err := os.ReadFile(tempFilePath)
+	if err != nil {
+		t.Fatalf("Failed to read initial temp file content: %v", err)
+	}
+
+	fileAst, err := parser.ParseFile(fset, tempFilePath, initialBytes, parser.ParseComments)
+	if err != nil {
+		t.Fatalf("Failed to parse initial content: %v", err)
+	}
+
+	mainFuncNode, mainFuncPos := findMainFuncDecl(fset, fileAst)
+	if mainFuncNode == nil || mainFuncPos == nil {
+		t.Fatal("Test setup error: main function not found in initial content.")
+	}
+
+	err = codegen.WriteMain(tempFilePath, fset, fileAst, newMainContent, mainFuncPos)
+	if err != nil {
+		t.Fatalf("WriteMain failed: %v", err)
+	}
+
+	modifiedContentBytes, err := os.ReadFile(tempFilePath)
+	if err != nil {
+		t.Fatalf("Failed to read modified file: %v", err)
+	}
+
+	// Normalize both expected and actual for a robust comparison
+	// (handles gofmt differences, trailing newlines consistently)
+	normalizedGot := normalizeCode(t, string(modifiedContentBytes))
+	normalizedExpected := normalizeCode(t, expectedContentAfterWrite)
+
+	if normalizedGot != normalizedExpected {
+		// For easier debugging, print raw strings if they differ
+		t.Logf("RAW EXPECTED:\n%s\n", expectedContentAfterWrite)
+		t.Logf("RAW GOT:\n%s\n", string(modifiedContentBytes))
+		t.Errorf("Content mismatch after WriteMain.\nEXPECTED (normalized):\n%s\nGOT (normalized):\n%s",
+			normalizedExpected, normalizedGot)
+	}
+}
+
 
 func TestWriteMain_FileWithOtherDeclarations(t *testing.T) {
 	initialContent := `package main
