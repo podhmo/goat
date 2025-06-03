@@ -10,7 +10,6 @@ import (
 	"testing"
 	"go/parser" // Added for TestEmitSubcommand
 
-	"github.com/podhmo/goat/internal/config"
 	"github.com/podhmo/goat/internal/help"
 	"github.com/podhmo/goat/internal/metadata"
 )
@@ -124,7 +123,7 @@ func TestHelpGenerateHelpOutput(t *testing.T) {
 		t.Fatalf("Failed to write temp file: %v", err)
 	}
 
-	cfg := &config.Config{
+	cfg := &Config{
 		RunFuncName:            "Run",
 		OptionsInitializerName: "NewOptions",
 		TargetFile:             tmpFile,
