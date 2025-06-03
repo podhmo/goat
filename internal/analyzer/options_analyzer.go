@@ -18,8 +18,12 @@ func AnalyzeOptions(fileAst *ast.File, optionsTypeName string, packageName strin
 	var actualStructName string
 
 	// Remove package prefix if present (e.g. "main.Options" -> "Options")
+	// And remove pointer prefix if present (e.g. "*Options" -> "Options")
 	parts := strings.Split(optionsTypeName, ".")
 	typeNameOnly := parts[len(parts)-1]
+	if strings.HasPrefix(typeNameOnly, "*") {
+		typeNameOnly = typeNameOnly[1:]
+	}
 
 	ast.Inspect(fileAst, func(n ast.Node) bool {
 		if ts, ok := n.(*ast.TypeSpec); ok {
@@ -46,8 +50,17 @@ func AnalyzeOptions(fileAst *ast.File, optionsTypeName string, packageName strin
 
 	var extractedOptions []*metadata.OptionMetadata
 	for _, field := range structType.Fields.List {
-		if len(field.Names) == 0 {
-			// Embedded struct, skip for now or handle later if needed
+		if len(field.Names) == 0 { // Embedded struct
+			embeddedTypeName := astutils.ExprToTypeName(field.Type)
+			// The AnalyzeOptions function itself handles stripping package prefixes if optionsTypeName includes one.
+
+			embeddedOptions, _, err := AnalyzeOptions(fileAst, embeddedTypeName, packageName) // Recursive call
+			if err != nil {
+				// Decide on error handling: either return the error or collect and log it.
+				// For now, let's try to return it, as it might indicate a structural problem.
+				return nil, actualStructName, fmt.Errorf("error analyzing embedded struct %s: %w", embeddedTypeName, err)
+			}
+			extractedOptions = append(extractedOptions, embeddedOptions...)
 			continue
 		}
 		fieldName := field.Names[0].Name
