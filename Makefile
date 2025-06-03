@@ -1,7 +1,7 @@
 
 check:
-#	go run ./cmd/goat/ examples/fullset/main.go
-	go run ./cmd/goat/ examples/hello/main.go
+#	go run ./cmd/goat/ help-message examples/fullset/main.go
+	go run ./cmd/goat/ help-message examples/hello/main.go
 .PHONY: check
 
 # format the code

@@ -5,18 +5,18 @@ import (
 	"flag"
 	"fmt"
 	"go/ast"
-	"go/build" // Added import
+	"go/build"
 	"go/token"
 	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
 
-	"github.com/podhmo/goat/internal/analyzer" // Ensure full path
+	"github.com/podhmo/goat/internal/analyzer"
 	"github.com/podhmo/goat/internal/codegen"
 	"github.com/podhmo/goat/internal/help"
 	"github.com/podhmo/goat/internal/interpreter"
-	"github.com/podhmo/goat/internal/loader" // Ensure full path
+	"github.com/podhmo/goat/internal/loader"
 	"github.com/podhmo/goat/internal/metadata"
 )
 
@@ -168,15 +168,11 @@ func runGoat(opts *Options) error {
 
 	helpMsg := help.GenerateHelp(cmdMetadata)
 
-	// 5. TODO: Generate new main.go content (Future Step)
-	// For 'emit', we only want the function body, not a full file,
-	// as it will be inserted into an existing file.
 	newMainContent, err := codegen.GenerateMain(cmdMetadata, helpMsg, false /* generateFullFile */)
 	if err != nil {
 		return fmt.Errorf("failed to generate new main.go content: %w", err)
 	}
 
-	// 6. TODO: Write the new content (Future Step)
 	err = codegen.WriteMain(opts.TargetFile, fset, fileAST, newMainContent, cmdMetadata.MainFuncPosition)
 	if err != nil {
 		return fmt.Errorf("failed to write modified main.go: %w", err)
@@ -226,19 +222,6 @@ func scanMain(fset *token.FileSet, opts *Options) (*metadata.CommandMetadata, *a
 		// Proceeding with just targetFileAst in filesForAnalysis
 	}
 
-	// filesForAnalysis := packageFiles // Unused variable
-	// If LoadPackageFiles returned empty (e.g. directory has no .go files other than _test.go)
-	// or if it errored but we decided to proceed, make sure we at least have the target file.
-	// if len(filesForAnalysis) == 0 { // Old logic
-	// 	if targetFileAst != nil {
-	// 		slog.Warn("loader.LoadPackageFiles returned no files for import path, proceeding with only the directly loaded target file", "importPath", importPath, "targetFile", opts.TargetFile)
-	// 		filesForAnalysis = []*ast.File{targetFileAst}
-	// 	} else {
-	// 		// This case should ideally be caught by the initial LoadFile failure, but as a safeguard:
-	// 		return nil, nil, fmt.Errorf("no Go files found for package (import path %s) and target file %s also failed to load or was nil", importPath, opts.TargetFile)
-	// 	}
-	// }
-
 	// New logic: Ensure targetFileAst is always included and handle potential duplicates.
 	finalFilesForAnalysis := []*ast.File{targetFileAst}
 	seenFilePaths := make(map[string]bool)
@@ -262,7 +245,6 @@ func scanMain(fset *token.FileSet, opts *Options) (*metadata.CommandMetadata, *a
 	if len(finalFilesForAnalysis) == 0 && targetFileAst == nil { // Should be caught by LoadFile earlier
 		return nil, nil, fmt.Errorf("no Go files could be prepared for analysis, target file %s failed to load", opts.TargetFile)
 	}
-
 
 	// The optionsStructName returned by Analyze needs to be captured.
 	cmdMetadata, returnedOptionsStructName, err := analyzer.Analyze(fset, finalFilesForAnalysis, opts.RunFuncName, currentPackageName)
