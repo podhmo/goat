@@ -7,6 +7,7 @@ import (
 	"text/template"
 
 	"github.com/podhmo/goat/internal/metadata"
+	"github.com/podhmo/goat/internal/utils/stringutils"
 )
 
 // GenerateMain creates the Go code string for the new main() function
@@ -14,69 +15,71 @@ import (
 // If generateFullFile is true, it returns a complete Go file content including package and imports.
 // Otherwise, it returns only the main function body.
 func GenerateMain(cmdMeta *metadata.CommandMetadata, helpText string, generateFullFile bool) (string, error) {
-	// Helper function for the template to join option names for the function call
 	templateFuncs := template.FuncMap{
-		"Title": strings.Title,
-		"JoinFlagVars": func(options []*metadata.OptionMetadata) string {
-			var names []string
-			for _, opt := range options {
-				names = append(names, strings.Title(opt.Name)+"Flag") // Name is the Go field name, correct for var name
-			}
-			return strings.Join(names, ", ")
-		},
+		"KebabCase": stringutils.ToKebabCase,
 	}
 
 	tmpl := template.Must(template.New("main").Funcs(templateFuncs).Parse(`
 func main() {
 	{{if .HasOptions}}
-	{{range .Options}}
-	var {{Title .Name}}Flag {{.TypeName}}
-	{{end}}
+	var options = &{{.RunFunc.OptionsArgTypeNameStripped}}{}
 
 	{{range .Options}}
 	{{if eq .TypeName "string"}}
-	flag.StringVar(&{{Title .Name}}Flag, "{{.Name}}", {{if .DefaultValue}}{{printf "%q" .DefaultValue}}{{else}}""{{end}}, "{{.HelpText}}")
+	flag.StringVar(&options.{{.Name}}, "{{ KebabCase .Name }}", {{if .DefaultValue}}{{printf "%q" .DefaultValue}}{{else}}""{{end}}, "{{.HelpText}}"{{if .DefaultValue}} /* Default: {{.DefaultValue}} */{{end}})
 	{{else if eq .TypeName "int"}}
-	flag.IntVar(&{{Title .Name}}Flag, "{{.Name}}", {{if .DefaultValue}}{{.DefaultValue}}{{else}}0{{end}}, "{{.HelpText}}")
+	flag.IntVar(&options.{{.Name}}, "{{ KebabCase .Name }}", {{if .DefaultValue}}{{.DefaultValue}}{{else}}0{{end}}, "{{.HelpText}}"{{if .DefaultValue}} /* Default: {{.DefaultValue}} */{{end}})
 	{{else if eq .TypeName "bool"}}
-	flag.BoolVar(&{{Title .Name}}Flag, "{{.Name}}", {{if .DefaultValue}}{{.DefaultValue}}{{else}}false{{end}}, "{{.HelpText}}")
+	flag.BoolVar(&options.{{.Name}}, "{{ KebabCase .Name }}", {{if .DefaultValue}}{{.DefaultValue}}{{else}}false{{end}}, "{{.HelpText}}"{{if .DefaultValue}} /* Default: {{.DefaultValue}} */{{end}})
+	{{end}}
 	{{end}}
 	{{end}}
 
 	{{if .HelpText}}
 	flag.Usage = func() {
 		fmt.Fprintln(os.Stderr, {{printf "%q" .HelpText}})
+		flag.PrintDefaults()
 	}
 	{{end}}
 	flag.Parse()
 
+	{{if .HasOptions}}
 	{{range .Options}}
 	{{if .EnvVar}}
 	if val, ok := os.LookupEnv("{{.EnvVar}}"); ok {
 		// If flag was set, it takes precedence. Only use env if flag is still its zero value.
 		// This check is tricky for bools where false is a valid value AND the default.
 		// And for numbers where 0 is a valid value AND the default.
-		// A more robust way might involve checking if the flag was explicitly set.
+		// A more robust way might involve checking if the flag was explicitly set using flag.Visit().
 		// For now, if default is zero-value, env var will override if set.
 		// If default is non-zero, flag value (even if it's the default) takes precedence.
 		{{if eq .TypeName "string"}}
-		if {{Title .Name}}Flag == {{if .DefaultValue}}{{printf "%q" .DefaultValue}}{{else}}""{{end}} { // only override if flag is still at default
-			{{Title .Name}}Flag = val
+		if options.{{.Name}} == {{if .DefaultValue}}{{printf "%q" .DefaultValue}}{{else}}""{{end}} { // only override if flag is still at default
+			options.{{.Name}} = val
 		}
 		{{else if eq .TypeName "int"}}
-		if {{Title .Name}}Flag == {{if .DefaultValue}}{{.DefaultValue}}{{else}}0{{end}} {
+		if options.{{.Name}} == {{if .DefaultValue}}{{.DefaultValue}}{{else}}0{{end}} {
 			if v, err := strconv.Atoi(val); err == nil {
-				{{Title .Name}}Flag = v
+				options.{{.Name}} = v
 			} else {
-				slog.Warn("Could not parse environment variable as int", "envVar", "{{.EnvVar}}", "error", err)
+				slog.Warn("Could not parse environment variable as int", "envVar", "{{.EnvVar}}", "value", val, "error", err)
 			}
 		}
 		{{else if eq .TypeName "bool"}}
-		if {{Title .Name}}Flag == {{if .DefaultValue}}{{.DefaultValue}}{{else}}false{{end}} {
-			if v, err := strconv.ParseBool(val); err == nil {
-				{{Title .Name}}Flag = v
-			} else {
-				slog.Warn("Could not parse environment variable as bool", "envVar", "{{.EnvVar}}", "error", err)
+		// For bools, if the default is false, and the env var is "true", we set it.
+		// If the default is true, we only change if env var is explicitly "false".
+		// This avoids overriding a true default with a missing or invalid env var.
+		if defaultValForBool_{{.Name}} := {{if .DefaultValue}}{{.DefaultValue}}{{else}}false{{end}}; !defaultValForBool_{{.Name}} {
+			if v, err := strconv.ParseBool(val); err == nil && v { // Only set to true if default is false
+				options.{{.Name}} = true
+			} else if err != nil {
+				slog.Warn("Could not parse environment variable as bool", "envVar", "{{.EnvVar}}", "value", val, "error", err)
+			}
+		} else { // Default is true
+			if v, err := strconv.ParseBool(val); err == nil && !v { // Only set to false if default is true and env is "false"
+				options.{{.Name}} = false
+			} else if err != nil && val != "" { // Don't warn if env var is just not set for a true default
+				slog.Warn("Could not parse environment variable as bool", "envVar", "{{.EnvVar}}", "value", val, "error", err)
 			}
 		}
 		{{end}}
@@ -85,63 +88,72 @@ func main() {
 
 	{{if .IsRequired}}
 	{{if eq .TypeName "string"}}
-	if {{Title .Name}}Flag == "" {
-		slog.Error("Missing required flag", "flag", "{{.Name}}"{{if .EnvVar}}, "envVar", "{{.EnvVar}}"{{end}})
+	if options.{{.Name}} == "" {
+		slog.Error("Missing required flag", "flag", "{{ KebabCase .Name }}"{{if .EnvVar}}, "envVar", "{{.EnvVar}}"{{end}})
 		os.Exit(1)
 	}
 	{{else if eq .TypeName "int"}}
-	// This check for required int is tricky if 0 is a valid value AND the default.
-	// If the default is non-zero, then if the flag is still that default, it's effectively "unset" by user.
-	// If default is zero, we check if it was explicitly set or came from env.
-	if {{Title .Name}}Flag == {{if .DefaultValue}}{{.DefaultValue}}{{else}}0{{end}} {
-		isSet_{{Title .Name}} := false
-		flag.Visit(func(f *flag.Flag) {
-			if f.Name == "{{.Name}}" {
-				isSet_{{Title .Name}} = true
-			}
-		})
-		envIsSource_{{Title .Name}} := false
-		{{if .EnvVar}}
-		if val, ok := os.LookupEnv("{{.EnvVar}}"); ok {
-			if parsedVal, err := strconv.Atoi(val); err == nil && parsedVal == {{Title .Name}}Flag {
-				envIsSource_{{Title .Name}} = true
-			}
+	// Check if the int flag was explicitly set or came from an env var,
+	// especially if its value is the same as the default.
+	// This is important if the default is 0, which is also the zero value for int.
+	isSetOrFromEnv_{{.Name}} := false
+	flag.Visit(func(f *flag.Flag) {
+		if f.Name == "{{ KebabCase .Name }}" {
+			isSetOrFromEnv_{{.Name}} = true
 		}
-		{{end}}
-		if !isSet_{{Title .Name}} && !envIsSource_{{Title .Name}} {
-			slog.Error("Missing required flag", "flag", "{{.Name}}"{{if .EnvVar}}, "envVar", "{{.EnvVar}}"{{end}})
-			os.Exit(1)
+	})
+	{{if .EnvVar}}
+	if !isSetOrFromEnv_{{.Name}} {
+		if val, ok := os.LookupEnv("{{.EnvVar}}"); ok {
+			// Check if env var could have been the source
+			if parsedVal, err := strconv.Atoi(val); err == nil && parsedVal == options.{{.Name}} {
+				isSetOrFromEnv_{{.Name}} = true
+			}
 		}
 	}
-	{{else if eq .TypeName "bool"}}
-	// For bools, "required" usually implies it must be explicitly set, or must be true.
-	// If it must be set (and default is false), this is hard to check without knowing if it was user-set.
-	// The current logic for env var precedence tries to handle this: if it's still default false, env can make it true.
-	// If truly "required to be explicitly set", the logic would need flag.Visit.
+	{{end}}
+	if !isSetOrFromEnv_{{.Name}} && options.{{.Name}} == {{if .DefaultValue}}{{.DefaultValue}}{{else}}0{{end}} {
+		// If it wasn't set via flag or a matching env var, and it's still the default value,
+		// then it's considered missing.
+		slog.Error("Missing required flag", "flag", "{{ KebabCase .Name }}"{{if .EnvVar}}, "envVar", "{{.EnvVar}}"{{end}})
+		os.Exit(1)
+	}
+	{{end}}
+	// Required bool flags are implicitly handled by their nature if they must be true.
+	// If a bool flag is required and must be true, and its default is false, then if it's still false, error out.
+	// If its default is true, it's always "set". This doesn't quite fit the "required" model for bools unless "required" means "must be true".
+	// For now, we assume "required" for a bool means it must be explicitly set to true if its default is false.
+	{{if and .IsRequired (eq .TypeName "bool") (not .DefaultValue) }}
+	if !options.{{.Name}} {
+		slog.Error("Missing required flag (must be true)", "flag", "{{ KebabCase .Name }}"{{if .EnvVar}}, "envVar", "{{.EnvVar}}"{{end}})
+		os.Exit(1)
+	}
 	{{end}}
 	{{end}}
 
 	{{if .EnumValues}}
-	isValidChoice_{{Title .Name}}Flag := false
-	allowedChoices_{{Title .Name}}Flag := []string{ {{range $i, $e := .EnumValues}}{{if $i}}, {{end}}{{printf "%q" $e}}{{end}} }
-	for _, choice := range allowedChoices_{{Title .Name}}Flag {
-		if {{Title .Name}}Flag == choice {
-			isValidChoice_{{Title .Name}}Flag = true
+	isValidChoice_{{.Name}} := false
+	allowedChoices_{{.Name}} := []string{ {{range $i, $e := .EnumValues}}{{if $i}}, {{end}}{{printf "%q" $e}}{{end}} }
+	currentValue_{{.Name}}Str := fmt.Sprintf("%v", options.{{.Name}})
+	for _, choice := range allowedChoices_{{.Name}} {
+		if currentValue_{{.Name}}Str == choice {
+			isValidChoice_{{.Name}} = true
 			break
 		}
 	}
-	if !isValidChoice_{{Title .Name}}Flag {
-		slog.Error("Invalid value for flag", "flag", "{{.Name}}", "value", {{Title .Name}}Flag, "allowedChoices", strings.Join(allowedChoices_{{Title .Name}}Flag, ", "))
+	if !isValidChoice_{{.Name}} {
+		slog.Error("Invalid value for flag", "flag", "{{ KebabCase .Name }}", "value", options.{{.Name}}, "allowedChoices", strings.Join(allowedChoices_{{.Name}}, ", "))
 		os.Exit(1)
 	}
 	{{end}}
 	{{end}}
 	{{end}}
 
+	var err error
 	{{if .HasOptions}}
-	err := {{.RunFuncPackage}}.{{.RunFuncName}}({{ JoinFlagVars .Options }})
+	err = {{.RunFunc.PackageName}}.{{.RunFunc.Name}}( {{if .RunFunc.OptionsArgIsPointer}} options {{else}} *options {{end}} )
 	{{else}}
-	err := {{.RunFuncPackage}}.{{.RunFuncName}}()
+	err = {{.RunFunc.PackageName}}.{{.RunFunc.Name}}()
 	{{end}}
 	if err != nil {
 		slog.Error("Runtime error", "error", err)
@@ -156,19 +168,20 @@ func main() {
 	// User-specific imports from the original run command's package must be handled
 	// by the user ensuring the run command's package itself is importable and correct.
 
+	if len(cmdMeta.Options) > 0 && cmdMeta.RunFunc.OptionsArgTypeNameStripped == "" {
+		return "", fmt.Errorf("OptionsArgTypeNameStripped is empty for command %s, but options are present. This indicates an issue with parsing the run function's options struct type", cmdMeta.Name)
+	}
+
 	data := struct {
-		RunFuncName    string
-		RunFuncPackage string
-		Options        []*metadata.OptionMetadata
-		HasOptions     bool
-		// Imports field is removed as it was unused and imports are now static
-		HelpText string
+		RunFunc    *metadata.RunFuncInfo
+		Options    []*metadata.OptionMetadata
+		HasOptions bool
+		HelpText   string
 	}{
-		RunFuncName:    cmdMeta.RunFunc.Name,
-		RunFuncPackage: cmdMeta.RunFunc.PackageName,
-		Options:        cmdMeta.Options,
-		HasOptions:     len(cmdMeta.Options) > 0,
-		HelpText:       helpText,
+		RunFunc:    cmdMeta.RunFunc,
+		Options:    cmdMeta.Options,
+		HasOptions: len(cmdMeta.Options) > 0,
+		HelpText:   helpText,
 	}
 
 	var generatedCode bytes.Buffer

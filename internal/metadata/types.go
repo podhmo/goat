@@ -18,6 +18,8 @@ type RunFuncInfo struct {
 	PackageName    string // Package where the run function is defined
 	OptionsArgName string // Name of the options struct parameter (e.g., "opts")
 	OptionsArgType string // Type name of the options struct (e.g., "Options", "main.Options")
+	OptionsArgTypeNameStripped string // Base type name of the options struct (e.g., "Options" from "*Options")
+	OptionsArgIsPointer bool   // True if OptionsArgType is a pointer
 	ContextArgName string // Name of the context.Context parameter (if present)
 	ContextArgType string // Type name of the context.Context parameter (if present)
 }

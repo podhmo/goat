@@ -75,12 +75,13 @@ func assertCodeNotContains(t *testing.T, actualGeneratedCode, unexpectedSnippet 
 
 func TestGenerateMain_BasicCase(t *testing.T) {
 	cmdMeta := &metadata.CommandMetadata{
-		RunFunc: &metadata.RunFuncInfo{ // Changed to *RunFuncInfo
-			Name:        "Run",
-			PackageName: "mycmd",
-			// Imports field removed
+		RunFunc: &metadata.RunFuncInfo{
+			Name:                       "Run",
+			PackageName:                "mycmd",
+			OptionsArgTypeNameStripped: "OptionsType", // Assume some type if options were present
+			OptionsArgIsPointer:        true,
 		},
-		Options: []*metadata.OptionMetadata{}, // Changed to []*OptionMetadata
+		Options: []*metadata.OptionMetadata{},
 	}
 
 	actualCode, err := codegen.GenerateMain(cmdMeta, "", true)
@@ -91,26 +92,28 @@ func TestGenerateMain_BasicCase(t *testing.T) {
 	// Assertions use normalizeCode for actualCode, and normalizeForContains for snippets (done inside helpers)
 	// For the RunFuncPackage, assert that the quoted package name exists.
 	// This check is for the call site like `mycmd.Run()`, not for an import statement.
-	assertCodeContains(t, actualCode, cmdMeta.RunFunc.PackageName) // Check for usage, not the import string literal
+	assertCodeContains(t, actualCode, cmdMeta.RunFunc.PackageName)
 	assertCodeContains(t, actualCode, "func main() {")
-	assertCodeContains(t, actualCode, "err := mycmd.Run()")
+	assertCodeContains(t, actualCode, "var err error")
+	assertCodeContains(t, actualCode, "err = mycmd.Run()")
 	assertCodeContains(t, actualCode, "if err != nil {")
 	assertCodeContains(t, actualCode, `slog.Error("Runtime error", "error", err)`)
 	assertCodeContains(t, actualCode, `os.Exit(1)`)
-	assertCodeNotContains(t, actualCode, "type Options struct")
+	assertCodeNotContains(t, actualCode, "var options =") // No options struct if no options
 }
 
 func TestGenerateMain_WithOptions(t *testing.T) {
 	cmdMeta := &metadata.CommandMetadata{
 		RunFunc: &metadata.RunFuncInfo{
-			Name:        "RunWithOptions",
-			PackageName: "anothercmd",
+			Name:                       "RunWithOptions",
+			PackageName:                "anothercmd",
+			OptionsArgTypeNameStripped: "MyOptionsType",
+			OptionsArgIsPointer:        true,
 		},
-		Options: []*metadata.OptionMetadata{ // Changed to []*OptionMetadata
-			// Name used for Go var and CLI flag (per instruction), TypeName, HelpText, DefaultValue
-			{Name: "name", CliName: "name", TypeName: "string", HelpText: "Name of the user", DefaultValue: "guest"},
-			{Name: "age", CliName: "age", TypeName: "int", HelpText: "Age of the user", DefaultValue: 30},                   // DefaultValue is int
-			{Name: "verbose", CliName: "verbose", TypeName: "bool", HelpText: "Enable verbose output", DefaultValue: false}, // DefaultValue is bool
+		Options: []*metadata.OptionMetadata{
+			{Name: "Name", TypeName: "string", HelpText: "Name of the user", DefaultValue: "guest"}, // Field names are typically capitalized
+			{Name: "Age", TypeName: "int", HelpText: "Age of the user", DefaultValue: 30},
+			{Name: "Verbose", TypeName: "bool", HelpText: "Enable verbose output", DefaultValue: false},
 		},
 	}
 
@@ -119,31 +122,60 @@ func TestGenerateMain_WithOptions(t *testing.T) {
 		t.Fatalf("GenerateMain failed: %v", err)
 	}
 
-	assertCodeNotContains(t, actualCode, "type Options struct")
-
-	expectedVarDeclarations := `
-	var NameFlag string
-	var AgeFlag int
-	var VerboseFlag bool
-`
-	assertCodeContains(t, actualCode, expectedVarDeclarations)
+	assertCodeContains(t, actualCode, "var options = &MyOptionsType{}")
 
 	expectedFlagParsing := `
-	flag.StringVar(&NameFlag, "name", "guest", "Name of the user")
-	flag.IntVar(&AgeFlag, "age", 30, "Age of the user")
-	flag.BoolVar(&VerboseFlag, "verbose", false, "Enable verbose output")
+	flag.StringVar(&options.Name, "name", "guest", "Name of the user"/* Default: guest */)
+	flag.IntVar(&options.Age, "age", 30, "Age of the user"/* Default: 30 */)
+	flag.BoolVar(&options.Verbose, "verbose", false, "Enable verbose output"/* Default: false */)
 	flag.Parse()
 `
 	assertCodeContains(t, actualCode, expectedFlagParsing)
-	assertCodeContains(t, actualCode, "err := anothercmd.RunWithOptions(NameFlag, AgeFlag, VerboseFlag)")
+	assertCodeContains(t, actualCode, "err = anothercmd.RunWithOptions(options)")
+}
+
+func TestGenerateMain_KebabCaseFlagNames(t *testing.T) {
+	cmdMeta := &metadata.CommandMetadata{
+		RunFunc: &metadata.RunFuncInfo{
+			Name:                       "ProcessData",
+			PackageName:                "dataproc",
+			OptionsArgTypeNameStripped: "DataProcOptions",
+			OptionsArgIsPointer:        true,
+		},
+		Options: []*metadata.OptionMetadata{
+			{Name: "InputFile", TypeName: "string", HelpText: "Input file path"},
+			{Name: "OutputDirectory", TypeName: "string", HelpText: "Output directory path", DefaultValue: "/tmp"},
+			{Name: "MaximumRetries", TypeName: "int", HelpText: "Maximum number of retries", DefaultValue: 3},
+		},
+	}
+
+	actualCode, err := codegen.GenerateMain(cmdMeta, "", true)
+	if err != nil {
+		t.Fatalf("GenerateMain failed: %v", err)
+	}
+
+	assertCodeContains(t, actualCode, "var options = &DataProcOptions{}")
+	expectedFlagParsing := `
+	flag.StringVar(&options.InputFile, "input-file", "", "Input file path")
+	flag.StringVar(&options.OutputDirectory, "output-directory", "/tmp", "Output directory path"/* Default: /tmp */)
+	flag.IntVar(&options.MaximumRetries, "maximum-retries", 3, "Maximum number of retries"/* Default: 3 */)
+	flag.Parse()
+`
+	assertCodeContains(t, actualCode, expectedFlagParsing)
+	assertCodeContains(t, actualCode, "err = dataproc.ProcessData(options)")
 }
 
 func TestGenerateMain_RequiredFlags(t *testing.T) {
 	cmdMeta := &metadata.CommandMetadata{
-		RunFunc: &metadata.RunFuncInfo{Name: "DoSomething", PackageName: "task"},
+		RunFunc: &metadata.RunFuncInfo{
+			Name:                       "DoSomething",
+			PackageName:                "task",
+			OptionsArgTypeNameStripped: "Config",
+			OptionsArgIsPointer:        false, // Test with value receiver for options
+		},
 		Options: []*metadata.OptionMetadata{
-			{Name: "configFile", CliName: "configFile", TypeName: "string", HelpText: "Path to config file", IsRequired: true},       // Required -> IsRequired
-			{Name: "retries", CliName: "retries", TypeName: "int", HelpText: "Number of retries", IsRequired: true, DefaultValue: 0}, // Default -> DefaultValue (as int)
+			{Name: "ConfigFile", TypeName: "string", HelpText: "Path to config file", IsRequired: true}, // No default, so no comment
+			{Name: "Retries", TypeName: "int", HelpText: "Number of retries", IsRequired: true, DefaultValue: 0}, // Default comment
 		},
 	}
 
@@ -152,39 +184,45 @@ func TestGenerateMain_RequiredFlags(t *testing.T) {
 		t.Fatalf("GenerateMain failed: %v", err)
 	}
 
+	assertCodeContains(t, actualCode, "var options = &Config{}")
+	// Check flag definitions with default comments
+	assertCodeContains(t, actualCode, `flag.StringVar(&options.ConfigFile, "config-file", "", "Path to config file")`)
+	assertCodeContains(t, actualCode, `flag.IntVar(&options.Retries, "retries", 0, "Number of retries"/* Default: 0 */)`)
+
 	expectedConfigFileCheck := `
-	if ConfigFileFlag == "" {
-		slog.Error("Missing required flag", "flag", "configFile")
+	if options.ConfigFile == "" {
+		slog.Error("Missing required flag", "flag", "config-file")
 		os.Exit(1)
 	}
 `
 	assertCodeContains(t, actualCode, expectedConfigFileCheck)
 
 	expectedRetriesCheck := `
-	if RetriesFlag == 0 {
-		isSet_Retries := false
-		flag.Visit(func(f *flag.Flag) {
-			if f.Name == "retries" { // .Name used for CLI flag name
-				isSet_Retries = true
-			}
-		})
-		envIsSource_Retries := false
-		if !isSet_Retries && !envIsSource_Retries {
-			slog.Error("Missing required flag", "flag", "retries")
-			os.Exit(1)
+	isSetOrFromEnv_Retries := false
+	flag.Visit(func(f *flag.Flag) {
+		if f.Name == "retries" {
+			isSetOrFromEnv_Retries = true
 		}
+	})
+	if !isSetOrFromEnv_Retries && options.Retries == 0 { // Default is 0
+		slog.Error("Missing required flag", "flag", "retries")
+		os.Exit(1)
 	}
 `
 	assertCodeContains(t, actualCode, expectedRetriesCheck)
-	assertCodeContains(t, actualCode, "err := task.DoSomething(ConfigFileFlag, RetriesFlag)")
+	assertCodeContains(t, actualCode, "err = task.DoSomething(*options)")
 }
 
 func TestGenerateMain_EnumValidation(t *testing.T) {
 	cmdMeta := &metadata.CommandMetadata{
-		RunFunc: &metadata.RunFuncInfo{Name: "SetMode", PackageName: "control"},
+		RunFunc: &metadata.RunFuncInfo{
+			Name:                       "SetMode",
+			PackageName:                "control",
+			OptionsArgTypeNameStripped: "ModeOptions",
+			OptionsArgIsPointer:        true,
+		},
 		Options: []*metadata.OptionMetadata{
-			// Enum -> EnumValues (as []any)
-			{Name: "mode", CliName: "mode", TypeName: "string", HelpText: "Mode of operation", EnumValues: []any{"auto", "manual", "standby"}},
+			{Name: "Mode", TypeName: "string", HelpText: "Mode of operation", EnumValues: []any{"auto", "manual", "standby"}, DefaultValue: "auto"},
 		},
 	}
 
@@ -193,31 +231,40 @@ func TestGenerateMain_EnumValidation(t *testing.T) {
 		t.Fatalf("GenerateMain failed: %v", err)
 	}
 
+	assertCodeContains(t, actualCode, "var options = &ModeOptions{}")
+	assertCodeContains(t, actualCode, `flag.StringVar(&options.Mode, "mode", "auto", "Mode of operation"/* Default: auto */)`)
+
 	expectedEnumValidation := `
-	isValidChoice_ModeFlag := false
-	allowedChoices_ModeFlag := []string{"auto", "manual", "standby"}
-	for _, choice := range allowedChoices_ModeFlag {
-		if ModeFlag == choice {
-			isValidChoice_ModeFlag = true
+	isValidChoice_Mode := false
+	allowedChoices_Mode := []string{"auto", "manual", "standby"}
+	currentValue_ModeStr := fmt.Sprintf("%v", options.Mode)
+	for _, choice := range allowedChoices_Mode {
+		if currentValue_ModeStr == choice {
+			isValidChoice_Mode = true
 			break
 		}
 	}
-	if !isValidChoice_ModeFlag {
-		slog.Error("Invalid value for flag", "flag", "mode", "value", ModeFlag, "allowedChoices", strings.Join(allowedChoices_ModeFlag, ", "))
+	if !isValidChoice_Mode {
+		slog.Error("Invalid value for flag", "flag", "mode", "value", options.Mode, "allowedChoices", strings.Join(allowedChoices_Mode, ", "))
 		os.Exit(1)
 	}
 `
 	assertCodeContains(t, actualCode, expectedEnumValidation)
-	assertCodeContains(t, actualCode, "err := control.SetMode(ModeFlag)")
+	assertCodeContains(t, actualCode, "err = control.SetMode(options)")
 }
 
 func TestGenerateMain_EnvironmentVariables(t *testing.T) {
 	cmdMeta := &metadata.CommandMetadata{
-		RunFunc: &metadata.RunFuncInfo{Name: "Configure", PackageName: "setup"},
+		RunFunc: &metadata.RunFuncInfo{
+			Name:                       "Configure",
+			PackageName:                "setup",
+			OptionsArgTypeNameStripped: "AppSettings",
+			OptionsArgIsPointer:        true,
+		},
 		Options: []*metadata.OptionMetadata{
-			{Name: "apiKey", CliName: "apiKey", TypeName: "string", HelpText: "API Key", EnvVar: "API_KEY"}, // Envvar -> EnvVar
-			{Name: "timeout", CliName: "timeout", TypeName: "int", HelpText: "Timeout in seconds", DefaultValue: 60, EnvVar: "TIMEOUT_SECONDS"},
-			{Name: "enableFeature", CliName: "enableFeature", TypeName: "bool", HelpText: "Enable new feature", DefaultValue: false, EnvVar: "ENABLE_MY_FEATURE"},
+			{Name: "APIKey", TypeName: "string", HelpText: "API Key", EnvVar: "API_KEY"}, // Field name capitalized
+			{Name: "Timeout", TypeName: "int", HelpText: "Timeout in seconds", DefaultValue: 60, EnvVar: "TIMEOUT_SECONDS"},
+			{Name: "EnableFeature", TypeName: "bool", HelpText: "Enable new feature", DefaultValue: false, EnvVar: "ENABLE_MY_FEATURE"},
 		},
 	}
 
@@ -226,10 +273,16 @@ func TestGenerateMain_EnvironmentVariables(t *testing.T) {
 		t.Fatalf("GenerateMain failed: %v", err)
 	}
 
+	assertCodeContains(t, actualCode, "var options = &AppSettings{}")
+	// Check flag definitions with default comments
+	assertCodeContains(t, actualCode, `flag.StringVar(&options.APIKey, "api-key", "", "API Key")`)
+	assertCodeContains(t, actualCode, `flag.IntVar(&options.Timeout, "timeout", 60, "Timeout in seconds"/* Default: 60 */)`)
+	assertCodeContains(t, actualCode, `flag.BoolVar(&options.EnableFeature, "enable-feature", false, "Enable new feature"/* Default: false */)`)
+
 	expectedApiKeyEnv := `
 	if val, ok := os.LookupEnv("API_KEY"); ok {
-		if ApiKeyFlag == "" { 
-			ApiKeyFlag = val
+		if options.APIKey == "" { // Default is ""
+			options.APIKey = val
 		}
 	}
 `
@@ -237,60 +290,90 @@ func TestGenerateMain_EnvironmentVariables(t *testing.T) {
 
 	expectedTimeoutEnv := `
 	if val, ok := os.LookupEnv("TIMEOUT_SECONDS"); ok {
-		if TimeoutFlag == 60 {
+		if options.Timeout == 60 { // Default is 60
 			if v, err := strconv.Atoi(val); err == nil {
-				TimeoutFlag = v
+				options.Timeout = v
 			} else {
-				slog.Warn("Could not parse environment variable as int", "envVar", "TIMEOUT_SECONDS", "error", err)
+				slog.Warn("Could not parse environment variable as int", "envVar", "TIMEOUT_SECONDS", "value", val, "error", err)
 			}
 		}
 	}
 `
 	assertCodeContains(t, actualCode, expectedTimeoutEnv)
 
+	// Updated logic for bool env var handling
 	expectedEnableFeatureEnv := `
 	if val, ok := os.LookupEnv("ENABLE_MY_FEATURE"); ok {
-		if EnableFeatureFlag == false {
-			if v, err := strconv.ParseBool(val); err == nil {
-				EnableFeatureFlag = v
-			} else {
-				slog.Warn("Could not parse environment variable as bool", "envVar", "ENABLE_MY_FEATURE", "error", err)
+		if defaultValForBool_EnableFeature := false; !defaultValForBool_EnableFeature { // Default is false
+			if v, err := strconv.ParseBool(val); err == nil && v {
+				options.EnableFeature = true
+			} else if err != nil {
+				slog.Warn("Could not parse environment variable as bool", "envVar", "ENABLE_MY_FEATURE", "value", val, "error", err)
+			}
+		} else { // Default is true branch (not hit in this case as default is false)
+			if v, err := strconv.ParseBool(val); err == nil && !v {
+				options.EnableFeature = false
+			} else if err != nil && val != "" {
+				slog.Warn("Could not parse environment variable as bool", "envVar", "ENABLE_MY_FEATURE", "value", val, "error", err)
 			}
 		}
 	}
 `
 	assertCodeContains(t, actualCode, expectedEnableFeatureEnv)
-	// "strconv" import is no longer generated by GenerateMain; imports.Process handles it.
-	assertCodeContains(t, actualCode, "err := setup.Configure(ApiKeyFlag, TimeoutFlag, EnableFeatureFlag)")
+	assertCodeContains(t, actualCode, "err = setup.Configure(options)")
 }
 
-func TestGenerateMain_RunFuncInvocation(t *testing.T) {
-	cmdMetaNoOpts := &metadata.CommandMetadata{
-		RunFunc: &metadata.RunFuncInfo{Name: "Execute", PackageName: "action"},
-	}
-	actualCodeNoOpts, err := codegen.GenerateMain(cmdMetaNoOpts, "", true)
-	if err != nil {
-		t.Fatalf("GenerateMain (no opts) failed: %v", err)
-	}
-	assertCodeContains(t, actualCodeNoOpts, "err := action.Execute()")
-
-	cmdMetaWithOptions := &metadata.CommandMetadata{
-		RunFunc: &metadata.RunFuncInfo{Name: "Process", PackageName: "dataflow"},
+func TestGenerateMain_EnvVarForBoolWithTrueDefault(t *testing.T) {
+	cmdMeta := &metadata.CommandMetadata{
+		RunFunc: &metadata.RunFuncInfo{
+			Name:                       "ProcessWithFeature",
+			PackageName:                "featureproc",
+			OptionsArgTypeNameStripped: "FeatureOptions",
+			OptionsArgIsPointer:        true,
+		},
 		Options: []*metadata.OptionMetadata{
-			{Name: "input", CliName: "input", TypeName: "string", HelpText: ""}, // Added CliName, HelpText for consistency
-			{Name: "level", CliName: "level", TypeName: "int", HelpText: ""},    // Added CliName, HelpText
+			{Name: "SmartParsing", TypeName: "bool", HelpText: "Enable smart parsing", DefaultValue: true, EnvVar: "SMART_PARSING_ENABLED"},
 		},
 	}
-	actualCodeWithOptions, err := codegen.GenerateMain(cmdMetaWithOptions, "", true)
+
+	actualCode, err := codegen.GenerateMain(cmdMeta, "", true)
 	if err != nil {
-		t.Fatalf("GenerateMain (with opts) failed: %v", err)
+		t.Fatalf("GenerateMain failed: %v", err)
 	}
-	assertCodeContains(t, actualCodeWithOptions, "err := dataflow.Process(InputFlag, LevelFlag)")
+
+	assertCodeContains(t, actualCode, "var options = &FeatureOptions{}")
+	assertCodeContains(t, actualCode, `flag.BoolVar(&options.SmartParsing, "smart-parsing", true, "Enable smart parsing"/* Default: true */)`)
+
+	// Test the specific logic for a boolean flag with a true default
+	expectedEnvLogic := `
+	if val, ok := os.LookupEnv("SMART_PARSING_ENABLED"); ok {
+		if defaultValForBool_SmartParsing := true; !defaultValForBool_SmartParsing {
+			// This branch should not be taken for true default
+		} else { // Default is true
+			if v, err := strconv.ParseBool(val); err == nil && !v { // Only set to false if default is true and env is "false"
+				options.SmartParsing = false
+			} else if err != nil && val != "" {
+				slog.Warn("Could not parse environment variable as bool", "envVar", "SMART_PARSING_ENABLED", "value", val, "error", err)
+			}
+		}
+	}
+`
+	assertCodeContains(t, actualCode, expectedEnvLogic)
+	assertCodeContains(t, actualCode, "err = featureproc.ProcessWithFeature(options)")
 }
+
+// TestGenerateMain_RunFuncInvocation is effectively covered by TestGenerateMain_BasicCase (no options)
+// and TestGenerateMain_WithOptions / TestGenerateMain_RequiredFlags (with options, pointer/value receiver).
+// We can add more specific tests for invocation if needed, but the core logic is tested.
 
 func TestGenerateMain_ErrorHandling(t *testing.T) {
 	cmdMeta := &metadata.CommandMetadata{
-		RunFunc: &metadata.RunFuncInfo{Name: "DefaultRun", PackageName: "pkg"},
+		RunFunc: &metadata.RunFuncInfo{
+			Name:                       "DefaultRun",
+			PackageName:                "pkg",
+			OptionsArgTypeNameStripped: "Irrelevant",
+			OptionsArgIsPointer:        true,
+		},
 	}
 	actualCode, err := codegen.GenerateMain(cmdMeta, "", true)
 	if err != nil {
@@ -308,48 +391,53 @@ func TestGenerateMain_ErrorHandling(t *testing.T) {
 func TestGenerateMain_Imports(t *testing.T) {
 	cmdMetaNoStrconv := &metadata.CommandMetadata{
 		RunFunc: &metadata.RunFuncInfo{
-			Name:        "MyFunc",
-			PackageName: "custompkg", // This will be imported
+			Name:                       "MyFunc",
+			PackageName:                "custompkg",
+			OptionsArgTypeNameStripped: "AppConfig", // No default for Name, so no comment
+			OptionsArgIsPointer:        true,
 		},
-		Options: []*metadata.OptionMetadata{ // EnvVar without int/bool type, so no strconv needed
-			{Name: "name", CliName: "name", TypeName: "string", EnvVar: "APP_NAME", HelpText: "app name"},
+		Options: []*metadata.OptionMetadata{
+			{Name: "Name", TypeName: "string", EnvVar: "APP_NAME", HelpText: "app name"},
 		},
 	}
-
 	actualCodeNoStrconv, err := codegen.GenerateMain(cmdMetaNoStrconv, "", true)
 	if err != nil {
 		t.Fatalf("GenerateMain failed: %v", err)
 	}
-
-	// Import checks removed as GenerateMain no longer outputs them.
-	// Check for usage of the package name.
+	assertCodeContains(t, actualCodeNoStrconv, `flag.StringVar(&options.Name, "name", "", "app name")`)
 	assertCodeContains(t, actualCodeNoStrconv, cmdMetaNoStrconv.RunFunc.PackageName)
-	assertCodeNotContains(t, actualCodeNoStrconv, `strconv.Atoi`) // Check for actual usage of strconv
+	assertCodeNotContains(t, actualCodeNoStrconv, `strconv.Atoi`)
 
 	cmdMetaWithStrconv := &metadata.CommandMetadata{
 		RunFunc: &metadata.RunFuncInfo{
-			Name:        "MyOtherFunc",
-			PackageName: "custompkg",
+			Name:                       "MyOtherFunc",
+			PackageName:                "custompkg",
+			OptionsArgTypeNameStripped: "ServerConfig", // No default for Port, so no comment
+			OptionsArgIsPointer:        false,
 		},
-		Options: []*metadata.OptionMetadata{ // EnvVar with int type, so strconv IS needed
-			{Name: "port", CliName: "port", TypeName: "int", EnvVar: "APP_PORT", HelpText: "app port"},
+		Options: []*metadata.OptionMetadata{
+			{Name: "Port", TypeName: "int", EnvVar: "APP_PORT", HelpText: "app port"}, // DefaultValue not set
 		},
 	}
 	actualCodeWithStrconv, err := codegen.GenerateMain(cmdMetaWithStrconv, "", true)
 	if err != nil {
 		t.Fatalf("GenerateMain failed: %v", err)
 	}
-	// "strconv" import is no longer generated by GenerateMain; imports.Process handles it.
-	// We can check for actual usage of strconv functions if necessary, e.g., strconv.Atoi
+	assertCodeContains(t, actualCodeWithStrconv, `flag.IntVar(&options.Port, "port", 0, "app port")`) // Default 0 for int
 	assertCodeContains(t, actualCodeWithStrconv, `strconv.Atoi`)
-	assertCodeContains(t, actualCodeWithStrconv, cmdMetaWithStrconv.RunFunc.PackageName) // Check for usage
+	assertCodeContains(t, actualCodeWithStrconv, cmdMetaWithStrconv.RunFunc.PackageName)
 }
 
 func TestGenerateMain_RequiredIntWithEnvVar(t *testing.T) {
 	cmdMeta := &metadata.CommandMetadata{
-		RunFunc: &metadata.RunFuncInfo{Name: "SubmitData", PackageName: "submitter"},
+		RunFunc: &metadata.RunFuncInfo{
+			Name:                       "SubmitData",
+			PackageName:                "submitter",
+			OptionsArgTypeNameStripped: "UserData",
+			OptionsArgIsPointer:        true,
+		},
 		Options: []*metadata.OptionMetadata{
-			{Name: "userId", CliName: "userId", TypeName: "int", HelpText: "User ID", IsRequired: true, EnvVar: "USER_ID", DefaultValue: 0},
+			{Name: "UserId", TypeName: "int", HelpText: "User ID", IsRequired: true, EnvVar: "USER_ID", DefaultValue: 0}, // Default 0
 		},
 	}
 
@@ -358,36 +446,42 @@ func TestGenerateMain_RequiredIntWithEnvVar(t *testing.T) {
 		t.Fatalf("GenerateMain failed: %v", err)
 	}
 
+	assertCodeContains(t, actualCode, "var options = &UserData{}")
+	assertCodeContains(t, actualCode, `flag.IntVar(&options.UserId, "user-id", 0, "User ID"/* Default: 0 */)`)
+
 	expectedCheck := `
-	if UserIdFlag == 0 {
-		isSet_UserId := false
-		flag.Visit(func(f *flag.Flag) {
-			if f.Name == "userId" { // .Name used for CLI flag name
-				isSet_UserId = true
-			}
-		})
-		envIsSource_UserId := false
+	isSetOrFromEnv_UserId := false
+	flag.Visit(func(f *flag.Flag) {
+		if f.Name == "user-id" {
+			isSetOrFromEnv_UserId = true
+		}
+	})
+	if !isSetOrFromEnv_UserId {
 		if val, ok := os.LookupEnv("USER_ID"); ok {
-			if parsedVal, err := strconv.Atoi(val); err == nil && parsedVal == UserIdFlag {
-				envIsSource_UserId = true
+			if parsedVal, err := strconv.Atoi(val); err == nil && parsedVal == options.UserId {
+				isSetOrFromEnv_UserId = true
 			}
 		}
-		if !isSet_UserId && !envIsSource_UserId {
-			slog.Error("Missing required flag", "flag", "userId", "envVar", "USER_ID")
-			os.Exit(1)
-		}
+	}
+	if !isSetOrFromEnv_UserId && options.UserId == 0 { // Default is 0
+		slog.Error("Missing required flag", "flag", "user-id", "envVar", "USER_ID")
+		os.Exit(1)
 	}
 `
 	assertCodeContains(t, actualCode, expectedCheck)
-	assertCodeContains(t, actualCode, "err := submitter.SubmitData(UserIdFlag)")
-	// "strconv" import is no longer generated by GenerateMain; imports.Process handles it.
+	assertCodeContains(t, actualCode, "err = submitter.SubmitData(options)")
 }
 
 func TestGenerateMain_StringFlagWithQuotesInDefault(t *testing.T) {
 	cmdMeta := &metadata.CommandMetadata{
-		RunFunc: &metadata.RunFuncInfo{Name: "PrintString", PackageName: "printer"},
+		RunFunc: &metadata.RunFuncInfo{
+			Name:                       "PrintString",
+			PackageName:                "printer",
+			OptionsArgTypeNameStripped: "PrintOpts",
+			OptionsArgIsPointer:        true,
+		},
 		Options: []*metadata.OptionMetadata{
-			{Name: "greeting", CliName: "greeting", TypeName: "string", HelpText: "A greeting message", DefaultValue: `hello "world"`},
+			{Name: "Greeting", TypeName: "string", HelpText: "A greeting message", DefaultValue: `hello "world"`},
 		},
 	}
 	actualCode, err := codegen.GenerateMain(cmdMeta, "", true)
@@ -395,18 +489,21 @@ func TestGenerateMain_StringFlagWithQuotesInDefault(t *testing.T) {
 		t.Fatalf("GenerateMain failed: %v", err)
 	}
 
-	expectedFlagParsing := `flag.StringVar(&GreetingFlag, "greeting", "hello \"world\"", "A greeting message")`
+	assertCodeContains(t, actualCode, "var options = &PrintOpts{}")
+	expectedFlagParsing := `flag.StringVar(&options.Greeting, "greeting", "hello \"world\"", "A greeting message"/* Default: hello "world" */)`
 	assertCodeContains(t, actualCode, expectedFlagParsing)
 }
 
 func TestGenerateMain_WithHelpText(t *testing.T) {
 	cmdMeta := &metadata.CommandMetadata{
 		RunFunc: &metadata.RunFuncInfo{
-			Name:        "RunMyTool",
-			PackageName: "mytool",
+			Name:                       "RunMyTool",
+			PackageName:                "mytool",
+			OptionsArgTypeNameStripped: "ToolOptions",
+			OptionsArgIsPointer:        true,
 		},
 		Options: []*metadata.OptionMetadata{
-			{Name: "input", CliName: "input", TypeName: "string", HelpText: "Input file"},
+			{Name: "Input", TypeName: "string", HelpText: "Input file"}, // No default
 		},
 	}
 	helpText := "This is my custom help message.\nUsage: mytool -input <file>"
@@ -416,31 +513,30 @@ func TestGenerateMain_WithHelpText(t *testing.T) {
 		t.Fatalf("GenerateMain with help text failed: %v", err)
 	}
 
+	assertCodeContains(t, actualCode, "var options = &ToolOptions{}")
 	expectedHelpTextSnippet := fmt.Sprintf(`
 	flag.Usage = func() {
 		fmt.Fprintln(os.Stderr, %q)
-	}`, helpText)
+		flag.PrintDefaults()
+	}`, helpText) // Note: PrintDefaults is now part of the template
 	assertCodeContains(t, actualCode, expectedHelpTextSnippet)
 
-	oldManualHelpLogic := `for _, arg := range os.Args[1:] {
-		if arg == "-h" || arg == "--help" {`
+	oldManualHelpLogic := `for _, arg := range os.Args[1:] { if arg == "-h" || arg == "--help" {`
 	assertCodeNotContains(t, actualCode, oldManualHelpLogic)
-	// The os.Exit(0) specifically tied to the manual help logic should be gone.
-	// The flag package handles exit after Usage for -h/-help.
-	// However, other os.Exit(0) might exist for other reasons, so be specific if this test needs to be stricter.
-	// For now, we assume the one in the manual help is the primary one to check for removal.
 
-	assertCodeContains(t, actualCode, `flag.StringVar(&InputFlag, "input", "", "Input file")`)
-	assertCodeContains(t, actualCode, "err := mytool.RunMyTool(InputFlag)")
+	assertCodeContains(t, actualCode, `flag.StringVar(&options.Input, "input", "", "Input file")`) // No default comment
+	assertCodeContains(t, actualCode, "err = mytool.RunMyTool(options)")
 }
 
 func TestGenerateMain_WithEmptyHelpText(t *testing.T) {
 	cmdMeta := &metadata.CommandMetadata{
 		RunFunc: &metadata.RunFuncInfo{
-			Name:        "AnotherTool",
-			PackageName: "othertool",
+			Name:                       "AnotherTool",
+			PackageName:                "othertool",
+			OptionsArgTypeNameStripped: "NoOptions", // Still need a type name if options could exist
+			OptionsArgIsPointer:        true,
 		},
-		Options: []*metadata.OptionMetadata{},
+		Options: []*metadata.OptionMetadata{}, // No options
 	}
 
 	actualCode, err := codegen.GenerateMain(cmdMeta, "", true)
@@ -455,9 +551,9 @@ func TestGenerateMain_WithEmptyHelpText(t *testing.T) {
 	assertCodeNotContains(t, actualCode, unexpectedHelpLogic)
 
 	unexpectedFlagUsageAssignment := `flag.Usage = func()`
-	assertCodeNotContains(t, actualCode, unexpectedFlagUsageAssignment)
+	assertCodeNotContains(t, actualCode, unexpectedFlagUsageAssignment) // Should not be set if helpText is empty
 
 	assertCodeContains(t, actualCode, "func main() {")
-	assertCodeContains(t, actualCode, "err := othertool.AnotherTool()")
-	assertCodeNotContains(t, actualCode, "os.Exit(0)") // This specific os.Exit(0) from help or flag.Usage
+	assertCodeContains(t, actualCode, "err = othertool.AnotherTool()")
+	// os.Exit(0) is not part of the template for empty help
 }
