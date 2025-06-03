@@ -54,30 +54,43 @@ func GetFullFunctionName(funExpr ast.Expr) (name string, pkgAlias string) {
 	return "", ""
 }
 
-// GetImportPath returns the full import path for a given package alias used in the file.
-func GetImportPath(fileAst *ast.File, pkgAlias string) string {
-	if pkgAlias == "" { // Local function or builtin
-		return ""
-	}
-	for _, importSpec := range fileAst.Imports {
-		var aliasName string
-		if importSpec.Name != nil { // Import has an explicit alias (e.g., `g "github.com/org/goat"`)
-			aliasName = importSpec.Name.Name
-		} else { // Import uses default package name (e.g. `import "fmt"`)
-			// The actual package name is the last part of the path.
-			// This is tricky if the package name differs from the last path element.
-			// For simplicity, we assume the alias matches the package name if not explicit.
-			// A more robust solution might involve loading package info.
-			path := strings.Trim(importSpec.Path.Value, `"`)
-			parts := strings.Split(path, "/")
-			aliasName = parts[len(parts)-1]
+// GetImportPath returns the import path for a given alias (import name) in the file.
+// Supports blank imports (_), dot imports (.), and normal/aliased imports.
+func GetImportPath(file *ast.File, alias string) string {
+	for _, imp := range file.Imports {
+		path := strings.Trim(imp.Path.Value, `"`)
+		if imp.Name != nil {
+			switch imp.Name.Name {
+			case "_":
+				// blank import: alias is the last part of the import path
+				if alias == lastPathPart(path) {
+					return path
+				}
+			case ".":
+				// dot import: alias is the last part of the import path
+				if alias == lastPathPart(path) {
+					return path
+				}
+			default:
+				// explicit alias
+				if alias == imp.Name.Name {
+					return path
+				}
+			}
+		} else {
+			// normal import: alias is the last part of the import path
+			if alias == lastPathPart(path) {
+				return path
+			}
 		}
+	}
+	return ""
+}
 
-		if aliasName == pkgAlias {
-			return strings.Trim(importSpec.Path.Value, `"`)
-		}
-	}
-	return "" // Alias not found in imports
+// lastPathPart returns the last element of a slash-separated path.
+func lastPathPart(path string) string {
+	parts := strings.Split(path, "/")
+	return parts[len(parts)-1]
 }
 
 // EvaluateArg tries to evaluate an AST expression (typically a function argument)
@@ -136,18 +149,15 @@ func EvaluateSliceArg(arg ast.Expr) []any {
 	compLit, ok := arg.(*ast.CompositeLit)
 	if !ok {
 		log.Printf("EvaluateSliceArg: argument is not a composite literal, got %T", arg)
-		return nil
+		return []any{}
 	}
-	// TODO: Check compLit.Type if necessary (e.g. `[]string{...}`)
-
-	var results []any
+	results := make([]any, 0, len(compLit.Elts))
 	for _, elt := range compLit.Elts {
-		val := EvaluateArg(elt) // Each element should be a basic literal
+		val := EvaluateArg(elt)
 		if val != nil {
 			results = append(results, val)
 		} else {
 			log.Printf("EvaluateSliceArg: could not evaluate element %T in slice", elt)
-			// Decide if we should return nil or partial results on error
 		}
 	}
 	return results
