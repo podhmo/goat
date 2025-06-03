@@ -3,6 +3,7 @@ package main
 import (
 	"flag"
 	"fmt"
+	"go/token"
 	"log"
 	"os"
 
@@ -54,8 +55,10 @@ func main() {
 func runGoat(cfg *config.Config) error {
 	log.Printf("Goat: Analyzing %s with runFunc=%s, optionsInitializer=%s", cfg.TargetFile, cfg.RunFuncName, cfg.OptionsInitializerName)
 
+	fset := token.NewFileSet()
+
 	// 1. Load and parse the target Go file
-	fileAST, err := loader.LoadFile(cfg.TargetFile)
+	fileAST, err := loader.LoadFile(fset, cfg.TargetFile)
 	if err != nil {
 		return fmt.Errorf("failed to load target file %s: %w", cfg.TargetFile, err)
 	}
@@ -91,10 +94,10 @@ func runGoat(cfg *config.Config) error {
 
 	// 6. TODO: Write the new content (Future Step)
 	// For now, just print the target path where it would be written or how it would be modified
-	// err = codegen.WriteMain(cfg.TargetFile, fileAST, newMainContent, cmdMetadata.MainFuncPosition)
-	// if err != nil {
-	//	return fmt.Errorf("failed to write modified main.go: %w", err)
-	//}
+	err = codegen.WriteMain(cfg.TargetFile, fset, fileAST, newMainContent, cmdMetadata.MainFuncPosition)
+	if err != nil {
+		return fmt.Errorf("failed to write modified main.go: %w", err)
+	}
 
 	log.Println("Goat: Processing finished.")
 	return nil
