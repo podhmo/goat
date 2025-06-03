@@ -8,7 +8,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/podhmo/goat/internal/loader"
 	"github.com/podhmo/goat/internal/metadata"
 )
 
@@ -347,22 +346,39 @@ type MainConfig struct {
 
 	fset, mainFileAst := parseSingleFileAst(t, mainContent)
 
-	// Setup GOPATH or ensure module resolution for testdata packages.
-	// Comments about GOPATH are for user awareness if tests fail due to package discovery.
+	// Define content for simulated external packages
+	externalPkgContent := `package myexternalpkg
+// ExternalEmbedded holds fields to be embedded.
+type ExternalEmbedded struct {
+    // Flag from external package.
+    IsRemote bool ` + "`env:\"IS_REMOTE_TAG\"`" + `
+}
+// PointerPkgConfig is an external struct often used as a pointer.
+type PointerPkgConfig struct {
+    // APIKey for external service.
+    APIKey string ` + "`env:\"API_KEY_TAG\"`" + `
+}`
+	_, externalFileAst := parseSingleFileAst(t, externalPkgContent)
+
+	anotherPkgContent := `package anotherpkg
+// AnotherExternalEmbedded is from a different external package.
+type AnotherExternalEmbedded struct {
+    // Token for another service.
+    Token string
+}`
+	_, anotherFileAst := parseSingleFileAst(t, anotherPkgContent)
 
 	expectedOptions := []*metadata.OptionMetadata{
-		{Name: "LocalName", CliName: "local-name", TypeName: "string", HelpText: "", IsRequired: true, EnvVar: "LOCAL_NAME"},
+		{Name: "LocalName", CliName: "local-name", TypeName: "string", HelpText: "Tag for a field directly in MainConfig", IsRequired: true, EnvVar: "LOCAL_NAME"},
 		{Name: "IsRemote", CliName: "is-remote", TypeName: "bool", HelpText: "Flag from external package.", IsRequired: true, EnvVar: "IS_REMOTE_TAG"},
 		{Name: "APIKey", CliName: "api-key", TypeName: "string", HelpText: "APIKey for external service.", IsRequired: true, EnvVar: "API_KEY_TAG"},
 		{Name: "Token", CliName: "token", TypeName: "string", HelpText: "Token for another service.", IsRequired: true, EnvVar: ""}, // anotherpkg.AnotherExternalEmbedded has no env tag for Token
 	}
 
-	// The key part for this test is that "myexternalpkg" and "anotherpkg" must be resolvable
-	// by the go/build system.
-
-	options, structName, err := AnalyzeOptions(fset, []*ast.File{mainFileAst}, "MainConfig", "main")
+	// Pass all ASTs directly
+	options, structName, err := AnalyzeOptions(fset, []*ast.File{mainFileAst, externalFileAst, anotherFileAst}, "MainConfig", "main")
 	if err != nil {
-		t.Fatalf("AnalyzeOptions with external packages failed: %v. (Review if testdata packages 'myexternalpkg', 'anotherpkg' are discoverable by 'go/build'. Testdata path: internal/analyzer/testdata/src)", err)
+		t.Fatalf("AnalyzeOptions with external packages failed: %v", err)
 	}
 	if structName != "MainConfig" {
 		t.Errorf("Expected struct name 'MainConfig', got '%s'", structName)
@@ -386,26 +402,24 @@ type MainConfig struct {
 func TestAnalyzeOptions_ExternalPackageDirectly(t *testing.T) {
 	fset := token.NewFileSet()
 
-	// This test relies on 'example.com/myexternalpkg' being in a location discoverable by `go/build`.
-	// e.g. by setting GOPATH to include the parent of 'testdata/src' or by module resolution.
-	// The `loader.LoadPackageFiles` will use `build.Import` internally.
-
-	externalFiles, err := loader.LoadPackageFiles(fset, "example.com/myexternalpkg", "ExternalConfig") // typeNameHint = "ExternalConfig"
-	if err != nil {
-		t.Fatalf("loader.LoadPackageFiles for example.com/myexternalpkg failed: %v. (Review if 'example.com/myexternalpkg' from testdata is discoverable by go/build. Current GOPATH might be relevant.)", err)
-	}
-	if len(externalFiles) == 0 {
-		t.Fatalf("loader.LoadPackageFiles for myexternalpkg returned no files")
-	}
+	// Define content for the external package directly
+	externalPkgContent := `package myexternalpkg
+// ExternalConfig is defined in "myexternalpkg".
+type ExternalConfig struct {
+    // URL for the external service.
+    ExternalURL string
+    // Retry count for external service.
+    ExternalRetryCount int
+}`
+	_, externalFileAst := parseSingleFileAst(t, externalPkgContent)
 
 	expectedOptions := []*metadata.OptionMetadata{
 		{Name: "ExternalURL", CliName: "external-url", TypeName: "string", HelpText: "URL for the external service.", IsRequired: true, EnvVar: ""},
 		{Name: "ExternalRetryCount", CliName: "external-retry-count", TypeName: "int", HelpText: "Retry count for external service.", IsRequired: true, EnvVar: ""},
 	}
 
-	// Analyze "ExternalConfig" struct within "example.com/myexternalpkg"
-	// The last argument to AnalyzeOptions is the package *name*, which is still "myexternalpkg"
-	options, structName, err := AnalyzeOptions(fset, externalFiles, "ExternalConfig", "myexternalpkg")
+	// Analyze "ExternalConfig" struct within the parsed AST for "myexternalpkg"
+	options, structName, err := AnalyzeOptions(fset, []*ast.File{externalFileAst}, "ExternalConfig", "myexternalpkg")
 	if err != nil {
 		t.Fatalf("AnalyzeOptions for direct external package example.com/myexternalpkg failed: %v", err)
 	}

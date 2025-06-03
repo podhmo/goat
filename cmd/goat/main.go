@@ -121,31 +121,58 @@ func scanMain(fset *token.FileSet, cfg *config.Config) (*metadata.CommandMetadat
 		// Proceeding with just targetFileAst in filesForAnalysis
 	}
 
-	filesForAnalysis := packageFiles
+	// filesForAnalysis := packageFiles // Unused variable
 	// If LoadPackageFiles returned empty (e.g. directory has no .go files other than _test.go)
 	// or if it errored but we decided to proceed, make sure we at least have the target file.
-	if len(filesForAnalysis) == 0 {
-		if targetFileAst != nil {
-			log.Printf("Warning: loader.LoadPackageFiles returned no files for import path '%s'. Proceeding with only the directly loaded target file: %s", importPath, cfg.TargetFile)
-			filesForAnalysis = []*ast.File{targetFileAst}
-		} else {
-			// This case should ideally be caught by the initial LoadFile failure, but as a safeguard:
-			return nil, nil, fmt.Errorf("no Go files found for package (import path %s) and target file %s also failed to load or was nil", importPath, cfg.TargetFile)
-		}
+	// if len(filesForAnalysis) == 0 { // Old logic
+	// 	if targetFileAst != nil {
+	// 		log.Printf("Warning: loader.LoadPackageFiles returned no files for import path '%s'. Proceeding with only the directly loaded target file: %s", importPath, cfg.TargetFile)
+	// 		filesForAnalysis = []*ast.File{targetFileAst}
+	// 	} else {
+	// 		// This case should ideally be caught by the initial LoadFile failure, but as a safeguard:
+	// 		return nil, nil, fmt.Errorf("no Go files found for package (import path %s) and target file %s also failed to load or was nil", importPath, cfg.TargetFile)
+	// 	}
+	// }
+
+	// New logic: Ensure targetFileAst is always included and handle potential duplicates.
+	finalFilesForAnalysis := []*ast.File{targetFileAst}
+	seenFilePaths := make(map[string]bool)
+	if fset.File(targetFileAst.Pos()) != nil {
+		seenFilePaths[fset.File(targetFileAst.Pos()).Name()] = true
+	} else {
+		// Fallback if position is not available, though unlikely for a loaded AST
+		seenFilePaths[cfg.TargetFile] = true
 	}
 
+	for _, f := range packageFiles {
+		tokenFile := fset.File(f.Pos())
+		if tokenFile != nil {
+			filePath := tokenFile.Name()
+			if !seenFilePaths[filePath] {
+				finalFilesForAnalysis = append(finalFilesForAnalysis, f)
+				seenFilePaths[filePath] = true
+			}
+		}
+	}
+	if len(finalFilesForAnalysis) == 0 && targetFileAst == nil { // Should be caught by LoadFile earlier
+		return nil, nil, fmt.Errorf("no Go files could be prepared for analysis, target file %s failed to load", cfg.TargetFile)
+	}
+
+
 	// The optionsStructName returned by Analyze needs to be captured.
-	cmdMetadata, returnedOptionsStructName, err := analyzer.Analyze(fset, filesForAnalysis, cfg.RunFuncName, currentPackageName)
+	cmdMetadata, returnedOptionsStructName, err := analyzer.Analyze(fset, finalFilesForAnalysis, cfg.RunFuncName, currentPackageName)
 	if err != nil {
 		return nil, targetFileAst, fmt.Errorf("failed to analyze AST: %w", err)
 	}
 	log.Printf("Goat: Command metadata extracted for command: %s (options struct: %s)", cmdMetadata.Name, returnedOptionsStructName)
 
+	const goatMarkersImportPath = "github.com/podhmo/goat/goat" // Define the correct import path
+
 	if cfg.OptionsInitializerName != "" && returnedOptionsStructName != "" {
 		// InterpretInitializer might need to look into multiple files if the initializer is not in the main target file.
 		// For now, it's passed targetFileAst, which might need adjustment if initializers can be in other package files.
 		// The currentPackageName is now more accurately determined.
-		err = interpreter.InterpretInitializer(targetFileAst, returnedOptionsStructName, cfg.OptionsInitializerName, cmdMetadata.Options, currentPackageName)
+		err = interpreter.InterpretInitializer(targetFileAst, returnedOptionsStructName, cfg.OptionsInitializerName, cmdMetadata.Options, goatMarkersImportPath)
 		if err != nil {
 			return nil, targetFileAst, fmt.Errorf("failed to interpret options initializer %s: %w", cfg.OptionsInitializerName, err)
 		}

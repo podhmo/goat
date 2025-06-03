@@ -18,6 +18,7 @@ import (
 func AnalyzeOptions(fset *token.FileSet, files []*ast.File, optionsTypeName string, currentPackageName string) ([]*metadata.OptionMetadata, string, error) {
 	var optionsStruct *ast.TypeSpec
 	var actualStructName string
+	var fileContainingOptionsStruct *ast.File
 
 	// Remove package prefix if present (e.g. "main.Options" -> "Options")
 	// And remove pointer prefix if present (e.g. "*Options" -> "Options")
@@ -34,6 +35,7 @@ func AnalyzeOptions(fset *token.FileSet, files []*ast.File, optionsTypeName stri
 					if _, isStruct := ts.Type.(*ast.StructType); isStruct {
 						optionsStruct = ts
 						actualStructName = ts.Name.Name
+						fileContainingOptionsStruct = fileAst // Store the file
 						return false // Stop searching this file
 					}
 				}
@@ -41,12 +43,19 @@ func AnalyzeOptions(fset *token.FileSet, files []*ast.File, optionsTypeName stri
 			return true
 		})
 		if optionsStruct != nil {
+			if fileContainingOptionsStruct == nil && len(files) == 1 { // Safety check / common case
+				fileContainingOptionsStruct = files[0]
+			}
 			break // Found in one of the files
 		}
 	}
 
 	if optionsStruct == nil {
 		return nil, "", fmt.Errorf("options struct type '%s' not found in package '%s'", typeNameOnly, currentPackageName)
+	}
+	if fileContainingOptionsStruct == nil {
+		// This should ideally not be reached if optionsStruct was found
+		return nil, "", fmt.Errorf("internal error: options struct '%s' found but its containing file was not identified", actualStructName)
 	}
 
 	structType, ok := optionsStruct.Type.(*ast.StructType)
@@ -63,43 +72,55 @@ func AnalyzeOptions(fset *token.FileSet, files []*ast.File, optionsTypeName stri
 			var err error
 
 			if strings.Contains(embeddedTypeName, ".") { // External package
-				parts := strings.SplitN(embeddedTypeName, ".", 2)
-				importPathFromType := parts[0] // e.g., "myexternalpkg" or "*myexternalpkg"
+				parts := strings.SplitN(embeddedTypeName, ".", 2) // E.g., "myexternalpkg.ExternalEmbedded" or "*myexternalpkg.ExternalEmbedded"
+				packageSelector := parts[0]
 				typeNameInExternalPkg := parts[1]
 
-				// Clean pointer prefix from import path, e.g. "*pkg.Type" -> "pkg"
-				if strings.HasPrefix(importPathFromType, "*") {
-					importPathFromType = importPathFromType[1:]
+				// Clean pointer prefix from selector, e.g. "*pkg.Type" -> "pkg"
+				if strings.HasPrefix(packageSelector, "*") {
+					packageSelector = packageSelector[1:]
 				}
-				// Clean pointer prefix from type name if it's something like "pkg.*Type" (less common)
 				if strings.HasPrefix(typeNameInExternalPkg, "*") {
 					typeNameInExternalPkg = typeNameInExternalPkg[1:]
 				}
 
-				var filesForExternalPkg []*ast.File
-				foundInProvidedFiles := false
-
-				// Check if ASTs for this import path were already provided
-				for _, inputFileAst := range files { // 'files' is the input to AnalyzeOptions
-					if inputFileAst.Name != nil && inputFileAst.Name.Name == importPathFromType {
-						filesForExternalPkg = append(filesForExternalPkg, inputFileAst)
-						foundInProvidedFiles = true
+				var preLoadedExternalFiles []*ast.File
+				for _, f := range files { // Check if ASTs for this package selector were already provided
+					if f.Name != nil && f.Name.Name == packageSelector {
+						preLoadedExternalFiles = append(preLoadedExternalFiles, f)
 					}
 				}
 
-				if foundInProvidedFiles {
-					// Use the ASTs found in the input 'files' slice
-					embeddedOptions, _, err = AnalyzeOptions(fset, filesForExternalPkg, typeNameInExternalPkg, importPathFromType)
+				if len(preLoadedExternalFiles) > 0 {
+					// Case 1: ASTs for the external package (matched by packageSelector name) were provided directly.
+					// This handles TestAnalyzeOptions_WithMixedPackageAsts.
+					// The 'packageSelector' is used as the 'currentPackageName' for the recursive call.
+					embeddedOptions, _, err = AnalyzeOptions(fset, preLoadedExternalFiles, typeNameInExternalPkg, packageSelector)
 				} else {
-					// ASTs not provided, so attempt to load them
-					// TODO: Implement caching for loaded packages
-					newlyLoadedFiles, loadErr := loader.LoadPackageFiles(fset, importPathFromType, typeNameInExternalPkg)
-					if loadErr != nil {
-						return nil, actualStructName, fmt.Errorf("error loading external package %s for embedded struct %s: %w", importPathFromType, embeddedTypeName, loadErr)
+					// Case 2: ASTs not provided directly, resolve selector to full import path and load.
+					actualImportPath := astutils.GetImportPath(fileContainingOptionsStruct, packageSelector)
+					if actualImportPath == "" {
+						// Fallback: if selector can't be resolved via imports, try using selector as path.
+						// This might be brittle. A warning could be logged here.
+						actualImportPath = packageSelector
 					}
-					embeddedOptions, _, err = AnalyzeOptions(fset, newlyLoadedFiles, typeNameInExternalPkg, importPathFromType)
+
+					newlyLoadedFiles, loadErr := loader.LoadPackageFiles(fset, actualImportPath, typeNameInExternalPkg)
+					if loadErr != nil {
+						return nil, actualStructName, fmt.Errorf("error loading external package '%s' (selector '%s') for embedded struct %s: %w", actualImportPath, packageSelector, embeddedTypeName, loadErr)
+					}
+
+					externalPackageActualName := ""
+					if len(newlyLoadedFiles) > 0 && newlyLoadedFiles[0].Name != nil {
+						externalPackageActualName = newlyLoadedFiles[0].Name.Name
+					} else if len(newlyLoadedFiles) == 0 {
+						return nil, actualStructName, fmt.Errorf("no files loaded for external package '%s' (selector '%s')", actualImportPath, packageSelector)
+					} else {
+						// If package name is missing from loaded files, use selector as best guess.
+						externalPackageActualName = packageSelector
+					}
+					embeddedOptions, _, err = AnalyzeOptions(fset, newlyLoadedFiles, typeNameInExternalPkg, externalPackageActualName)
 				}
-				// 'err' from the recursive call is handled by the shared 'if err != nil' block below
 			} else { // Same package
 				cleanEmbeddedTypeName := embeddedTypeName
 				if strings.HasPrefix(cleanEmbeddedTypeName, "*") {
