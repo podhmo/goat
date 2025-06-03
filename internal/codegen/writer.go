@@ -3,7 +3,6 @@ package codegen
 import (
 	"fmt"
 	"go/ast"
-	// "go/format" // No longer directly used
 	"go/token"
 	"os"
 	"strings"
