@@ -3,36 +3,45 @@ package analyzer
 import (
 	"fmt"
 	"go/ast"
+	"go/token" // Added import
 
 	"github.com/podhmo/goat/internal/metadata"
 )
 
-// Analyze inspects the AST of a Go file to extract command metadata,
+// Analyze inspects the AST of Go files to extract command metadata,
 // focusing on the run function and its associated options struct.
 // It returns the main CommandMetadata, the name of the Options struct, and any error encountered.
-func Analyze(fileAst *ast.File, runFuncName string) (*metadata.CommandMetadata, string, error) {
+func Analyze(fset *token.FileSet, files []*ast.File, runFuncName string, mainPackageName string) (*metadata.CommandMetadata, string, error) {
 	cmdMeta := &metadata.CommandMetadata{
 		Options: []*metadata.OptionMetadata{},
 	}
-	var optionsStructName string
+	var optionsStructName string // Will be returned
 
-	runFuncInfo, runFuncDoc, err := AnalyzeRunFunc(fileAst, runFuncName)
+	runFuncInfo, runFuncDoc, err := AnalyzeRunFunc(files, runFuncName)
 	if err != nil {
 		return nil, "", fmt.Errorf("analyzing run function '%s': %w", runFuncName, err)
 	}
-	cmdMeta.Name = fileAst.Name.Name // Use package name as initial command name, can be refined
+	if runFuncInfo != nil {
+		runFuncInfo.PackageName = mainPackageName // Set the package name here
+	}
+
+	cmdMeta.Name = mainPackageName // Use provided main package name
 	cmdMeta.Description = runFuncDoc
 	cmdMeta.RunFunc = runFuncInfo
 
 	if runFuncInfo != nil && runFuncInfo.OptionsArgName != "" && runFuncInfo.OptionsArgType != "" {
-		options, foundOptionsStructName, err := AnalyzeOptions(fileAst, runFuncInfo.OptionsArgType, runFuncInfo.PackageName)
+		options, foundOptionsStructName, err := AnalyzeOptions(fset, files, runFuncInfo.OptionsArgType, mainPackageName)
 		if err != nil {
 			return nil, "", fmt.Errorf("analyzing options struct for run function '%s': %w", runFuncName, err)
 		}
 		cmdMeta.Options = options
-		optionsStructName = foundOptionsStructName
+		optionsStructName = foundOptionsStructName // Assign to the variable that will be returned
 	} else {
-		return nil, "", fmt.Errorf("run function '%s' or its options parameter not found or not in expected format", runFuncName)
+		// If there's no options arg, it's not necessarily an error, command might not have options.
+		// The original code had an error here, but it might be too strict.
+		// For now, let's keep it consistent with the original strictness.
+		// If this needs to be changed, the error below can be removed or softened.
+		return nil, "", fmt.Errorf("run function '%s' must have an options parameter, or it's not in the expected format", runFuncName)
 	}
 
 	// 3. TODO: Find the main function to get its position for future code replacement

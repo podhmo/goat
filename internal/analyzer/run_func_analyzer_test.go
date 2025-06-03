@@ -2,21 +2,14 @@ package analyzer
 
 import (
 	"go/ast"
-	"go/parser"
-	"go/token"
+	// "go/parser" // No longer used directly in this file
+	// "go/token"  // No longer used directly in this file
 	"strings"
 	"testing"
 )
 
-func parseTestFile(t *testing.T, content string) *ast.File {
-	t.Helper()
-	fset := token.NewFileSet()
-	fileAst, err := parser.ParseFile(fset, "test.go", content, parser.ParseComments)
-	if err != nil {
-		t.Fatalf("Failed to parse test file content: %v", err)
-	}
-	return fileAst
-}
+// parseSingleFileAst is defined in options_analyzer_test.go (or a shared test utility file)
+// and is accessible to other test files in the same package.
 
 func TestAnalyzeRunFunc_Simple(t *testing.T) {
 	content := `
@@ -26,8 +19,8 @@ package main
 // It does important things.
 func MyRun(opts Options) error { return nil }
 `
-	fileAst := parseTestFile(t, content)
-	runFuncInfo, doc, err := AnalyzeRunFunc(fileAst, "MyRun")
+	_, fileAst := parseSingleFileAst(t, content) // fset is not used directly by AnalyzeRunFunc, but helper provides it
+	runFuncInfo, doc, err := AnalyzeRunFunc([]*ast.File{fileAst}, "MyRun")
 
 	if err != nil {
 		t.Fatalf("AnalyzeRunFunc failed: %v", err)
@@ -60,8 +53,8 @@ import "context"
 // RunWithCtx executes with context.
 func RunWithCtx(ctx context.Context, appOpts AppOptions) error { return nil }
 `
-	fileAst := parseTestFile(t, content)
-	runFuncInfo, doc, err := AnalyzeRunFunc(fileAst, "RunWithCtx")
+	_, fileAst := parseSingleFileAst(t, content)
+	runFuncInfo, doc, err := AnalyzeRunFunc([]*ast.File{fileAst}, "RunWithCtx")
 
 	if err != nil {
 		t.Fatalf("AnalyzeRunFunc failed: %v", err)
@@ -93,8 +86,8 @@ func RunWithCtx(ctx context.Context, appOpts AppOptions) error { return nil }
 
 func TestAnalyzeRunFunc_NotFound(t *testing.T) {
 	content := `package main; func SomeOtherFunc() {}`
-	fileAst := parseTestFile(t, content)
-	_, _, err := AnalyzeRunFunc(fileAst, "NonExistentRun")
+	_, fileAst := parseSingleFileAst(t, content)
+	_, _, err := AnalyzeRunFunc([]*ast.File{fileAst}, "NonExistentRun")
 	if err == nil {
 		t.Fatal("AnalyzeRunFunc should have failed for a non-existent function")
 	}
@@ -105,8 +98,8 @@ func TestAnalyzeRunFunc_NotFound(t *testing.T) {
 
 func TestAnalyzeRunFunc_InvalidSignature(t *testing.T) {
 	content := `package main; func MyRun() error { return nil }` // No params
-	fileAst := parseTestFile(t, content)
-	_, _, err := AnalyzeRunFunc(fileAst, "MyRun")
+	_, fileAst := parseSingleFileAst(t, content)
+	_, _, err := AnalyzeRunFunc([]*ast.File{fileAst}, "MyRun")
 	if err == nil {
 		t.Fatal("AnalyzeRunFunc should have failed for invalid signature")
 	}
