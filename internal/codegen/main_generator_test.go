@@ -83,7 +83,7 @@ func TestGenerateMain_BasicCase(t *testing.T) {
 		Options: []*metadata.OptionMetadata{}, // Changed to []*OptionMetadata
 	}
 
-	actualCode, err := codegen.GenerateMain(cmdMeta, "")
+	actualCode, err := codegen.GenerateMain(cmdMeta, "", true)
 	if err != nil {
 		t.Fatalf("GenerateMain failed: %v", err)
 	}
@@ -113,7 +113,7 @@ func TestGenerateMain_WithOptions(t *testing.T) {
 		},
 	}
 
-	actualCode, err := codegen.GenerateMain(cmdMeta, "")
+	actualCode, err := codegen.GenerateMain(cmdMeta, "", true)
 	if err != nil {
 		t.Fatalf("GenerateMain failed: %v", err)
 	}
@@ -146,7 +146,7 @@ func TestGenerateMain_RequiredFlags(t *testing.T) {
 		},
 	}
 
-	actualCode, err := codegen.GenerateMain(cmdMeta, "")
+	actualCode, err := codegen.GenerateMain(cmdMeta, "", true)
 	if err != nil {
 		t.Fatalf("GenerateMain failed: %v", err)
 	}
@@ -185,7 +185,7 @@ func TestGenerateMain_EnumValidation(t *testing.T) {
 		},
 	}
 
-	actualCode, err := codegen.GenerateMain(cmdMeta, "")
+	actualCode, err := codegen.GenerateMain(cmdMeta, "", true)
 	if err != nil {
 		t.Fatalf("GenerateMain failed: %v", err)
 	}
@@ -217,7 +217,7 @@ func TestGenerateMain_EnvironmentVariables(t *testing.T) {
 		},
 	}
 
-	actualCode, err := codegen.GenerateMain(cmdMeta, "")
+	actualCode, err := codegen.GenerateMain(cmdMeta, "", true)
 	if err != nil {
 		t.Fatalf("GenerateMain failed: %v", err)
 	}
@@ -264,7 +264,7 @@ func TestGenerateMain_RunFuncInvocation(t *testing.T) {
 	cmdMetaNoOpts := &metadata.CommandMetadata{
 		RunFunc: &metadata.RunFuncInfo{Name: "Execute", PackageName: "action"},
 	}
-	actualCodeNoOpts, err := codegen.GenerateMain(cmdMetaNoOpts, "")
+	actualCodeNoOpts, err := codegen.GenerateMain(cmdMetaNoOpts, "", true)
 	if err != nil {
 		t.Fatalf("GenerateMain (no opts) failed: %v", err)
 	}
@@ -277,7 +277,7 @@ func TestGenerateMain_RunFuncInvocation(t *testing.T) {
 			{Name: "level", CliName: "level", TypeName: "int", HelpText: ""},    // Added CliName, HelpText
 		},
 	}
-	actualCodeWithOptions, err := codegen.GenerateMain(cmdMetaWithOptions, "")
+	actualCodeWithOptions, err := codegen.GenerateMain(cmdMetaWithOptions, "", true)
 	if err != nil {
 		t.Fatalf("GenerateMain (with opts) failed: %v", err)
 	}
@@ -288,7 +288,7 @@ func TestGenerateMain_ErrorHandling(t *testing.T) {
 	cmdMeta := &metadata.CommandMetadata{
 		RunFunc: &metadata.RunFuncInfo{Name: "DefaultRun", PackageName: "pkg"},
 	}
-	actualCode, err := codegen.GenerateMain(cmdMeta, "")
+	actualCode, err := codegen.GenerateMain(cmdMeta, "", true)
 	if err != nil {
 		t.Fatalf("GenerateMain failed: %v", err)
 	}
@@ -311,7 +311,7 @@ func TestGenerateMain_Imports(t *testing.T) {
 		},
 	}
 
-	actualCodeNoStrconv, err := codegen.GenerateMain(cmdMetaNoStrconv, "")
+	actualCodeNoStrconv, err := codegen.GenerateMain(cmdMetaNoStrconv, "", true)
 	if err != nil {
 		t.Fatalf("GenerateMain failed: %v", err)
 	}
@@ -330,7 +330,7 @@ func TestGenerateMain_Imports(t *testing.T) {
 			{Name: "port", CliName: "port", TypeName: "int", EnvVar: "APP_PORT", HelpText: "app port"},
 		},
 	}
-	actualCodeWithStrconv, err := codegen.GenerateMain(cmdMetaWithStrconv, "")
+	actualCodeWithStrconv, err := codegen.GenerateMain(cmdMetaWithStrconv, "", true)
 	if err != nil {
 		t.Fatalf("GenerateMain failed: %v", err)
 	}
@@ -348,7 +348,7 @@ func TestGenerateMain_RequiredIntWithEnvVar(t *testing.T) {
 		},
 	}
 
-	actualCode, err := codegen.GenerateMain(cmdMeta, "")
+	actualCode, err := codegen.GenerateMain(cmdMeta, "", true)
 	if err != nil {
 		t.Fatalf("GenerateMain failed: %v", err)
 	}
@@ -384,7 +384,7 @@ func TestGenerateMain_StringFlagWithQuotesInDefault(t *testing.T) {
 			{Name: "greeting", CliName: "greeting", TypeName: "string", HelpText: "A greeting message", DefaultValue: `hello "world"`},
 		},
 	}
-	actualCode, err := codegen.GenerateMain(cmdMeta, "")
+	actualCode, err := codegen.GenerateMain(cmdMeta, "", true)
 	if err != nil {
 		t.Fatalf("GenerateMain failed: %v", err)
 	}
@@ -405,7 +405,7 @@ func TestGenerateMain_WithHelpText(t *testing.T) {
 	}
 	helpText := "This is my custom help message.\nUsage: mytool -input <file>"
 
-	actualCode, err := codegen.GenerateMain(cmdMeta, helpText)
+	actualCode, err := codegen.GenerateMain(cmdMeta, helpText, true)
 	if err != nil {
 		t.Fatalf("GenerateMain with help text failed: %v", err)
 	}
@@ -437,7 +437,7 @@ func TestGenerateMain_WithEmptyHelpText(t *testing.T) {
 		Options: []*metadata.OptionMetadata{},
 	}
 
-	actualCode, err := codegen.GenerateMain(cmdMeta, "")
+	actualCode, err := codegen.GenerateMain(cmdMeta, "", true)
 	if err != nil {
 		t.Fatalf("GenerateMain with empty help text failed: %v", err)
 	}

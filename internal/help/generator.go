@@ -21,7 +21,7 @@ func GenerateHelp(cmdMeta *metadata.CommandMetadata) string {
 
 func generateHelp(w io.Writer, cmdMeta *metadata.CommandMetadata) {
 	fmt.Fprintf(w, "%s - %s\n\n", cmdMeta.Name, strings.ReplaceAll(cmdMeta.Description, "\n", "\n         "))
-	fmt.Fprintf(w, "Usage:\n  %s [flags] %s\n\n", cmdMeta.Name, "") // CommandArgsPlaceholder is empty for now
+	fmt.Fprintf(w, "Usage:\n  %s [flags]\n\n", cmdMeta.Name) // Removed CommandArgsPlaceholder and trailing space
 	fmt.Fprintln(w, "Flags:")
 
 	// Find max length of option names for alignment (include -h, --help)
