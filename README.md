@@ -12,7 +12,8 @@ The main subcommands are:
 *   `help-message`: Prints the generated help message for the CLI to stdout.
 *   `init`: A placeholder for future functionality (e.g., scaffolding a new `goat`-compatible file).
 
-🚧This project is currently in the **early stages of development**.
+>[!IMPORTANT]
+>🚧This project is currently in the **early stages of development**.
 
 ## Features (Planned & In Progress)
 
