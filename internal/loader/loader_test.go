@@ -1,6 +1,7 @@
 package loader
 
 import (
+	"go/token"
 	"os"
 	"path/filepath"
 	"strings"
@@ -24,7 +25,8 @@ func main() {
 		t.Fatalf("Failed to write temp file: %v", err)
 	}
 
-	fileAST, err := LoadFile(tmpFile)
+	fset := token.NewFileSet()
+	fileAST, err := LoadFile(fset, tmpFile)
 	if err != nil {
 		t.Fatalf("LoadFile failed: %v", err)
 	}
@@ -37,7 +39,8 @@ func main() {
 }
 
 func TestLoadFile_NonExistentFile(t *testing.T) {
-	_, err := LoadFile("non_existent_file.go")
+	fset := token.NewFileSet()
+	_, err := LoadFile(fset, "non_existent_file.go")
 	if err == nil {
 		t.Fatal("LoadFile should have failed for a non-existent file, but it did not")
 	}
@@ -58,7 +61,8 @@ func main() { fmt.Println("Hello" // Missing closing parenthesis
 		t.Fatalf("Failed to write temp file: %v", err)
 	}
 
-	_, err := LoadFile(tmpFile)
+	fset := token.NewFileSet()
+	_, err := LoadFile(fset, tmpFile)
 	if err == nil {
 		t.Fatal("LoadFile should have failed for a file with syntax errors, but it did not")
 	}
