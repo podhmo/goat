@@ -56,7 +56,7 @@ func TestGenerateHelp_Basic(t *testing.T) {
          Does amazing things.
 
 Usage:
-  mytool [flags] 
+  mytool [flags]
 
 Flags:
   --username  string The username for login. (required) (env: APP_USER)

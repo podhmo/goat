@@ -158,7 +158,9 @@ func runGoat(cfg *config.Config) error {
 	helpMsg := help.GenerateHelp(cmdMetadata)
 
 	// 5. TODO: Generate new main.go content (Future Step)
-	newMainContent, err := codegen.GenerateMain(cmdMetadata, helpMsg)
+	// For 'emit', we only want the function body, not a full file,
+	// as it will be inserted into an existing file.
+	newMainContent, err := codegen.GenerateMain(cmdMetadata, helpMsg, false /* generateFullFile */)
 	if err != nil {
 		return fmt.Errorf("failed to generate new main.go content: %w", err)
 	}
