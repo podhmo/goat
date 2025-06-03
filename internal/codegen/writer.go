@@ -81,7 +81,6 @@ func WriteMain(
 				builder.WriteString("\n")
 			}
 
-			// Append the new main function content
 			builder.WriteString(newMainContent)
 			if !strings.HasSuffix(newMainContent, "\n") {
 				builder.WriteString("\n")
@@ -109,15 +108,11 @@ func WriteMain(
 		}
 	}
 
-	// Format the generated code
 	formattedContent, err := format.Source(newContent)
 	if err != nil {
-		// Write the unformatted content for debugging purposes if formatting fails
-		// os.WriteFile(filePath+".unformatted", newContent, 0644)
 		return fmt.Errorf("formatting generated code for %s: %w\nOriginal newContent was:\n%s", filePath, err, string(newContent))
 	}
 
-	// Write the modified content back to filePath
 	err = os.WriteFile(filePath, formattedContent, 0644) // Default permissions
 	if err != nil {
 		return fmt.Errorf("writing modified content to %s: %w", filePath, err)

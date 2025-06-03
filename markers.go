@@ -30,3 +30,41 @@ func Default[T any](defaultValue T, enumConstraint ...[]T) T {
 	// At runtime, this function simply returns the defaultValue.
 	return defaultValue
 }
+
+// FileOption represents an option for the File marker.
+type FileOption interface {
+	isFileOption() // Ensures only defined FileOption types can be used.
+}
+
+// -- FileOption implementations --
+
+// MustExistOption indicates that the file path must exist.
+type MustExistOption struct{}
+
+func (MustExistOption) isFileOption() {}
+
+// MustExist returns a FileOption that indicates the path must exist.
+func MustExist() FileOption {
+	return MustExistOption{}
+}
+
+// GlobPatternOption indicates that the file path can be a glob pattern.
+type GlobPatternOption struct{}
+
+func (GlobPatternOption) isFileOption() {}
+
+// GlobPattern returns a FileOption that allows the path to be a glob pattern.
+func GlobPattern() FileOption {
+	return GlobPatternOption{}
+}
+
+// File marks a field as a file path.
+// The `goat` tool's interpreter can use this to add features like
+// existence checks, glob pattern expansion, etc.
+// It accepts a defaultPath string and optional FileOption arguments.
+// It is used for analysis purposes only and returns the passed `defaultPath` as is at runtime.
+func File(defaultPath string, options ...FileOption) string {
+	// Options are for the static analyzer.
+	// At runtime, this function simply returns the defaultPath.
+	return defaultPath
+}

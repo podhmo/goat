@@ -3,7 +3,7 @@ package interpreter
 import (
 	"fmt"
 	"go/ast"
-	"go/token" // Added import
+	"go/token"
 	"log"
 
 	"github.com/podhmo/goat/internal/metadata"
@@ -37,7 +37,6 @@ func InterpretInitializer(
 		return fmt.Errorf("initializer function '%s' has no body", initializerFuncName)
 	}
 
-	// Map option field names to their metadata for quick lookup
 	optionsMap := make(map[string]*metadata.OptionMetadata)
 	for _, opt := range options {
 		optionsMap[opt.Name] = opt
@@ -54,8 +53,6 @@ func InterpretInitializer(
 
 	log.Printf("Interpreting initializer: %s", initializerFuncName)
 
-	// Look for return statement like 'return &Options{...}'
-	// or assignments like 'opt.Field = ...'
 	ast.Inspect(initializerFunc.Body, func(n ast.Node) bool {
 		switch stmtNode := n.(type) {
 		case *ast.AssignStmt: // e.g. options.Field = goat.Default(...) or var x = goat.Default(...)
@@ -84,13 +81,12 @@ func InterpretInitializer(
 					// Check if this composite literal is for our Options struct
 					// This requires resolving compLit.Type to optionsStructName, which can be complex.
 					// For a simpler start, assume if it's a struct literal in NewOptions, it's the one.
-					// log.Printf("Found return composite literal in %s", initializerFuncName) // Keep this if it was original and useful
+					log.Printf("Found return composite literal in %s", initializerFuncName)
 					for _, elt := range compLit.Elts {
 						if kvExpr, ok := elt.(*ast.KeyValueExpr); ok {
 							if keyIdent, ok := kvExpr.Key.(*ast.Ident); ok {
 								fieldName := keyIdent.Name
 								if optMeta, exists := optionsMap[fieldName]; exists {
-									// log.Printf("Found key-value for options field in return: %s", fieldName) // Keep this if original
 									extractMarkerInfo(kvExpr.Value, optMeta, fileAst, markerPkgImportPath)
 								}
 							}
@@ -117,7 +113,6 @@ func extractMarkerInfo(valueExpr ast.Expr, optMeta *metadata.OptionMetadata, fil
 	actualMarkerPkgPath := astutils.GetImportPath(fileAst, markerPkgAlias)
 
 	if actualMarkerPkgPath != markerPkgImportPath {
-		// log.Printf("Skipping call to %s.%s, not the target marker package (%s vs %s)", markerPkgAlias, markerFuncName, actualMarkerPkgPath, markerPkgImportPath)
 		return
 	}
 
@@ -125,7 +120,6 @@ func extractMarkerInfo(valueExpr ast.Expr, optMeta *metadata.OptionMetadata, fil
 	case "Default":
 		log.Printf("Interpreting goat.Default for field %s", optMeta.Name)
 		if len(callExpr.Args) > 0 {
-			// First arg is the default value
 			optMeta.DefaultValue = astutils.EvaluateArg(callExpr.Args[0])
 			log.Printf("  Default value: %v", optMeta.DefaultValue)
 
@@ -155,8 +149,38 @@ func extractMarkerInfo(valueExpr ast.Expr, optMeta *metadata.OptionMetadata, fil
 			optMeta.EnumValues = astutils.EvaluateSliceArg(callExpr.Args[0])
 			log.Printf("  Enum values: %v", optMeta.EnumValues)
 		}
+	case "File":
+		log.Printf("Interpreting goat.File for field %s", optMeta.Name)
+		if len(callExpr.Args) > 0 {
+			optMeta.DefaultValue = astutils.EvaluateArg(callExpr.Args[0])
+			log.Printf("  Default path: %v", optMeta.DefaultValue)
+			optMeta.TypeName = "string" // File paths are strings
+
+			// Subsequent args are FileOption calls (e.g., goat.MustExist(), goat.GlobPattern())
+			if len(callExpr.Args) > 1 {
+				for _, arg := range callExpr.Args[1:] {
+					if optionCallExpr, ok := arg.(*ast.CallExpr); ok {
+						optionFuncName, optionFuncPkgAlias := astutils.GetFullFunctionName(optionCallExpr.Fun)
+						actualOptionFuncPkgPath := astutils.GetImportPath(fileAst, optionFuncPkgAlias)
+
+						if actualOptionFuncPkgPath == markerPkgImportPath { // Ensure it's a goat.Xxx call
+							switch optionFuncName {
+							case "MustExist":
+								optMeta.FileMustExist = true
+								log.Printf("  FileOption: MustExist")
+							case "GlobPattern":
+								optMeta.FileGlobPattern = true
+								log.Printf("  FileOption: GlobPattern")
+							default:
+								log.Printf("  Unknown FileOption: %s", optionFuncName)
+							}
+						}
+					}
+				}
+			}
+		}
 	default:
 		// Not a recognized marker function from the specified package
-		// log.Printf("  Not a goat marker function: %s.%s", markerPkgAlias, markerFuncName)
+		log.Printf("  Not a goat marker function: %s.%s", markerPkgAlias, markerFuncName)
 	}
 }

@@ -49,12 +49,10 @@ import (
 
 func main() {
 	{{if .HasOptions}}
-	// Declare individual variables for each flag
 	{{range .Options}}
 	var {{Title .Name}}Flag {{.TypeName}}
 	{{end}}
 
-	// Setup flag parsing for each option
 	{{range .Options}}
 	{{if eq .TypeName "string"}}
 	flag.StringVar(&{{Title .Name}}Flag, "{{.Name}}", {{if .DefaultValue}}{{printf "%q" .DefaultValue}}{{else}}""{{end}}, "{{.HelpText}}")
@@ -66,7 +64,6 @@ func main() {
 	{{end}}
 
 	{{if .HelpText}}
-	// Handle -h/--help flags
 	for _, arg := range os.Args[1:] {
 		if arg == "-h" || arg == "--help" {
 			fmt.Fprintln(os.Stdout, {{printf "%q" .HelpText}})
@@ -77,7 +74,6 @@ func main() {
 
 	flag.Parse()
 
-	// Handle environment variables and required flags
 	{{range .Options}}
 	{{if .EnvVar}}
 	if val, ok := os.LookupEnv("{{.EnvVar}}"); ok {
@@ -141,7 +137,6 @@ func main() {
 	}
 	{{else if eq .TypeName "bool"}}
 	// For bools, "required" usually implies it must be explicitly set, or must be true.
-	// If it must be true: if !{{Title .Name}}Flag { log.Fatalf("Flag -{{.Name}} must be true") } // Ensure no trailing space here either if this log is used
 	// If it must be set (and default is false), this is hard to check without knowing if it was user-set.
 	// The current logic for env var precedence tries to handle this: if it's still default false, env can make it true.
 	// If truly "required to be explicitly set", the logic would need flag.Visit.
@@ -164,7 +159,6 @@ func main() {
 	{{end}}
 	{{end}}
 
-	// Call the original run function
 	{{if .HasOptions}}
 	err := {{.RunFuncPackage}}.{{.RunFuncName}}({{ JoinFlagVars .Options }})
 	{{else}}

@@ -31,5 +31,5 @@ type options struct {
 }
 
 func run(options options) error {
-	return json.NewEncoder(os.Stdout).Encode(options) // Print the options as JSON for debugging
+	return json.NewEncoder(os.Stdout).Encode(options)
 }

@@ -10,13 +10,12 @@ import (
 // Analyze inspects the AST of a Go file to extract command metadata,
 // focusing on the run function and its associated options struct.
 // It returns the main CommandMetadata, the name of the Options struct, and any error encountered.
-func Analyze(fileAst *ast.File, runFuncName string) (*metadata.CommandMetadata, string /* optionsStructName */, error) {
+func Analyze(fileAst *ast.File, runFuncName string) (*metadata.CommandMetadata, string, error) {
 	cmdMeta := &metadata.CommandMetadata{
 		Options: []*metadata.OptionMetadata{},
 	}
 	var optionsStructName string
 
-	// 1. Find the run function and extract its info (doc comment, params)
 	runFuncInfo, runFuncDoc, err := AnalyzeRunFunc(fileAst, runFuncName)
 	if err != nil {
 		return nil, "", fmt.Errorf("analyzing run function '%s': %w", runFuncName, err)
@@ -25,7 +24,6 @@ func Analyze(fileAst *ast.File, runFuncName string) (*metadata.CommandMetadata, 
 	cmdMeta.Description = runFuncDoc
 	cmdMeta.RunFunc = runFuncInfo
 
-	// 2. If run function is found, analyze its Options struct
 	if runFuncInfo != nil && runFuncInfo.OptionsArgName != "" && runFuncInfo.OptionsArgType != "" {
 		options, foundOptionsStructName, err := AnalyzeOptions(fileAst, runFuncInfo.OptionsArgType, runFuncInfo.PackageName)
 		if err != nil {

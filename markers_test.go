@@ -5,7 +5,6 @@ import (
 	"testing"
 )
 
-// Test for Enum marker function
 func TestEnum(t *testing.T) {
 	testCases := []struct {
 		name     string
@@ -82,7 +81,6 @@ func TestEnum(t *testing.T) {
 	}
 }
 
-// Test for Default marker function
 func TestDefault(t *testing.T) {
 	testCases := []struct {
 		name           string

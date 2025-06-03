@@ -33,5 +33,8 @@ type OptionMetadata struct {
 	EnvVar       string // Environment variable name to read from (from `env` tag)
 	DefaultValue any    // Default value (from goat.Default or struct tag)
 	EnumValues   []any  // Allowed enum values (from goat.Enum or struct tag)
-	// FilePath string // TODO: For options loaded from a config file (`file` tag)
+
+	// File-specific options
+	FileMustExist   bool `json:"fileMustExist,omitempty"`
+	FileGlobPattern bool `json:"fileGlobPattern,omitempty"`
 }

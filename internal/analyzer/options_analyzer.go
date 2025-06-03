@@ -13,7 +13,7 @@ import (
 
 // AnalyzeOptions finds the Options struct definition (given its type name)
 // and extracts metadata for each of its fields.
-func AnalyzeOptions(fileAst *ast.File, optionsTypeName string, packageName string) ([]*metadata.OptionMetadata, string /* actualStructName */, error) {
+func AnalyzeOptions(fileAst *ast.File, optionsTypeName string, packageName string) ([]*metadata.OptionMetadata, string, error) {
 	var optionsStruct *ast.TypeSpec
 	var actualStructName string
 
