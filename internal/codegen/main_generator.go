@@ -26,27 +26,6 @@ func GenerateMain(cmdMeta *metadata.CommandMetadata, helpText string) (string, e
 	}
 
 	tmpl := template.Must(template.New("main").Funcs(templateFuncs).Parse(`
-package main
-
-import (
-	"flag"
-	"fmt"
-	"log"
-	"os"
-	"strings"
-	{{if .RunFuncPackage}}
-	"{{.RunFuncPackage}}"
-	{{end}}
-	{{if .NeedsStrconv}}
-	"strconv"
-	{{end}}
-	{{range .Imports}}
-	// This .Imports is currently always empty after previous changes.
-	// Retaining for potential future use, but it won't print anything now.
-	"{{.}}"
-	{{end}}
-)
-
 func main() {
 	{{if .HasOptions}}
 	{{range .Options}}

@@ -58,16 +58,24 @@ Flags:
   -h, --help Show this help message and exit
 `
 
-// runMainWithArgs executes the main function with the given arguments and captures its stdout.
+// runMainWithArgs executes the main function with the given arguments and captures its stdout and stderr.
 // Note: This approach means log.Fatalf in main() will terminate the test.
 func runMainWithArgs(t *testing.T, args ...string) string {
 	t.Helper()
 	oldStdout := os.Stdout
-	r, w, err := os.Pipe()
+	oldStderr := os.Stderr // Save old stderr
+
+	rOut, wOut, err := os.Pipe()
 	if err != nil {
-		t.Fatalf("Failed to create pipe: %v", err)
+		t.Fatalf("Failed to create stdout pipe: %v", err)
 	}
-	os.Stdout = w
+	os.Stdout = wOut
+
+	rErr, wErr, err := os.Pipe() // Pipe for stderr
+	if err != nil {
+		t.Fatalf("Failed to create stderr pipe: %v", err)
+	}
+	os.Stderr = wErr
 
 	// Simulate command line arguments
 	os.Args = append([]string{"goat"}, args...)
@@ -75,20 +83,36 @@ func runMainWithArgs(t *testing.T, args ...string) string {
 	// Call main
 	main()
 
-	// Restore stdout and read captured output
-	if err := w.Close(); err != nil {
-		t.Logf("Failed to close pipe writer: %v", err) // Log non-fatal
+	// Restore stdout and stderr, then read captured output
+	if err := wOut.Close(); err != nil {
+		t.Logf("Failed to close stdout pipe writer: %v", err)
 	}
-	outBytes, err := io.ReadAll(r)
+	if err := wErr.Close(); err != nil {
+		t.Logf("Failed to close stderr pipe writer: %v", err)
+	}
+
+	outBytes, err := io.ReadAll(rOut)
 	if err != nil {
-		// This can happen if main exited prematurely (e.g. via log.Fatalf)
-		// and the pipe was broken.
-		t.Logf("Failed to read stdout: %v. This might be due to main exiting via log.Fatalf.", err)
+		t.Logf("Failed to read stdout: %v", err)
 	}
-	if err := r.Close(); err != nil {
-		t.Logf("Failed to close pipe reader: %v", err) // Log non-fatal
+	errBytes, err := io.ReadAll(rErr) // Read stderr
+	if err != nil {
+		t.Logf("Failed to read stderr: %v", err)
 	}
+
+	if err := rOut.Close(); err != nil {
+		t.Logf("Failed to close stdout pipe reader: %v", err)
+	}
+	if err := rErr.Close(); err != nil {
+		t.Logf("Failed to close stderr pipe reader: %v", err)
+	}
+
 	os.Stdout = oldStdout
+	os.Stderr = oldStderr // Restore stderr
+
+	if len(errBytes) > 0 {
+		t.Logf("Stderr output:\n%s", string(errBytes)) // Log stderr if not empty
+	}
 
 	return string(outBytes)
 }
@@ -148,7 +172,8 @@ func TestHelpMessageSubcommand(t *testing.T) {
 		t.Fatalf("Failed to write temp file: %v", err)
 	}
 
-	args := []string{"help-message", tmpFile, "-run", "Run", "-initializer", "NewOptions"}
+	// Ensure flags come before positional arguments for robust parsing
+	args := []string{"help-message", "-run", "Run", "-initializer", "NewOptions", tmpFile}
 	out := runMainWithArgs(t, args...)
 
 	if out != expectedHelpOutput {
@@ -163,7 +188,8 @@ func TestScanSubcommand(t *testing.T) {
 		t.Fatalf("Failed to write temp file: %v", err)
 	}
 
-	args := []string{"scan", tmpFile, "-run", "Run", "-initializer", "NewOptions"}
+	// Ensure flags come before positional arguments for robust parsing
+	args := []string{"scan", "-run", "Run", "-initializer", "NewOptions", tmpFile}
 	out := runMainWithArgs(t, args...)
 
 	var metadataOutput metadata.CommandMetadata
@@ -183,21 +209,22 @@ func TestScanSubcommand(t *testing.T) {
 	// Check for a specific option
 	var foundNameOption bool
 	for _, opt := range metadataOutput.Options {
-		if opt.Name == "name" {
+		// opt.Name is the original struct field name, which is "Name" (capitalized)
+		if opt.Name == "Name" {
 			foundNameOption = true
-			if opt.Type != "string" {
-				t.Errorf("Expected option 'name' to have type 'string', got '%s'", opt.Type)
+			if opt.TypeName != "string" {
+				t.Errorf("Expected option 'Name' to have type 'string', got '%s'", opt.TypeName)
 			}
-			if !opt.Required {
-				t.Errorf("Expected option 'name' to be required")
+			if !opt.IsRequired {
+				t.Errorf("Expected option 'Name' to be required")
 			}
-			if opt.Default != "anonymous" {
-				t.Errorf("Expected option 'name' to have default 'anonymous', got '%s'", opt.Default)
+			if opt.DefaultValue != "anonymous" {
+				t.Errorf("Expected option 'Name' to have default 'anonymous', got '%s'", opt.DefaultValue)
 			}
 		}
 	}
 	if !foundNameOption {
-		t.Errorf("Option 'name' not found in metadata")
+		t.Errorf("Option 'Name' not found in metadata")
 	}
 }
 
@@ -214,7 +241,8 @@ func TestEmitSubcommand(t *testing.T) {
 	initialContentCopy := make([]byte, len(initialContent))
 	copy(initialContentCopy, initialContent)
 
-	args := []string{"emit", tmpFile, "-run", "Run", "-initializer", "NewOptions"}
+	// Ensure flags come before positional arguments for robust parsing
+	args := []string{"emit", "-run", "Run", "-initializer", "NewOptions", tmpFile}
 	stdout := runMainWithArgs(t, args...)
 
 	if !strings.Contains(stdout, "Goat: Processing finished.") {
