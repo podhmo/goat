@@ -3,6 +3,7 @@ package codegen_test
 import (
 	"fmt"
 	"go/format"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -10,103 +11,125 @@ import (
 	"github.com/podhmo/goat/internal/metadata"
 )
 
-// normalizeCode formats the code string using go/format and removes leading/trailing whitespace.
-// This helps in making comparisons less brittle.
+var (
+	lineCommentRegex = regexp.MustCompile(`//.*`)
+	// whitespaceRegex matches all whitespace characters, including newlines.
+	// It's used to replace any sequence of whitespace with a single space.
+	whitespaceRegex = regexp.MustCompile(`\s+`)
+)
+
+// normalizeForContains prepares a code snippet for robust substring checking.
+// It removes comments, replaces various whitespace with single spaces, and trims.
+func normalizeForContains(snippet string) string {
+	// Remove Go line comments first to prevent // from becoming part of a word.
+	var noCommentsLines []string
+	for _, line := range strings.Split(snippet, "\n") {
+		if idx := strings.Index(line, "//"); idx != -1 {
+			noCommentsLines = append(noCommentsLines, line[:idx])
+		} else {
+			noCommentsLines = append(noCommentsLines, line)
+		}
+	}
+	processed := strings.Join(noCommentsLines, " ") // Join with space to process as a single "line"
+
+	// Replace tabs with spaces first to ensure uniform space characters.
+	processed = strings.ReplaceAll(processed, "\t", " ")
+	// Compact all sequences of whitespace (now including newlines replaced by spaces) into a single space.
+	processed = whitespaceRegex.ReplaceAllString(processed, " ")
+	return strings.TrimSpace(processed)
+}
+
+// normalizeCode formats the actual generated Go code string.
 func normalizeCode(t *testing.T, code string) string {
 	t.Helper()
 	formatted, err := format.Source([]byte(code))
 	if err != nil {
-		t.Fatalf("Failed to format code: %v\nOriginal code:\n%s", err, code)
+		// If go/format.Source fails on the actual generated code, it's a critical error.
+		t.Fatalf("Failed to format actual generated code: %v\nOriginal code:\n%s", err, code)
 	}
-	return strings.TrimSpace(string(formatted))
+	// After gofmt, further normalize for robust comparison (remove comments, compact whitespace)
+	return normalizeForContains(string(formatted))
 }
 
-func assertCodeContains(t *testing.T, actualCode, expectedSnippet string) {
+func assertCodeContains(t *testing.T, actualGeneratedCode, expectedSnippet string) {
 	t.Helper()
-	// Normalize the snippet too, so we are comparing formatted code with formatted code.
-	normalizedExpectedSnippet := normalizeCode(t, expectedSnippet)
-	if !strings.Contains(actualCode, normalizedExpectedSnippet) {
-		// For easier debugging, show the normalized expected snippet
-		// and the (already normalized) actual code.
-		t.Errorf("Expected generated code to contain:\n>>>>>>>>>>\n%s\n<<<<<<<<<<\n\nActual code:\n>>>>>>>>>>\n%s\n<<<<<<<<<<",
-			normalizedExpectedSnippet, actualCode)
+	normalizedActual := normalizeCode(t, actualGeneratedCode)
+	normalizedExpectedSnippet := normalizeForContains(expectedSnippet)
+
+	if !strings.Contains(normalizedActual, normalizedExpectedSnippet) {
+		t.Errorf("Expected generated code to contain (normalized):\n>>>>>>>>>>\n%s\n<<<<<<<<<<\n\nActual code (normalized):\n>>>>>>>>>>\n%s\n<<<<<<<<<<\n\nOriginal Expected Snippet:\n%s\n\nOriginal Actual Code:\n%s",
+			normalizedExpectedSnippet, normalizedActual, expectedSnippet, actualGeneratedCode)
 	}
 }
 
-func assertCodeNotContains(t *testing.T, actualCode, unexpectedSnippet string) {
+func assertCodeNotContains(t *testing.T, actualGeneratedCode, unexpectedSnippet string) {
 	t.Helper()
-	// Normalize the snippet to ensure we're not failing due to formatting.
-	normalizedUnexpectedSnippet := normalizeCode(t, unexpectedSnippet)
-	if strings.Contains(actualCode, normalizedUnexpectedSnippet) {
-		t.Errorf("Expected generated code NOT to contain:\n>>>>>>>>>>\n%s\n<<<<<<<<<<\n\nActual code:\n>>>>>>>>>>\n%s\n<<<<<<<<<<",
-			normalizedUnexpectedSnippet, actualCode)
+	normalizedActual := normalizeCode(t, actualGeneratedCode)
+	normalizedUnexpectedSnippet := normalizeForContains(unexpectedSnippet)
+
+	if strings.Contains(normalizedActual, normalizedUnexpectedSnippet) {
+		t.Errorf("Expected generated code NOT to contain (normalized):\n>>>>>>>>>>\n%s\n<<<<<<<<<<\n\nActual code (normalized):\n>>>>>>>>>>\n%s\n<<<<<<<<<<\n\nOriginal Unexpected Snippet:\n%s\n\nOriginal Actual Code:\n%s",
+			normalizedUnexpectedSnippet, normalizedActual, unexpectedSnippet, actualGeneratedCode)
 	}
 }
 
 
 func TestGenerateMain_BasicCase(t *testing.T) {
 	cmdMeta := &metadata.CommandMetadata{
-		RunFunc: metadata.Func{
+		RunFunc: &metadata.RunFuncInfo{ // Changed to *RunFuncInfo
 			Name:        "Run",
 			PackageName: "mycmd",
-			Imports:     []string{"github.com/example/mycmd"},
+			// Imports field removed
 		},
-		Options: []metadata.Option{},
+		Options: []*metadata.OptionMetadata{}, // Changed to []*OptionMetadata
 	}
 
-	actualCode, err := codegen.GenerateMain(cmdMeta, "") // Corrected line
+	actualCode, err := codegen.GenerateMain(cmdMeta, "")
 	if err != nil {
 		t.Fatalf("GenerateMain failed: %v", err)
 	}
-	normalizedActualCode := normalizeCode(t, actualCode)
 
-	expectedImports := `
-import (
-	"flag"
-	"fmt"
-	"log"
-	"os"
-	"strings"
-
-	"github.com/example/mycmd"
-)
-`
-	assertCodeContains(t, normalizedActualCode, expectedImports)
-	assertCodeContains(t, normalizedActualCode, "func main() {")
-	assertCodeContains(t, normalizedActualCode, "err := mycmd.Run()")
-	assertCodeContains(t, normalizedActualCode, "if err != nil {")
-	assertCodeContains(t, normalizedActualCode, "log.Fatal(err)")
-	assertCodeNotContains(t, normalizedActualCode, "type Options struct")
+	// Assertions use normalizeCode for actualCode, and normalizeForContains for snippets (done inside helpers)
+	// For the RunFuncPackage, assert that the quoted package name exists.
+	assertCodeContains(t, actualCode, fmt.Sprintf("\"%s\"", cmdMeta.RunFunc.PackageName))
+	standardImports := []string{`"flag"`, `"fmt"`, `"log"`, `"os"`, `"strings"`}
+	for _, imp := range standardImports {
+		assertCodeContains(t, actualCode, imp)
+	}
+	assertCodeContains(t, actualCode, "func main() {")
+	assertCodeContains(t, actualCode, "err := mycmd.Run()")
+	assertCodeContains(t, actualCode, "if err != nil {")
+	assertCodeContains(t, actualCode, "log.Fatal(err)")
+	assertCodeNotContains(t, actualCode, "type Options struct")
 }
 
 func TestGenerateMain_WithOptions(t *testing.T) {
 	cmdMeta := &metadata.CommandMetadata{
-		RunFunc: metadata.Func{
+		RunFunc: &metadata.RunFuncInfo{
 			Name:        "RunWithOptions",
 			PackageName: "anothercmd",
-			Imports:     []string{"github.com/example/anothercmd"},
 		},
-		Options: []metadata.Option{
-			{Name: "name", Type: "string", Description: "Name of the user", Default: "guest"},
-			{Name: "age", Type: "int", Description: "Age of the user", Default: "30"},
-			{Name: "verbose", Type: "bool", Description: "Enable verbose output", Default: "false"},
+		Options: []*metadata.OptionMetadata{ // Changed to []*OptionMetadata
+			// Name used for Go var and CLI flag (per instruction), TypeName, HelpText, DefaultValue
+			{Name: "name", CliName: "name", TypeName: "string", HelpText: "Name of the user", DefaultValue: "guest"},
+			{Name: "age", CliName: "age", TypeName: "int", HelpText: "Age of the user", DefaultValue: 30}, // DefaultValue is int
+			{Name: "verbose", CliName: "verbose", TypeName: "bool", HelpText: "Enable verbose output", DefaultValue: false}, // DefaultValue is bool
 		},
 	}
 
-	actualCode, err := codegen.GenerateMain(cmdMeta, "") // Added ""
+	actualCode, err := codegen.GenerateMain(cmdMeta, "")
 	if err != nil {
 		t.Fatalf("GenerateMain failed: %v", err)
 	}
-	normalizedActualCode := normalizeCode(t, actualCode)
 
-	assertCodeNotContains(t, normalizedActualCode, "type Options struct")
+	assertCodeNotContains(t, actualCode, "type Options struct")
 
 	expectedVarDeclarations := `
 	var NameFlag string
 	var AgeFlag int
 	var VerboseFlag bool
 `
-	assertCodeContains(t, normalizedActualCode, expectedVarDeclarations)
+	assertCodeContains(t, actualCode, expectedVarDeclarations)
 
 	expectedFlagParsing := `
 	flag.StringVar(&NameFlag, "name", "guest", "Name of the user")
@@ -114,37 +137,36 @@ func TestGenerateMain_WithOptions(t *testing.T) {
 	flag.BoolVar(&VerboseFlag, "verbose", false, "Enable verbose output")
 	flag.Parse()
 `
-	assertCodeContains(t, normalizedActualCode, expectedFlagParsing)
-	assertCodeContains(t, normalizedActualCode, "err := anothercmd.RunWithOptions(NameFlag, AgeFlag, VerboseFlag)")
+	assertCodeContains(t, actualCode, expectedFlagParsing)
+	assertCodeContains(t, actualCode, "err := anothercmd.RunWithOptions(NameFlag, AgeFlag, VerboseFlag)")
 }
 
 func TestGenerateMain_RequiredFlags(t *testing.T) {
 	cmdMeta := &metadata.CommandMetadata{
-		RunFunc: metadata.Func{Name: "DoSomething", PackageName: "task"},
-		Options: []metadata.Option{
-			{Name: "configFile", Type: "string", Description: "Path to config file", Required: true},
-			{Name: "retries", Type: "int", Description: "Number of retries", Required: true, Default: "0"},
+		RunFunc: &metadata.RunFuncInfo{Name: "DoSomething", PackageName: "task"},
+		Options: []*metadata.OptionMetadata{
+			{Name: "configFile", CliName: "configFile", TypeName: "string", HelpText: "Path to config file", IsRequired: true}, // Required -> IsRequired
+			{Name: "retries", CliName: "retries", TypeName: "int", HelpText: "Number of retries", IsRequired: true, DefaultValue: 0},      // Default -> DefaultValue (as int)
 		},
 	}
 
-	actualCode, err := codegen.GenerateMain(cmdMeta, "") // Added ""
+	actualCode, err := codegen.GenerateMain(cmdMeta, "")
 	if err != nil {
 		t.Fatalf("GenerateMain failed: %v", err)
 	}
-	normalizedActualCode := normalizeCode(t, actualCode)
 
 	expectedConfigFileCheck := `
 	if ConfigFileFlag == "" {
 		log.Fatalf("Missing required flag: -configFile")
 	}
 `
-	assertCodeContains(t, normalizedActualCode, expectedConfigFileCheck)
+	assertCodeContains(t, actualCode, expectedConfigFileCheck)
 
 	expectedRetriesCheck := `
 	if RetriesFlag == 0 {
 		isSet_Retries := false
 		flag.Visit(func(f *flag.Flag) {
-			if f.Name == "retries" {
+			if f.Name == "retries" { // .Name used for CLI flag name
 				isSet_Retries = true
 			}
 		})
@@ -154,23 +176,23 @@ func TestGenerateMain_RequiredFlags(t *testing.T) {
 		}
 	}
 `
-	assertCodeContains(t, normalizedActualCode, expectedRetriesCheck)
-	assertCodeContains(t, normalizedActualCode, "err := task.DoSomething(ConfigFileFlag, RetriesFlag)")
+	assertCodeContains(t, actualCode, expectedRetriesCheck)
+	assertCodeContains(t, actualCode, "err := task.DoSomething(ConfigFileFlag, RetriesFlag)")
 }
 
 func TestGenerateMain_EnumValidation(t *testing.T) {
 	cmdMeta := &metadata.CommandMetadata{
-		RunFunc: metadata.Func{Name: "SetMode", PackageName: "control"},
-		Options: []metadata.Option{
-			{Name: "mode", Type: "string", Description: "Mode of operation", Enum: []string{"auto", "manual", "standby"}},
+		RunFunc: &metadata.RunFuncInfo{Name: "SetMode", PackageName: "control"},
+		Options: []*metadata.OptionMetadata{
+			// Enum -> EnumValues (as []any)
+			{Name: "mode", CliName: "mode", TypeName: "string", HelpText: "Mode of operation", EnumValues: []any{"auto", "manual", "standby"}},
 		},
 	}
 
-	actualCode, err := codegen.GenerateMain(cmdMeta, "") // Added ""
+	actualCode, err := codegen.GenerateMain(cmdMeta, "")
 	if err != nil {
 		t.Fatalf("GenerateMain failed: %v", err)
 	}
-	normalizedActualCode := normalizeCode(t, actualCode)
 
 	expectedEnumValidation := `
 	isValidChoice_ModeFlag := false
@@ -185,25 +207,24 @@ func TestGenerateMain_EnumValidation(t *testing.T) {
 		log.Fatalf("Invalid value for -mode: %s. Allowed choices are: %s", ModeFlag, strings.Join(allowedChoices_ModeFlag, ", "))
 	}
 `
-	assertCodeContains(t, normalizedActualCode, expectedEnumValidation)
-	assertCodeContains(t, normalizedActualCode, "err := control.SetMode(ModeFlag)")
+	assertCodeContains(t, actualCode, expectedEnumValidation)
+	assertCodeContains(t, actualCode, "err := control.SetMode(ModeFlag)")
 }
 
 func TestGenerateMain_EnvironmentVariables(t *testing.T) {
 	cmdMeta := &metadata.CommandMetadata{
-		RunFunc: metadata.Func{Name: "Configure", PackageName: "setup"},
-		Options: []metadata.Option{
-			{Name: "apiKey", Type: "string", Description: "API Key", Envvar: "API_KEY"}, 
-			{Name: "timeout", Type: "int", Description: "Timeout in seconds", Default: "60", Envvar: "TIMEOUT_SECONDS"},
-			{Name: "enableFeature", Type: "bool", Description: "Enable new feature", Default: "false", Envvar: "ENABLE_MY_FEATURE"},
+		RunFunc: &metadata.RunFuncInfo{Name: "Configure", PackageName: "setup"},
+		Options: []*metadata.OptionMetadata{
+			{Name: "apiKey", CliName: "apiKey", TypeName: "string", HelpText: "API Key", EnvVar: "API_KEY"}, // Envvar -> EnvVar
+			{Name: "timeout", CliName: "timeout", TypeName: "int", HelpText: "Timeout in seconds", DefaultValue: 60, EnvVar: "TIMEOUT_SECONDS"},
+			{Name: "enableFeature", CliName: "enableFeature", TypeName: "bool", HelpText: "Enable new feature", DefaultValue: false, EnvVar: "ENABLE_MY_FEATURE"},
 		},
 	}
 
-	actualCode, err := codegen.GenerateMain(cmdMeta, "") // Added ""
+	actualCode, err := codegen.GenerateMain(cmdMeta, "")
 	if err != nil {
 		t.Fatalf("GenerateMain failed: %v", err)
 	}
-	normalizedActualCode := normalizeCode(t, actualCode)
 
 	expectedApiKeyEnv := `
 	if val, ok := os.LookupEnv("API_KEY"); ok {
@@ -212,7 +233,7 @@ func TestGenerateMain_EnvironmentVariables(t *testing.T) {
 		}
 	}
 `
-	assertCodeContains(t, normalizedActualCode, expectedApiKeyEnv)
+	assertCodeContains(t, actualCode, expectedApiKeyEnv)
 
 	expectedTimeoutEnv := `
 	if val, ok := os.LookupEnv("TIMEOUT_SECONDS"); ok {
@@ -225,7 +246,7 @@ func TestGenerateMain_EnvironmentVariables(t *testing.T) {
 		}
 	}
 `
-	assertCodeContains(t, normalizedActualCode, expectedTimeoutEnv)
+	assertCodeContains(t, actualCode, expectedTimeoutEnv)
 
 	expectedEnableFeatureEnv := `
 	if val, ok := os.LookupEnv("ENABLE_MY_FEATURE"); ok {
@@ -238,141 +259,111 @@ func TestGenerateMain_EnvironmentVariables(t *testing.T) {
 		}
 	}
 `
-	assertCodeContains(t, normalizedActualCode, expectedEnableFeatureEnv)
-	assertCodeContains(t, normalizedActualCode, `import ("strconv")`)
-	assertCodeContains(t, normalizedActualCode, "err := setup.Configure(ApiKeyFlag, TimeoutFlag, EnableFeatureFlag)")
+	assertCodeContains(t, actualCode, expectedEnableFeatureEnv)
+	assertCodeContains(t, actualCode, `"strconv"`)
+	assertCodeContains(t, actualCode, "err := setup.Configure(ApiKeyFlag, TimeoutFlag, EnableFeatureFlag)")
 }
 
 
 func TestGenerateMain_RunFuncInvocation(t *testing.T) {
-	// Case 1: No options
 	cmdMetaNoOpts := &metadata.CommandMetadata{
-		RunFunc: metadata.Func{Name: "Execute", PackageName: "action"},
+		RunFunc: &metadata.RunFuncInfo{Name: "Execute", PackageName: "action"},
 	}
-	actualCodeNoOpts, err := codegen.GenerateMain(cmdMetaNoOpts, "") // Already correct from previous partial apply
+	actualCodeNoOpts, err := codegen.GenerateMain(cmdMetaNoOpts, "")
 	if err != nil {
 		t.Fatalf("GenerateMain (no opts) failed: %v", err)
 	}
-	normalizedActualCodeNoOpts := normalizeCode(t, actualCodeNoOpts)
-	assertCodeContains(t, normalizedActualCodeNoOpts, "err := action.Execute()")
+	assertCodeContains(t, actualCodeNoOpts, "err := action.Execute()")
 
-	// Case 2: With options
 	cmdMetaWithOptions := &metadata.CommandMetadata{
-		RunFunc: metadata.Func{Name: "Process", PackageName: "dataflow"},
-		Options: []metadata.Option{
-			{Name: "input", Type: "string"},
-			{Name: "level", Type: "int"},
+		RunFunc: &metadata.RunFuncInfo{Name: "Process", PackageName: "dataflow"},
+		Options: []*metadata.OptionMetadata{
+			{Name: "input", CliName: "input", TypeName: "string", HelpText: ""}, // Added CliName, HelpText for consistency
+			{Name: "level", CliName: "level", TypeName: "int", HelpText: ""},    // Added CliName, HelpText
 		},
 	}
-	actualCodeWithOptions, err := codegen.GenerateMain(cmdMetaWithOptions, "") // Already correct
+	actualCodeWithOptions, err := codegen.GenerateMain(cmdMetaWithOptions, "")
 	if err != nil {
 		t.Fatalf("GenerateMain (with opts) failed: %v", err)
 	}
-	normalizedActualCodeWithOptions := normalizeCode(t, actualCodeWithOptions)
-	assertCodeContains(t, normalizedActualCodeWithOptions, "err := dataflow.Process(InputFlag, LevelFlag)")
+	assertCodeContains(t, actualCodeWithOptions, "err := dataflow.Process(InputFlag, LevelFlag)")
 }
 
 func TestGenerateMain_ErrorHandling(t *testing.T) {
 	cmdMeta := &metadata.CommandMetadata{
-		RunFunc: metadata.Func{Name: "DefaultRun", PackageName: "pkg"},
+		RunFunc: &metadata.RunFuncInfo{Name: "DefaultRun", PackageName: "pkg"},
 	}
-	actualCode, err := codegen.GenerateMain(cmdMeta, "") // Already correct
+	actualCode, err := codegen.GenerateMain(cmdMeta, "")
 	if err != nil {
 		t.Fatalf("GenerateMain failed: %v", err)
 	}
-	normalizedActualCode := normalizeCode(t, actualCode)
-
 	expectedErrorHandling := `
 	if err != nil {
 		log.Fatal(err)
 	}
 `
-	assertCodeContains(t, normalizedActualCode, expectedErrorHandling)
+	assertCodeContains(t, actualCode, expectedErrorHandling)
 }
 
 func TestGenerateMain_Imports(t *testing.T) {
 	cmdMetaNoStrconv := &metadata.CommandMetadata{
-		RunFunc: metadata.Func{
+		RunFunc: &metadata.RunFuncInfo{
 			Name:        "MyFunc",
-			PackageName: "custompkg",
-			Imports:     []string{"github.com/custom/lib1", "github.com/another/lib2"},
+			PackageName: "custompkg", // This will be imported
 		},
-		Options: []metadata.Option{
-			{Name: "name", Type: "string", Envvar: "APP_NAME"}, 
+		Options: []*metadata.OptionMetadata{ // EnvVar without int/bool type, so no strconv needed
+			{Name: "name", CliName: "name", TypeName: "string", EnvVar: "APP_NAME", HelpText: "app name"},
 		},
 	}
 
-	actualCodeNoStrconv, err := codegen.GenerateMain(cmdMetaNoStrconv, "") // Already correct
+	actualCodeNoStrconv, err := codegen.GenerateMain(cmdMetaNoStrconv, "")
 	if err != nil {
 		t.Fatalf("GenerateMain failed: %v", err)
 	}
-	normalizedCodeNoStrconv := normalizeCode(t, actualCodeNoStrconv)
 
-	standardImports := []string{`"flag"`, `"fmt"`, `"log"`, `"os"`, `"strings"`}
-	for _, imp := range standardImports {
-		assertCodeContains(t, normalizedCodeNoStrconv, imp)
+	baseImports := []string{`"flag"`, `"fmt"`, `"log"`, `"os"`, `"strings"`}
+	for _, imp := range baseImports {
+		assertCodeContains(t, actualCodeNoStrconv, imp)
 	}
-	customImports := []string{`"github.com/custom/lib1"`, `"github.com/another/lib2"`}
-	for _, imp := range customImports {
-		assertCodeContains(t, normalizedCodeNoStrconv, imp)
-	}
-	assertCodeNotContains(t, normalizedCodeNoStrconv, `"strconv"`) 
+	assertCodeContains(t, actualCodeNoStrconv, fmt.Sprintf("\"%s\"", cmdMetaNoStrconv.RunFunc.PackageName)) // Check for RunFuncPackage import (quoted name)
+	assertCodeNotContains(t, actualCodeNoStrconv, `"strconv"`)                                             // Should not contain strconv
 
 	cmdMetaWithStrconv := &metadata.CommandMetadata{
-		RunFunc: metadata.Func{
+		RunFunc: &metadata.RunFuncInfo{
 			Name:        "MyOtherFunc",
 			PackageName: "custompkg",
-			Imports:     []string{"github.com/custom/lib1"}, 
 		},
-		Options: []metadata.Option{
-			{Name: "port", Type: "int", Envvar: "APP_PORT"}, 
+		Options: []*metadata.OptionMetadata{ // EnvVar with int type, so strconv IS needed
+			{Name: "port", CliName: "port", TypeName: "int", EnvVar: "APP_PORT", HelpText: "app port"},
 		},
 	}
-	actualCodeWithStrconv, err := codegen.GenerateMain(cmdMetaWithStrconv, "") // Already correct
+	actualCodeWithStrconv, err := codegen.GenerateMain(cmdMetaWithStrconv, "")
 	if err != nil {
 		t.Fatalf("GenerateMain failed: %v", err)
 	}
-	normalizedCodeWithStrconv := normalizeCode(t, actualCodeWithStrconv)
-	assertCodeContains(t, normalizedCodeWithStrconv, `"strconv"`) 
-
-	cmdMetaWithUserStrconv := &metadata.CommandMetadata{
-		RunFunc: metadata.Func{
-			Name:        "MyOtherFunc",
-			PackageName: "custompkg",
-			Imports:     []string{"github.com/custom/lib1", "strconv"}, 
-		},
-		Options: []metadata.Option{
-			{Name: "port", Type: "int", Envvar: "APP_PORT"}, 
-		},
-	}
-	actualCodeWithUserStrconv, err := codegen.GenerateMain(cmdMetaWithUserStrconv, "") // Already correct
-	if err != nil {
-		t.Fatalf("GenerateMain failed: %v", err)
-	}
-	normalizedCodeWithUserStrconv := normalizeCode(t, actualCodeWithUserStrconv)
-	assertCodeContains(t, normalizedCodeWithUserStrconv, `"strconv"`)
+	assertCodeContains(t, actualCodeWithStrconv, `"strconv"`)                                               // Should contain strconv
+	assertCodeContains(t, actualCodeWithStrconv, fmt.Sprintf("\"%s\"", cmdMetaWithStrconv.RunFunc.PackageName)) // Check for RunFuncPackage import (quoted name)
 }
 
 
 func TestGenerateMain_RequiredIntWithEnvVar(t *testing.T) {
 	cmdMeta := &metadata.CommandMetadata{
-		RunFunc: metadata.Func{Name: "SubmitData", PackageName: "submitter"},
-		Options: []metadata.Option{
-			{Name: "userId", Type: "int", Description: "User ID", Required: true, Envvar: "USER_ID"}, 
+		RunFunc: &metadata.RunFuncInfo{Name: "SubmitData", PackageName: "submitter"},
+		Options: []*metadata.OptionMetadata{
+			{Name: "userId", CliName: "userId", TypeName: "int", HelpText: "User ID", IsRequired: true, EnvVar: "USER_ID", DefaultValue: 0},
 		},
 	}
 
-	actualCode, err := codegen.GenerateMain(cmdMeta, "") // Already correct
+	actualCode, err := codegen.GenerateMain(cmdMeta, "")
 	if err != nil {
 		t.Fatalf("GenerateMain failed: %v", err)
 	}
-	normalizedActualCode := normalizeCode(t, actualCode)
 
 	expectedCheck := `
 	if UserIdFlag == 0 {
 		isSet_UserId := false
 		flag.Visit(func(f *flag.Flag) {
-			if f.Name == "userId" {
+			if f.Name == "userId" { // .Name used for CLI flag name
 				isSet_UserId = true
 			}
 		})
@@ -387,36 +378,35 @@ func TestGenerateMain_RequiredIntWithEnvVar(t *testing.T) {
 		}
 	}
 `
-	assertCodeContains(t, normalizedActualCode, expectedCheck)
-	assertCodeContains(t, normalizedActualCode, "err := submitter.SubmitData(UserIdFlag)")
-	assertCodeContains(t, normalizedActualCode, `import ("strconv")`) 
+	assertCodeContains(t, actualCode, expectedCheck)
+	assertCodeContains(t, actualCode, "err := submitter.SubmitData(UserIdFlag)")
+	assertCodeContains(t, actualCode, `"strconv"`)
 }
 
 func TestGenerateMain_StringFlagWithQuotesInDefault(t *testing.T) {
 	cmdMeta := &metadata.CommandMetadata{
-		RunFunc: metadata.Func{Name: "PrintString", PackageName: "printer"},
-		Options: []metadata.Option{
-			{Name: "greeting", Type: "string", Description: "A greeting message", Default: `hello "world"`},
+		RunFunc: &metadata.RunFuncInfo{Name: "PrintString", PackageName: "printer"},
+		Options: []*metadata.OptionMetadata{
+			{Name: "greeting", CliName: "greeting", TypeName: "string", HelpText: "A greeting message", DefaultValue: `hello "world"`},
 		},
 	}
-	actualCode, err := codegen.GenerateMain(cmdMeta, "") // Already correct
+	actualCode, err := codegen.GenerateMain(cmdMeta, "")
 	if err != nil {
 		t.Fatalf("GenerateMain failed: %v", err)
 	}
-	normalizedActualCode := normalizeCode(t, actualCode)
 
 	expectedFlagParsing := `flag.StringVar(&GreetingFlag, "greeting", "hello \"world\"", "A greeting message")`
-	assertCodeContains(t, normalizedActualCode, expectedFlagParsing)
+	assertCodeContains(t, actualCode, expectedFlagParsing)
 }
 
 func TestGenerateMain_WithHelpText(t *testing.T) {
 	cmdMeta := &metadata.CommandMetadata{
-		RunFunc: metadata.Func{
+		RunFunc: &metadata.RunFuncInfo{
 			Name:        "RunMyTool",
 			PackageName: "mytool",
 		},
-		Options: []metadata.Option{
-			{Name: "input", Type: "string", Description: "Input file"},
+		Options: []*metadata.OptionMetadata{
+			{Name: "input", CliName: "input", TypeName: "string", HelpText: "Input file"},
 		},
 	}
 	helpText := "This is my custom help message.\nUsage: mytool -input <file>"
@@ -425,13 +415,10 @@ func TestGenerateMain_WithHelpText(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GenerateMain with help text failed: %v", err)
 	}
-	normalizedActualCode := normalizeCode(t, actualCode)
 
-	// Check for the help text itself, properly quoted for the template
 	expectedHelpTextSnippet := fmt.Sprintf(`fmt.Fprintln(os.Stdout, %q)`, helpText)
-	assertCodeContains(t, normalizedActualCode, expectedHelpTextSnippet)
+	assertCodeContains(t, actualCode, expectedHelpTextSnippet)
 
-	// Check for the argument parsing logic
 	expectedArgParsingLogic := `
 	// Handle -h/--help flags
 	for _, arg := range os.Args[1:] {
@@ -441,38 +428,33 @@ func TestGenerateMain_WithHelpText(t *testing.T) {
 		}
 	}
 `
-	assertCodeContains(t, normalizedActualCode, fmt.Sprintf(expectedArgParsingLogic, helpText))
-	assertCodeContains(t, normalizedActualCode, "os.Exit(0)")
-	assertCodeContains(t, normalizedActualCode, "flag.StringVar(&InputFlag, \"input\", \"\", \"Input file\")")
-	assertCodeContains(t, normalizedActualCode, "err := mytool.RunMyTool(InputFlag)")
+	assertCodeContains(t, actualCode, fmt.Sprintf(expectedArgParsingLogic, helpText))
+	assertCodeContains(t, actualCode, "os.Exit(0)")
+	assertCodeContains(t, actualCode, `flag.StringVar(&InputFlag, "input", "", "Input file")`)
+	assertCodeContains(t, actualCode, "err := mytool.RunMyTool(InputFlag)")
 }
 
 func TestGenerateMain_WithEmptyHelpText(t *testing.T) {
 	cmdMeta := &metadata.CommandMetadata{
-		RunFunc: metadata.Func{
+		RunFunc: &metadata.RunFuncInfo{
 			Name:        "AnotherTool",
 			PackageName: "othertool",
 		},
-		Options: []metadata.Option{},
+		Options: []*metadata.OptionMetadata{},
 	}
 
-	actualCode, err := codegen.GenerateMain(cmdMeta, "") // Empty help text
+	actualCode, err := codegen.GenerateMain(cmdMeta, "")
 	if err != nil {
 		t.Fatalf("GenerateMain with empty help text failed: %v", err)
 	}
-	normalizedActualCode := normalizeCode(t, actualCode)
 
-	// Assert that the help text block is NOT present
-	// This is a bit tricky as we need a snippet that's unique to that block
-	// and wouldn't appear elsewhere. The loop and os.Args check is a good candidate.
 	unexpectedHelpLogic := `
 	// Handle -h/--help flags
 	for _, arg := range os.Args[1:] {
 `
-	assertCodeNotContains(t, normalizedActualCode, unexpectedHelpLogic)
+	assertCodeNotContains(t, actualCode, unexpectedHelpLogic)
 
-	// Ensure standard parts are still there
-	assertCodeContains(t, normalizedActualCode, "func main() {")
-	assertCodeContains(t, normalizedActualCode, "err := othertool.AnotherTool()")
-	assertCodeNotContains(t, normalizedActualCode, "os.Exit(0)") // This specific os.Exit(0) from help
+	assertCodeContains(t, actualCode, "func main() {")
+	assertCodeContains(t, actualCode, "err := othertool.AnotherTool()")
+	assertCodeNotContains(t, actualCode, "os.Exit(0)") // This specific os.Exit(0) from help
 }
