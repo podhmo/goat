@@ -6,7 +6,7 @@
 
 The core idea is to define a `run(options MyOptions) error` function and an `Options` struct in your Go program. `goat` will then parse this structure, along with special marker functions like `goat.Default()` and `goat.Enum()`, to generate the necessary CLI boilerplate (flag parsing, help messages, environment variable loading, etc.) directly into your `main()` function.
 
-This project is currently in the **early stages of development**.
+🚧This project is currently in the **early stages of development**.
 
 ## Features (Planned & In Progress)
 
