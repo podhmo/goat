@@ -3,7 +3,6 @@ package codegen
 import (
 	"bytes"
 	"fmt"
-	"go/format"
 	"strings"
 	"text/template"
 
@@ -12,7 +11,9 @@ import (
 
 // GenerateMain creates the Go code string for the new main() function
 // based on the extracted command metadata.
-func GenerateMain(cmdMeta *metadata.CommandMetadata, helpText string) (string, error) {
+// If generateFullFile is true, it returns a complete Go file content including package and imports.
+// Otherwise, it returns only the main function body.
+func GenerateMain(cmdMeta *metadata.CommandMetadata, helpText string, generateFullFile bool) (string, error) {
 	// Helper function for the template to join option names for the function call
 	templateFuncs := template.FuncMap{
 		"Title": strings.Title,
@@ -26,27 +27,6 @@ func GenerateMain(cmdMeta *metadata.CommandMetadata, helpText string) (string, e
 	}
 
 	tmpl := template.Must(template.New("main").Funcs(templateFuncs).Parse(`
-package main
-
-import (
-	"flag"
-	"fmt"
-	"log"
-	"os"
-	"strings"
-	{{if .RunFuncPackage}}
-	"{{.RunFuncPackage}}"
-	{{end}}
-	{{if .NeedsStrconv}}
-	"strconv"
-	{{end}}
-	{{range .Imports}}
-	// This .Imports is currently always empty after previous changes.
-	// Retaining for potential future use, but it won't print anything now.
-	"{{.}}"
-	{{end}}
-)
-
 func main() {
 	{{if .HasOptions}}
 	{{range .Options}}
@@ -170,40 +150,24 @@ func main() {
 }
 `))
 
-	needsStrconv := false
-	for _, opt := range cmdMeta.Options {
-		if opt.EnvVar != "" && (opt.TypeName == "int" || opt.TypeName == "bool") {
-			needsStrconv = true
-			break
-		}
-	}
 	// RunFuncInfo no longer provides Imports.
-	// The template will only include "strconv" if needsStrconv is true,
-	// and other necessary direct imports like "flag", "fmt", "log", "os".
+	// Necessary direct imports like "flag", "fmt", "log", "os", "strconv", "strings"
+	// will be added explicitly to the generated code.
 	// User-specific imports from the original run command's package must be handled
 	// by the user ensuring the run command's package itself is importable and correct.
-	var finalImports []string // Will be empty or contain only "strconv" if not via NeedsStrconv
-	if needsStrconv {
-		// This will be handled by the {{if .NeedsStrconv}} "strconv" {{end}} block in the template.
-		// We set NeedsStrconv to true, and the template handles the import.
-		// No need to add to finalImports directly here if the template handles "strconv" specifically.
-	}
 
 	data := struct {
 		RunFuncName    string
 		RunFuncPackage string
-		Options        []*metadata.OptionMetadata // Changed from []metadata.Option
+		Options        []*metadata.OptionMetadata
 		HasOptions     bool
-		Imports        []string // This will be empty, user imports not carried over
-		NeedsStrconv   bool
-		HelpText       string
+		// Imports field is removed as it was unused and imports are now static
+		HelpText string
 	}{
 		RunFuncName:    cmdMeta.RunFunc.Name,
 		RunFuncPackage: cmdMeta.RunFunc.PackageName,
-		Options:        cmdMeta.Options, // This is already []*metadata.OptionMetadata from CommandMetadata
+		Options:        cmdMeta.Options,
 		HasOptions:     len(cmdMeta.Options) > 0,
-		Imports:        finalImports, // Pass empty slice, template handles strconv
-		NeedsStrconv:   needsStrconv,
 		HelpText:       helpText,
 	}
 
@@ -212,11 +176,20 @@ func main() {
 		return "", fmt.Errorf("executing template: %w", err)
 	}
 
-	formattedCode, err := format.Source(generatedCode.Bytes())
-	if err != nil {
-		// For debugging, return the unformatted code to see the issue
-		return "", fmt.Errorf("formatting generated code: %w\nRaw generated code:\n%s", err, generatedCode.String())
+	if generateFullFile {
+		// Construct the full Go source file content
+		var sb strings.Builder
+		sb.WriteString("package main\n\n")
+		sb.WriteString("import (\n")
+		sb.WriteString("\t\"flag\"\n")
+		sb.WriteString("\t\"fmt\"\n")
+		sb.WriteString("\t\"log\"\n")
+		sb.WriteString("\t\"os\"\n")
+		sb.WriteString("\t\"strconv\"\n")
+		sb.WriteString("\t\"strings\"\n") // strings might be used by generated code for e.g. enum validation
+		sb.WriteString(")\n\n")
+		sb.WriteString(generatedCode.String())
+		return sb.String(), nil
 	}
-
-	return string(formattedCode), nil
+	return generatedCode.String(), nil
 }

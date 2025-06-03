@@ -1,10 +1,16 @@
 # goat 🐐
 
-`goat` is a Go command-line tool that works with `go generate` to automate the creation of command-line interfaces from your Go `main.go` (or other specified) files.
+`goat` is a Go command-line tool with several subcommands that work with `go generate` to automate the creation of command-line interfaces from your Go `main.go` (or other specified) files.
 
 ## Overview
 
-The core idea is to define a `run(options MyOptions) error` function and an `Options` struct in your Go program. `goat` will then parse this structure, along with special marker functions like `goat.Default()` and `goat.Enum()`, to generate the necessary CLI boilerplate (flag parsing, help messages, environment variable loading, etc.) directly into your `main()` function.
+The core idea is to define a `run(options MyOptions) error` function and an `Options` struct in your Go program. `goat`'s subcommands can then parse this structure, along with special marker functions like `goat.Default()` and `goat.Enum()`, to either generate CLI boilerplate, inspect metadata, or display help messages.
+
+The main subcommands are:
+*   `emit`: Modifies the target Go file to include CLI argument parsing and execution logic. This is the primary command for `go:generate`.
+*   `scan`: Outputs the extracted command metadata as JSON. Useful for debugging or integration with other tools.
+*   `help-message`: Prints the generated help message for the CLI to stdout.
+*   `init`: A placeholder for future functionality (e.g., scaffolding a new `goat`-compatible file).
 
 🚧This project is currently in the **early stages of development**.
 
@@ -17,9 +23,9 @@ The core idea is to define a `run(options MyOptions) error` function and an `Opt
 *   **Environment variable loading:** Reads option values from environment variables specified in struct tags (e.g., `env:"MY_VAR"`).
 *   **Required flags:** Non-pointer fields in the `Options` struct are treated as required.
 *   **AST-based:** Operates directly on the Go Abstract Syntax Tree, avoiding reflection at runtime for the generated CLI.
-*   **`go generate` integration:** Designed to be invoked via `//go:generate goat ...` comments.
+*   **`go generate` integration:** Designed to be invoked via `//go:generate goat emit ...` comments for the `emit` subcommand.
 
-## Tentative Usage
+## Usage
 
 In your `main.go`:
 
@@ -33,7 +39,7 @@ import (
 	"github.com/podhmo/goat/goat" // Import goat marker package
 )
 
-//go:generate goat -run RunApp -initializer NewAppOptions main.go
+//go:generate goat emit -run RunApp -initializer NewAppOptions main.go
 
 // AppOptions defines the command-line options for our application.
 // This application serves as a demonstration of goat's capabilities.
@@ -102,6 +108,33 @@ go build -o myapp
 ```
 
 This would (ideally) produce a CLI tool with flags derived from `AppOptions`.
+
+### Subcommands
+
+*   **`emit`**
+    *   Syntax: `goat emit [flags] <target_gofile.go>`
+    *   This is the primary command, typically used with `go generate`. It parses the target Go file, analyzes the specified run function and options initializer, and then rewrites the `main()` function in the target file to include CLI argument parsing, help message generation, and execution of your run function.
+    *   Key flags:
+        *   `-run <FunctionName>`: Specifies the name of the main function to be executed (e.g., `RunApp`). (Default: "run")
+        *   `-initializer <FunctionName>`: Specifies the name of the function that initializes the options struct (e.g., `NewAppOptions`). (Optional)
+
+*   **`scan`**
+    *   Syntax: `goat scan [flags] <target_gofile.go>`
+    *   This command parses and analyzes the target Go file (similar to `emit`) but instead of rewriting the file, it outputs the extracted command metadata as a JSON object to stdout. This can be useful for debugging or for other tools to consume.
+    *   Key flags:
+        *   `-run <FunctionName>`: (Default: "run")
+        *   `-initializer <FunctionName>`: (Optional)
+
+*   **`help-message`**
+    *   Syntax: `goat help-message [flags] <target_gofile.go>`
+    *   This command parses and analyzes the target Go file and then prints the generated help message for the CLI to stdout, based on the options struct and comments.
+    *   Key flags:
+        *   `-run <FunctionName>`: (Default: "run")
+        *   `-initializer <FunctionName>`: (Optional)
+
+*   **`init`**
+    *   Syntax: `goat init`
+    *   Currently, this command is a placeholder and will print a "TODO: init subcommand" message. Future functionality might involve scaffolding a new `goat`-compatible `main.go` file or project structure.
 
 ## Development
 

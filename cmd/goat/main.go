@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"flag"
 	"fmt"
 	"go/ast"
@@ -8,8 +9,8 @@ import (
 	"go/token"
 	"log"
 	"os"
-	"path/filepath" // Added import
-	"strings"       // Added import
+	"path/filepath"
+	"strings"
 
 	"github.com/podhmo/goat/internal/analyzer" // Ensure full path
 	"github.com/podhmo/goat/internal/codegen"
@@ -21,38 +22,129 @@ import (
 )
 
 func main() {
-	var (
-		runFuncName            string
-		optionsInitializerName string
-		targetFilename         string
-		// mainFuncName string // TODO: for specifying target main func name
-	)
-
-	flag.StringVar(&runFuncName, "run", "run", "Name of the function to be treated as the entrypoint (e.g., run(Options) error)")
-	flag.StringVar(&optionsInitializerName, "initializer", "", "Name of the function that initializes the options struct (e.g., newOptions() *Options)")
-	// TODO: add more flags for goat's configuration if needed
-
-	flag.Usage = func() {
-		fmt.Fprintf(os.Stderr, "Usage: %s [options] <target_gofile.go>\n\nOptions:\n", os.Args[0])
-		flag.PrintDefaults()
-	}
-	flag.Parse()
-
-	if flag.NArg() < 1 {
-		fmt.Fprintln(os.Stderr, "Error: Target Go file must be specified.")
-		flag.Usage()
+	if len(os.Args) < 2 {
+		// Print general usage if no subcommand is provided
+		fmt.Fprintln(os.Stderr, "Usage: goat <subcommand> [options]")
+		fmt.Fprintln(os.Stderr, "Available subcommands: init, emit, help-message, scan")
 		os.Exit(1)
 	}
-	targetFilename = flag.Arg(0)
 
-	cfg := &config.Config{
-		RunFuncName:            runFuncName,
-		OptionsInitializerName: optionsInitializerName,
-		TargetFile:             targetFilename,
-	}
+	switch os.Args[1] {
+	case "init":
+		// Handle init
+		fmt.Println("TODO: init subcommand")
+	case "emit":
+		emitCmd := flag.NewFlagSet("emit", flag.ExitOnError)
+		var (
+			runFuncName            string
+			optionsInitializerName string
+		)
+		emitCmd.StringVar(&runFuncName, "run", "run", "Name of the function to be treated as the entrypoint")
+		emitCmd.StringVar(&optionsInitializerName, "initializer", "", "Name of the function that initializes the options struct")
+		// Add usage for emitCmd
+		emitCmd.Usage = func() {
+			fmt.Fprintf(os.Stderr, "Usage: goat emit [options] <target_gofile.go>\n\nOptions:\n")
+			emitCmd.PrintDefaults()
+		}
+		emitCmd.Parse(os.Args[2:]) // Parse flags for emit
 
-	if err := runGoat(cfg); err != nil {
-		log.Fatalf("Error: %+v", err)
+		if emitCmd.NArg() < 1 {
+			fmt.Fprintln(os.Stderr, "Error: Target Go file must be specified for emit.")
+			emitCmd.Usage()
+			os.Exit(1)
+		}
+		targetFilename := emitCmd.Arg(0)
+
+		cfg := &config.Config{
+			RunFuncName:            runFuncName,
+			OptionsInitializerName: optionsInitializerName,
+			TargetFile:             targetFilename,
+		}
+		if err := runGoat(cfg); err != nil {
+			log.Fatalf("Error running goat (emit): %+v", err)
+		}
+
+	case "help-message":
+		helpMessageCmd := flag.NewFlagSet("help-message", flag.ExitOnError)
+		var (
+			runFuncName            string
+			optionsInitializerName string
+		)
+		helpMessageCmd.StringVar(&runFuncName, "run", "run", "Name of the function to be treated as the entrypoint")
+		helpMessageCmd.StringVar(&optionsInitializerName, "initializer", "", "Name of the function that initializes the options struct")
+
+		helpMessageCmd.Usage = func() {
+			fmt.Fprintf(os.Stderr, "Usage: goat help-message [options] <target_gofile.go>\n\nOptions:\n")
+			helpMessageCmd.PrintDefaults()
+		}
+		helpMessageCmd.Parse(os.Args[2:])
+
+		if helpMessageCmd.NArg() < 1 {
+			fmt.Fprintln(os.Stderr, "Error: Target Go file must be specified for help-message.")
+			helpMessageCmd.Usage()
+			os.Exit(1)
+		}
+		targetFilename := helpMessageCmd.Arg(0)
+
+		cfg := &config.Config{
+			RunFuncName:            runFuncName,
+			OptionsInitializerName: optionsInitializerName,
+			TargetFile:             targetFilename,
+		}
+
+		fset := token.NewFileSet()
+		cmdMetadata, _, err := scanMain(fset, cfg) // fileAST is not needed here
+		if err != nil {
+			log.Fatalf("Error scanning main for help-message: %+v", err)
+		}
+
+		helpMsg := help.GenerateHelp(cmdMetadata)
+		fmt.Print(helpMsg) // Print to stdout, helpMsg likely has its own trailing newline
+
+	case "scan":
+		scanCmd := flag.NewFlagSet("scan", flag.ExitOnError)
+		var (
+			runFuncName            string
+			optionsInitializerName string
+		)
+		scanCmd.StringVar(&runFuncName, "run", "run", "Name of the function to be treated as the entrypoint")
+		scanCmd.StringVar(&optionsInitializerName, "initializer", "", "Name of the function that initializes the options struct")
+
+		scanCmd.Usage = func() {
+			fmt.Fprintf(os.Stderr, "Usage: goat scan [options] <target_gofile.go>\n\nOptions:\n")
+			scanCmd.PrintDefaults()
+		}
+		scanCmd.Parse(os.Args[2:])
+
+		if scanCmd.NArg() < 1 {
+			fmt.Fprintln(os.Stderr, "Error: Target Go file must be specified for scan.")
+			scanCmd.Usage()
+			os.Exit(1)
+		}
+		targetFilename := scanCmd.Arg(0)
+
+		cfg := &config.Config{
+			RunFuncName:            runFuncName,
+			OptionsInitializerName: optionsInitializerName,
+			TargetFile:             targetFilename,
+		}
+
+		fset := token.NewFileSet()
+		cmdMetadata, _, err := scanMain(fset, cfg) // fileAST is not needed here
+		if err != nil {
+			log.Fatalf("Error scanning main for scan: %+v", err)
+		}
+
+		jsonData, err := json.MarshalIndent(cmdMetadata, "", "  ")
+		if err != nil {
+			log.Fatalf("Error marshalling metadata to JSON for scan: %+v", err)
+		}
+		fmt.Println(string(jsonData)) // Print JSON to stdout
+	default:
+		fmt.Fprintf(os.Stderr, "Error: Unknown subcommand '%s'\n", os.Args[1])
+		// Print general usage
+		fmt.Fprintln(os.Stderr, "Available subcommands: init, emit, help-message, scan")
+		os.Exit(1)
 	}
 }
 
@@ -66,7 +158,9 @@ func runGoat(cfg *config.Config) error {
 	helpMsg := help.GenerateHelp(cmdMetadata)
 
 	// 5. TODO: Generate new main.go content (Future Step)
-	newMainContent, err := codegen.GenerateMain(cmdMetadata, helpMsg)
+	// For 'emit', we only want the function body, not a full file,
+	// as it will be inserted into an existing file.
+	newMainContent, err := codegen.GenerateMain(cmdMetadata, helpMsg, false /* generateFullFile */)
 	if err != nil {
 		return fmt.Errorf("failed to generate new main.go content: %w", err)
 	}
@@ -77,7 +171,7 @@ func runGoat(cfg *config.Config) error {
 		return fmt.Errorf("failed to write modified main.go: %w", err)
 	}
 
-	log.Println("Goat: Processing finished.")
+	fmt.Fprintln(os.Stdout, "Goat: Processing finished.") // Print to stdout for test capture
 	return nil
 }
 
