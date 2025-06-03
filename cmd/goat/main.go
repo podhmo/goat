@@ -11,7 +11,7 @@ import (
 	"github.com/podhmo/goat/internal/help"
 	"github.com/podhmo/goat/internal/interpreter"
 	"github.com/podhmo/goat/internal/loader"
-	// "github.com/podhmo/goat/internal/codegen" // Future use
+	"github.com/podhmo/goat/internal/codegen" // Future use
 )
 
 func main() {
@@ -82,15 +82,12 @@ func runGoat(cfg *config.Config) error {
 
 	// 4. Generate help message
 	helpMsg := help.GenerateHelp(cmdMetadata)
-	fmt.Println("-------------------- Generated Help Message --------------------")
-	fmt.Println(helpMsg)
-	fmt.Println("----------------------------------------------------------------")
 
 	// 5. TODO: Generate new main.go content (Future Step)
-	// newMainContent, err := codegen.GenerateMain(cmdMetadata)
-	// if err != nil {
-	// 	return fmt.Errorf("failed to generate new main.go content: %w", err)
-	// }
+	newMainContent, err := codegen.GenerateMain(cmdMetadata, helpMsg)
+	if err != nil {
+		return fmt.Errorf("failed to generate new main.go content: %w", err)
+	}
 
 	// 6. TODO: Write the new content (Future Step)
 	// For now, just print the target path where it would be written or how it would be modified
