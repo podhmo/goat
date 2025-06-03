@@ -43,7 +43,6 @@ func assertCodeNotContains(t *testing.T, actualCode, unexpectedSnippet string) {
 	}
 }
 
-
 func TestGenerateMain_BasicCase(t *testing.T) {
 	cmdMeta := &metadata.CommandMetadata{
 		RunFunc: metadata.Func{
@@ -193,7 +192,7 @@ func TestGenerateMain_EnvironmentVariables(t *testing.T) {
 	cmdMeta := &metadata.CommandMetadata{
 		RunFunc: metadata.Func{Name: "Configure", PackageName: "setup"},
 		Options: []metadata.Option{
-			{Name: "apiKey", Type: "string", Description: "API Key", Envvar: "API_KEY"}, 
+			{Name: "apiKey", Type: "string", Description: "API Key", Envvar: "API_KEY"},
 			{Name: "timeout", Type: "int", Description: "Timeout in seconds", Default: "60", Envvar: "TIMEOUT_SECONDS"},
 			{Name: "enableFeature", Type: "bool", Description: "Enable new feature", Default: "false", Envvar: "ENABLE_MY_FEATURE"},
 		},
@@ -242,7 +241,6 @@ func TestGenerateMain_EnvironmentVariables(t *testing.T) {
 	assertCodeContains(t, normalizedActualCode, `import ("strconv")`)
 	assertCodeContains(t, normalizedActualCode, "err := setup.Configure(ApiKeyFlag, TimeoutFlag, EnableFeatureFlag)")
 }
-
 
 func TestGenerateMain_RunFuncInvocation(t *testing.T) {
 	// Case 1: No options
@@ -298,7 +296,7 @@ func TestGenerateMain_Imports(t *testing.T) {
 			Imports:     []string{"github.com/custom/lib1", "github.com/another/lib2"},
 		},
 		Options: []metadata.Option{
-			{Name: "name", Type: "string", Envvar: "APP_NAME"}, 
+			{Name: "name", Type: "string", Envvar: "APP_NAME"},
 		},
 	}
 
@@ -316,16 +314,16 @@ func TestGenerateMain_Imports(t *testing.T) {
 	for _, imp := range customImports {
 		assertCodeContains(t, normalizedCodeNoStrconv, imp)
 	}
-	assertCodeNotContains(t, normalizedCodeNoStrconv, `"strconv"`) 
+	assertCodeNotContains(t, normalizedCodeNoStrconv, `"strconv"`)
 
 	cmdMetaWithStrconv := &metadata.CommandMetadata{
 		RunFunc: metadata.Func{
 			Name:        "MyOtherFunc",
 			PackageName: "custompkg",
-			Imports:     []string{"github.com/custom/lib1"}, 
+			Imports:     []string{"github.com/custom/lib1"},
 		},
 		Options: []metadata.Option{
-			{Name: "port", Type: "int", Envvar: "APP_PORT"}, 
+			{Name: "port", Type: "int", Envvar: "APP_PORT"},
 		},
 	}
 	actualCodeWithStrconv, err := codegen.GenerateMain(cmdMetaWithStrconv, "") // Already correct
@@ -333,16 +331,16 @@ func TestGenerateMain_Imports(t *testing.T) {
 		t.Fatalf("GenerateMain failed: %v", err)
 	}
 	normalizedCodeWithStrconv := normalizeCode(t, actualCodeWithStrconv)
-	assertCodeContains(t, normalizedCodeWithStrconv, `"strconv"`) 
+	assertCodeContains(t, normalizedCodeWithStrconv, `"strconv"`)
 
 	cmdMetaWithUserStrconv := &metadata.CommandMetadata{
 		RunFunc: metadata.Func{
 			Name:        "MyOtherFunc",
 			PackageName: "custompkg",
-			Imports:     []string{"github.com/custom/lib1", "strconv"}, 
+			Imports:     []string{"github.com/custom/lib1", "strconv"},
 		},
 		Options: []metadata.Option{
-			{Name: "port", Type: "int", Envvar: "APP_PORT"}, 
+			{Name: "port", Type: "int", Envvar: "APP_PORT"},
 		},
 	}
 	actualCodeWithUserStrconv, err := codegen.GenerateMain(cmdMetaWithUserStrconv, "") // Already correct
@@ -353,12 +351,11 @@ func TestGenerateMain_Imports(t *testing.T) {
 	assertCodeContains(t, normalizedCodeWithUserStrconv, `"strconv"`)
 }
 
-
 func TestGenerateMain_RequiredIntWithEnvVar(t *testing.T) {
 	cmdMeta := &metadata.CommandMetadata{
 		RunFunc: metadata.Func{Name: "SubmitData", PackageName: "submitter"},
 		Options: []metadata.Option{
-			{Name: "userId", Type: "int", Description: "User ID", Required: true, Envvar: "USER_ID"}, 
+			{Name: "userId", Type: "int", Description: "User ID", Required: true, Envvar: "USER_ID"},
 		},
 	}
 
@@ -389,7 +386,7 @@ func TestGenerateMain_RequiredIntWithEnvVar(t *testing.T) {
 `
 	assertCodeContains(t, normalizedActualCode, expectedCheck)
 	assertCodeContains(t, normalizedActualCode, "err := submitter.SubmitData(UserIdFlag)")
-	assertCodeContains(t, normalizedActualCode, `import ("strconv")`) 
+	assertCodeContains(t, normalizedActualCode, `import ("strconv")`)
 }
 
 func TestGenerateMain_StringFlagWithQuotesInDefault(t *testing.T) {

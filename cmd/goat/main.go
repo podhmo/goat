@@ -7,11 +7,11 @@ import (
 	"os"
 
 	"github.com/podhmo/goat/internal/analyzer"
+	"github.com/podhmo/goat/internal/codegen" // Future use
 	"github.com/podhmo/goat/internal/config"
 	"github.com/podhmo/goat/internal/help"
 	"github.com/podhmo/goat/internal/interpreter"
 	"github.com/podhmo/goat/internal/loader"
-	"github.com/podhmo/goat/internal/codegen" // Future use
 )
 
 func main() {

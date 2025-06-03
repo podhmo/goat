@@ -195,7 +195,6 @@ func main() {
 		needsStrconv = false // User already imports it, template will handle it via {{range .Imports}}
 	}
 
-
 	data := struct {
 		RunFuncName    string
 		RunFuncPackage string
