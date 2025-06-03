@@ -3,6 +3,7 @@ package interpreter
 import (
 	"fmt"
 	"go/ast"
+	"go/token" // Added import
 	"log"
 
 	"github.com/podhmo/goat/internal/metadata"
@@ -74,23 +75,28 @@ func InterpretInitializer(
 
 		case *ast.ReturnStmt: // e.g. return &Options{ Field: goat.Default(...) }
 			if len(stmtNode.Results) == 1 {
-				if compLit, ok := stmtNode.Results[0].(*ast.CompositeLit); ok {
+				actualExpr := stmtNode.Results[0]
+				if unaryExpr, ok := actualExpr.(*ast.UnaryExpr); ok && unaryExpr.Op == token.AND {
+					actualExpr = unaryExpr.X
+				}
+
+				if compLit, ok := actualExpr.(*ast.CompositeLit); ok {
 					// Check if this composite literal is for our Options struct
 					// This requires resolving compLit.Type to optionsStructName, which can be complex.
 					// For a simpler start, assume if it's a struct literal in NewOptions, it's the one.
-					log.Printf("Found return composite literal in %s", initializerFuncName)
+					// log.Printf("Found return composite literal in %s", initializerFuncName) // Keep this if it was original and useful
 					for _, elt := range compLit.Elts {
 						if kvExpr, ok := elt.(*ast.KeyValueExpr); ok {
 							if keyIdent, ok := kvExpr.Key.(*ast.Ident); ok {
 								fieldName := keyIdent.Name
 								if optMeta, exists := optionsMap[fieldName]; exists {
-									log.Printf("Found key-value for options field in return: %s", fieldName)
+									// log.Printf("Found key-value for options field in return: %s", fieldName) // Keep this if original
 									extractMarkerInfo(kvExpr.Value, optMeta, fileAst, markerPkgImportPath)
+								}
 								}
 							}
 						}
 					}
-				}
 			}
 		}
 		return true
