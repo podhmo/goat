@@ -14,12 +14,19 @@ import (
 
 	"github.com/podhmo/goat/internal/analyzer" // Ensure full path
 	"github.com/podhmo/goat/internal/codegen"
-	"github.com/podhmo/goat/internal/config"
 	"github.com/podhmo/goat/internal/help"
 	"github.com/podhmo/goat/internal/interpreter"
 	"github.com/podhmo/goat/internal/loader" // Ensure full path
 	"github.com/podhmo/goat/internal/metadata"
 )
+
+// Config holds the configuration for the goat tool itself,
+// typically derived from its command-line arguments.
+type Config struct {
+	RunFuncName            string // Name of the target 'run' function (e.g., "run")
+	OptionsInitializerName string // Name of the options initializer function (e.g., "NewOptions")
+	TargetFile             string // Path to the target Go file to be processed
+}
 
 func main() {
 	if len(os.Args) < 2 {
@@ -55,7 +62,7 @@ func main() {
 		}
 		targetFilename := emitCmd.Arg(0)
 
-		cfg := &config.Config{
+		cfg := &Config{
 			RunFuncName:            runFuncName,
 			OptionsInitializerName: optionsInitializerName,
 			TargetFile:             targetFilename,
@@ -87,7 +94,7 @@ func main() {
 		}
 		targetFilename := helpMessageCmd.Arg(0)
 
-		cfg := &config.Config{
+		cfg := &Config{
 			RunFuncName:            runFuncName,
 			OptionsInitializerName: optionsInitializerName,
 			TargetFile:             targetFilename,
@@ -125,7 +132,7 @@ func main() {
 		}
 		targetFilename := scanCmd.Arg(0)
 
-		cfg := &config.Config{
+		cfg := &Config{
 			RunFuncName:            runFuncName,
 			OptionsInitializerName: optionsInitializerName,
 			TargetFile:             targetFilename,
@@ -152,7 +159,7 @@ func main() {
 	}
 }
 
-func runGoat(cfg *config.Config) error {
+func runGoat(cfg *Config) error {
 	fset := token.NewFileSet()
 	cmdMetadata, fileAST, err := scanMain(fset, cfg)
 	if err != nil {
@@ -179,7 +186,7 @@ func runGoat(cfg *config.Config) error {
 	return nil
 }
 
-func scanMain(fset *token.FileSet, cfg *config.Config) (*metadata.CommandMetadata, *ast.File, error) {
+func scanMain(fset *token.FileSet, cfg *Config) (*metadata.CommandMetadata, *ast.File, error) {
 	slog.Info("Goat: Analyzing file", "targetFile", cfg.TargetFile, "runFunc", cfg.RunFuncName, "optionsInitializer", cfg.OptionsInitializerName)
 
 	targetFileAst, err := loader.LoadFile(fset, cfg.TargetFile)
