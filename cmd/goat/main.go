@@ -93,7 +93,7 @@ func scanMain(fset *token.FileSet, cfg *config.Config) (*metadata.CommandMetadat
 	log.Printf("Goat: Command metadata extracted for command: %s", cmdMetadata.Name)
 
 	if cfg.OptionsInitializerName != "" && optionsStructName != "" {
-		err = interpreter.InterpretInitializer(fileAst, optionsStructName, cfg.OptionsInitializerName, cmdMetadata.Options, "github.com/podhmo/goat/goat")
+		err = interpreter.InterpretInitializer(fileAST, optionsStructName, cfg.OptionsInitializerName, cmdMetadata.Options, "github.com/podhmo/goat/goat")
 		if err != nil {
 			return nil, nil, fmt.Errorf("failed to interpret options initializer %s: %w", cfg.OptionsInitializerName, err)
 		}
