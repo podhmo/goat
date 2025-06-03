@@ -70,7 +70,7 @@ func WriteMain(
 				mainDeclStartNode = mainFuncNode.Doc
 			}
 			mainDeclStartLine := fileSet.Position(mainDeclStartNode.Pos()).Line // 1-based
-			mainDeclEndLine := fileSet.Position(mainFuncNode.Body.Rbrace).Line // 1-based
+			mainDeclEndLine := fileSet.Position(mainFuncNode.Body.Rbrace).Line  // 1-based
 
 			var builder strings.Builder
 
@@ -102,7 +102,7 @@ func WriteMain(
 					}
 				}
 			}
-			
+
 			// The call to format.Source later will ensure Go-specific formatting,
 			// including a single trailing newline if appropriate for Go files.
 			newContent = []byte(builder.String())

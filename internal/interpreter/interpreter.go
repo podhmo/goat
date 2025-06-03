@@ -93,10 +93,10 @@ func InterpretInitializer(
 									// log.Printf("Found key-value for options field in return: %s", fieldName) // Keep this if original
 									extractMarkerInfo(kvExpr.Value, optMeta, fileAst, markerPkgImportPath)
 								}
-								}
 							}
 						}
 					}
+				}
 			}
 		}
 		return true

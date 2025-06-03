@@ -73,7 +73,6 @@ func assertCodeNotContains(t *testing.T, actualGeneratedCode, unexpectedSnippet 
 	}
 }
 
-
 func TestGenerateMain_BasicCase(t *testing.T) {
 	cmdMeta := &metadata.CommandMetadata{
 		RunFunc: &metadata.RunFuncInfo{ // Changed to *RunFuncInfo
@@ -112,7 +111,7 @@ func TestGenerateMain_WithOptions(t *testing.T) {
 		Options: []*metadata.OptionMetadata{ // Changed to []*OptionMetadata
 			// Name used for Go var and CLI flag (per instruction), TypeName, HelpText, DefaultValue
 			{Name: "name", CliName: "name", TypeName: "string", HelpText: "Name of the user", DefaultValue: "guest"},
-			{Name: "age", CliName: "age", TypeName: "int", HelpText: "Age of the user", DefaultValue: 30}, // DefaultValue is int
+			{Name: "age", CliName: "age", TypeName: "int", HelpText: "Age of the user", DefaultValue: 30},                   // DefaultValue is int
 			{Name: "verbose", CliName: "verbose", TypeName: "bool", HelpText: "Enable verbose output", DefaultValue: false}, // DefaultValue is bool
 		},
 	}
@@ -145,8 +144,8 @@ func TestGenerateMain_RequiredFlags(t *testing.T) {
 	cmdMeta := &metadata.CommandMetadata{
 		RunFunc: &metadata.RunFuncInfo{Name: "DoSomething", PackageName: "task"},
 		Options: []*metadata.OptionMetadata{
-			{Name: "configFile", CliName: "configFile", TypeName: "string", HelpText: "Path to config file", IsRequired: true}, // Required -> IsRequired
-			{Name: "retries", CliName: "retries", TypeName: "int", HelpText: "Number of retries", IsRequired: true, DefaultValue: 0},      // Default -> DefaultValue (as int)
+			{Name: "configFile", CliName: "configFile", TypeName: "string", HelpText: "Path to config file", IsRequired: true},       // Required -> IsRequired
+			{Name: "retries", CliName: "retries", TypeName: "int", HelpText: "Number of retries", IsRequired: true, DefaultValue: 0}, // Default -> DefaultValue (as int)
 		},
 	}
 
@@ -264,7 +263,6 @@ func TestGenerateMain_EnvironmentVariables(t *testing.T) {
 	assertCodeContains(t, actualCode, "err := setup.Configure(ApiKeyFlag, TimeoutFlag, EnableFeatureFlag)")
 }
 
-
 func TestGenerateMain_RunFuncInvocation(t *testing.T) {
 	cmdMetaNoOpts := &metadata.CommandMetadata{
 		RunFunc: &metadata.RunFuncInfo{Name: "Execute", PackageName: "action"},
@@ -326,7 +324,7 @@ func TestGenerateMain_Imports(t *testing.T) {
 		assertCodeContains(t, actualCodeNoStrconv, imp)
 	}
 	assertCodeContains(t, actualCodeNoStrconv, fmt.Sprintf("\"%s\"", cmdMetaNoStrconv.RunFunc.PackageName)) // Check for RunFuncPackage import (quoted name)
-	assertCodeNotContains(t, actualCodeNoStrconv, `"strconv"`)                                             // Should not contain strconv
+	assertCodeNotContains(t, actualCodeNoStrconv, `"strconv"`)                                              // Should not contain strconv
 
 	cmdMetaWithStrconv := &metadata.CommandMetadata{
 		RunFunc: &metadata.RunFuncInfo{
@@ -341,10 +339,9 @@ func TestGenerateMain_Imports(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GenerateMain failed: %v", err)
 	}
-	assertCodeContains(t, actualCodeWithStrconv, `"strconv"`)                                               // Should contain strconv
+	assertCodeContains(t, actualCodeWithStrconv, `"strconv"`)                                                   // Should contain strconv
 	assertCodeContains(t, actualCodeWithStrconv, fmt.Sprintf("\"%s\"", cmdMetaWithStrconv.RunFunc.PackageName)) // Check for RunFuncPackage import (quoted name)
 }
-
 
 func TestGenerateMain_RequiredIntWithEnvVar(t *testing.T) {
 	cmdMeta := &metadata.CommandMetadata{

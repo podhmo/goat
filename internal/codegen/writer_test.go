@@ -204,7 +204,7 @@ func main() {
 	if err != nil {
 		t.Fatalf("Failed to read modified file: %v", err)
 	}
-	
+
 	normalizedModified := normalizeCode(t, string(modifiedContentBytes))
 	normalizedExpected := normalizeCode(t, expectedContentAfterWrite)
 
@@ -322,7 +322,6 @@ func AnotherFunctionAfterMain() {
 			normalizedExpected, normalizedGot)
 	}
 }
-
 
 func TestWriteMain_FileWithOtherDeclarations(t *testing.T) {
 	initialContent := `package main
@@ -445,10 +444,9 @@ func main() {
 	if err != nil {
 		t.Fatalf("Failed to read modified file: %v", err)
 	}
-	
+
 	normalizedModified := normalizeCode(t, string(modifiedContentBytes))
 	normalizedExpected := normalizeCode(t, expectedContentAfterWrite)
-
 
 	if normalizedModified != normalizedExpected {
 		t.Errorf("Content mismatch.\nExpected:\n%s\n\nGot:\n%s",
