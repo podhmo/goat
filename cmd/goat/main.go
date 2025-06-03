@@ -7,7 +7,7 @@ import (
 	"go/ast"
 	"go/build" // Added import
 	"go/token"
-	"log"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
@@ -61,7 +61,8 @@ func main() {
 			TargetFile:             targetFilename,
 		}
 		if err := runGoat(cfg); err != nil {
-			log.Fatalf("Error running goat (emit): %+v", err)
+			slog.Error("Error running goat (emit)", "error", err)
+			os.Exit(1)
 		}
 
 	case "help-message":
@@ -95,7 +96,8 @@ func main() {
 		fset := token.NewFileSet()
 		cmdMetadata, _, err := scanMain(fset, cfg) // fileAST is not needed here
 		if err != nil {
-			log.Fatalf("Error scanning main for help-message: %+v", err)
+			slog.Error("Error scanning main for help-message", "error", err)
+			os.Exit(1)
 		}
 
 		helpMsg := help.GenerateHelp(cmdMetadata)
@@ -132,12 +134,14 @@ func main() {
 		fset := token.NewFileSet()
 		cmdMetadata, _, err := scanMain(fset, cfg) // fileAST is not needed here
 		if err != nil {
-			log.Fatalf("Error scanning main for scan: %+v", err)
+			slog.Error("Error scanning main for scan", "error", err)
+			os.Exit(1)
 		}
 
 		jsonData, err := json.MarshalIndent(cmdMetadata, "", "  ")
 		if err != nil {
-			log.Fatalf("Error marshalling metadata to JSON for scan: %+v", err)
+			slog.Error("Error marshalling metadata to JSON for scan", "error", err)
+			os.Exit(1)
 		}
 		fmt.Println(string(jsonData)) // Print JSON to stdout
 	default:
@@ -176,7 +180,7 @@ func runGoat(cfg *config.Config) error {
 }
 
 func scanMain(fset *token.FileSet, cfg *config.Config) (*metadata.CommandMetadata, *ast.File, error) {
-	log.Printf("Goat: Analyzing %s with runFunc=%s, optionsInitializer=%s", cfg.TargetFile, cfg.RunFuncName, cfg.OptionsInitializerName)
+	slog.Info("Goat: Analyzing file", "targetFile", cfg.TargetFile, "runFunc", cfg.RunFuncName, "optionsInitializer", cfg.OptionsInitializerName)
 
 	targetFileAst, err := loader.LoadFile(fset, cfg.TargetFile)
 	if err != nil {
@@ -189,7 +193,7 @@ func scanMain(fset *token.FileSet, cfg *config.Config) (*metadata.CommandMetadat
 	var importPath string
 	buildPkg, err := build.ImportDir(targetDir, 0)
 	if err != nil {
-		log.Printf("Warning: go/build.ImportDir failed for %s: %v. Will attempt to use '.' as import path.", targetDir, err)
+		slog.Warn("go/build.ImportDir failed, attempting to use '.' as import path", "targetDir", targetDir, "error", err)
 		importPath = "."
 	} else {
 		importPath = buildPkg.ImportPath
@@ -198,12 +202,12 @@ func scanMain(fset *token.FileSet, cfg *config.Config) (*metadata.CommandMetadat
 		}
 	}
 	if importPath == "" {
-		log.Printf("Warning: could not determine specific import path via go/build for %s. Using '.' .", targetDir)
+		slog.Warn("Could not determine specific import path via go/build, using '.'", "targetDir", targetDir)
 		importPath = "."
 	}
 	// Ensure currentPackageName has a default if still empty
 	if strings.TrimSpace(currentPackageName) == "" {
-		log.Printf("Warning: could not determine package name for %s (AST: %s, Build: %s). Defaulting to 'main'.", cfg.TargetFile, targetFileAst.Name.Name, buildPkg.Name)
+		slog.Warn("Could not determine package name, defaulting to 'main'", "targetFile", cfg.TargetFile, "astName", targetFileAst.Name.Name, "buildPkgName", buildPkg.Name)
 		currentPackageName = "main"
 	}
 
@@ -211,7 +215,7 @@ func scanMain(fset *token.FileSet, cfg *config.Config) (*metadata.CommandMetadat
 	if err != nil {
 		// If loading package files fails, we might still proceed with targetFileAst if analysis supports single file.
 		// However, the new Analyze function expects a slice.
-		log.Printf("Warning: failed to load package files for import path '%s' (derived from %s): %v. Proceeding with only the target file.", importPath, cfg.TargetFile, err)
+		slog.Warn("Failed to load package files, proceeding with only the target file", "importPath", importPath, "targetFile", cfg.TargetFile, "error", err)
 		// Proceeding with just targetFileAst in filesForAnalysis
 	}
 
@@ -220,7 +224,7 @@ func scanMain(fset *token.FileSet, cfg *config.Config) (*metadata.CommandMetadat
 	// or if it errored but we decided to proceed, make sure we at least have the target file.
 	// if len(filesForAnalysis) == 0 { // Old logic
 	// 	if targetFileAst != nil {
-	// 		log.Printf("Warning: loader.LoadPackageFiles returned no files for import path '%s'. Proceeding with only the directly loaded target file: %s", importPath, cfg.TargetFile)
+	// 		slog.Warn("loader.LoadPackageFiles returned no files for import path, proceeding with only the directly loaded target file", "importPath", importPath, "targetFile", cfg.TargetFile)
 	// 		filesForAnalysis = []*ast.File{targetFileAst}
 	// 	} else {
 	// 		// This case should ideally be caught by the initial LoadFile failure, but as a safeguard:
@@ -258,7 +262,7 @@ func scanMain(fset *token.FileSet, cfg *config.Config) (*metadata.CommandMetadat
 	if err != nil {
 		return nil, targetFileAst, fmt.Errorf("failed to analyze AST: %w", err)
 	}
-	log.Printf("Goat: Command metadata extracted for command: %s (options struct: %s)", cmdMetadata.Name, returnedOptionsStructName)
+	slog.Info("Goat: Command metadata extracted", "commandName", cmdMetadata.Name, "optionsStruct", returnedOptionsStructName)
 
 	const goatMarkersImportPath = "github.com/podhmo/goat/goat" // Define the correct import path
 
@@ -270,9 +274,9 @@ func scanMain(fset *token.FileSet, cfg *config.Config) (*metadata.CommandMetadat
 		if err != nil {
 			return nil, targetFileAst, fmt.Errorf("failed to interpret options initializer %s: %w", cfg.OptionsInitializerName, err)
 		}
-		log.Printf("Goat: Options initializer interpreted successfully.")
+		slog.Info("Goat: Options initializer interpreted successfully.")
 	} else {
-		log.Printf("Goat: Skipping options initializer interpretation (initializer name: '%s', options struct name: '%s').", cfg.OptionsInitializerName, returnedOptionsStructName)
+		slog.Info("Goat: Skipping options initializer interpretation", "initializerName", cfg.OptionsInitializerName, "optionsStructName", returnedOptionsStructName)
 	}
 	return cmdMetadata, targetFileAst, nil
 }
