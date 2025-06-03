@@ -2,7 +2,6 @@ package main
 
 import (
 	"flag"
-	"flag"
 	"fmt"
 	"go/ast"
 	"go/build" // Added import
