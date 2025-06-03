@@ -33,7 +33,6 @@ func generateHelp(w io.Writer, cmdMeta *metadata.CommandMetadata) {
 	}
 
 	for _, opt := range cmdMeta.Options {
-		// Type indicator
 		baseType := strings.TrimPrefix(opt.TypeName, "*")
 		baseType = strings.TrimPrefix(baseType, "[]")
 		parts := strings.Split(baseType, ".")
@@ -71,7 +70,6 @@ func generateHelp(w io.Writer, cmdMeta *metadata.CommandMetadata) {
 		fmt.Fprintln(w)
 	}
 
-	// Print help option aligned
 	fmt.Fprintln(w, "")
 	helpName := "h, --help"
 	helpText := "Show this help message and exit"

@@ -18,7 +18,6 @@ import (
 )
 
 func main() {
-	// Define command-line flags for goat tool itself
 	var (
 		runFuncName            string
 		optionsInitializerName string
@@ -50,7 +49,7 @@ func main() {
 	}
 
 	if err := runGoat(cfg); err != nil {
-		log.Fatalf("Error: %+v", err) // Use %+v for more detailed error from pkg/errors
+		log.Fatalf("Error: %+v", err)
 	}
 }
 
@@ -61,7 +60,6 @@ func runGoat(cfg *config.Config) error {
 		return fmt.Errorf("failed to scan main: %w", err)
 	}
 
-	// 4. Generate help message
 	helpMsg := help.GenerateHelp(cmdMetadata)
 
 	// 5. TODO: Generate new main.go content (Future Step)
@@ -71,7 +69,6 @@ func runGoat(cfg *config.Config) error {
 	}
 
 	// 6. TODO: Write the new content (Future Step)
-	// For now, just print the target path where it would be written or how it would be modified
 	err = codegen.WriteMain(cfg.TargetFile, fset, fileAST, newMainContent, cmdMetadata.MainFuncPosition)
 	if err != nil {
 		return fmt.Errorf("failed to write modified main.go: %w", err)
@@ -84,24 +81,19 @@ func runGoat(cfg *config.Config) error {
 func scanMain(fset *token.FileSet, cfg *config.Config) (*metadata.CommandMetadata, *ast.File, error) {
 	log.Printf("Goat: Analyzing %s with runFunc=%s, optionsInitializer=%s", cfg.TargetFile, cfg.RunFuncName, cfg.OptionsInitializerName)
 
-	// 1. Load and parse the target Go file
 	fileAST, err := loader.LoadFile(fset, cfg.TargetFile)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to load target file %s: %w", cfg.TargetFile, err)
 	}
 
-	// 2. Analyze the AST to extract metadata
-	// This step identifies the main command, run function, options struct, and its fields.
 	cmdMetadata, optionsStructName, err := analyzer.Analyze(fileAST, cfg.RunFuncName)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to analyze AST: %w", err)
 	}
 	log.Printf("Goat: Command metadata extracted for command: %s", cmdMetadata.Name)
 
-	// 3. Interpret the options initializer function (e.g., newOptions)
-	// This step evaluates goat.Default() and goat.Enum() calls to populate default values and enum choices.
 	if cfg.OptionsInitializerName != "" && optionsStructName != "" {
-		err = interpreter.InterpretInitializer(fileAST, optionsStructName, cfg.OptionsInitializerName, cmdMetadata.Options, "github.com/podhmo/goat/goat") // Pass marker package path
+		err = interpreter.InterpretInitializer(fileAST, optionsStructName, cfg.OptionsInitializerName, cmdMetadata.Options, "github.com/podhmo/goat/goat")
 		if err != nil {
 			return nil, nil, fmt.Errorf("failed to interpret options initializer %s: %w", cfg.OptionsInitializerName, err)
 		}

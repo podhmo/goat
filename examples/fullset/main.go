@@ -5,7 +5,7 @@ import (
 	"log"
 	"os"
 
-	"github.com/podhmo/goat/goat" // Assuming goat markers are in this path
+	"github.com/podhmo/goat/goat"
 )
 
 //go:generate goat -run run -initializer newOptions main.go
@@ -42,10 +42,10 @@ type Options struct {
 // This function will be "interpreted" by the goat tool.
 func newOptions() *Options {
 	return &Options{
-		Name:      goat.Default("World"), // Default name
+		Name:      goat.Default("World"),
 		LogLevel:  goat.Default("info", goat.Enum([]string{"debug", "info", "warning", "error"})),
 		OutputDir: goat.Default("output"),
-		Mode:      goat.Enum([]string{"standard", "turbo", "eco"}), // Enum without explicit default
+		Mode:      goat.Enum([]string{"standard", "turbo", "eco"}),
 		// Age is optional (pointer) and has no default here.
 		// Features is a slice, will be handled by flag package (e.g. multiple --features flag or comma sep)
 		// SuperVerbose is a bool, defaults to false (zero value for bool)
@@ -78,7 +78,6 @@ func run(opts Options) error {
 		fmt.Println("Super verbose mode is ON!")
 	}
 
-	// Example of returning an error
 	if opts.Name == "ErrorTrigger" {
 		return fmt.Errorf("the name 'ErrorTrigger' is not allowed")
 	}
@@ -90,13 +89,6 @@ func run(opts Options) error {
 // For development purposes, you can have a simple main that calls your run function.
 func main() {
 	log.Println("Original main: This will be replaced by goat.")
-	// Example of how you might run it manually during development:
-	// opts := newOptions()
-	// if err := run(*opts); err != nil {
-	// 	fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-	// 	os.Exit(1)
-	// }
-	//
 	// Or, to simulate generated main slightly more closely:
 	//
 	// You would need to parse flags manually here if you want to test that aspect

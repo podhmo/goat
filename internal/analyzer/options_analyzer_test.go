@@ -1,15 +1,11 @@
 package analyzer
 
 import (
-	// "go/parser" // Already imported in run_func_analyzer_test.go, helper can be shared
-	// "go/token"
-
 	"fmt"
 	"strings"
 	"testing"
 
 	"github.com/podhmo/goat/internal/metadata"
-	// "github.com/podhmo/goat/internal/utils/astutils" // For parseTestFile helper if moved
 )
 
 func TestAnalyzeOptions_Simple(t *testing.T) {

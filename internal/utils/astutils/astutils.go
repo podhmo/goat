@@ -135,7 +135,22 @@ func EvaluateArg(arg ast.Expr) any {
 		}
 		// TODO: Could try to resolve other idents if we had a symbol table
 		log.Printf("EvaluateArg: unhandled identifier %s", v.Name)
-	// TODO: Add *ast.UnaryExpr for negative numbers (-1)
+	case *ast.UnaryExpr:
+		if v.Op == token.SUB {
+			// Handle negative numbers
+			if xVal := EvaluateArg(v.X); xVal != nil {
+				switch num := xVal.(type) {
+				case int64:
+					return -num
+				case float64:
+					return -num
+				// Add other numeric types if needed
+				default:
+					log.Printf("EvaluateArg: unhandled unary minus for type %T", xVal)
+				}
+			}
+		}
+		log.Printf("EvaluateArg: unhandled unary operator %s", v.Op)
 	// TODO: Add *ast.CompositeLit for simple slice/map literals if needed directly as default
 	default:
 		log.Printf("EvaluateArg: unhandled expression type %T", arg)
