@@ -61,7 +61,7 @@ func main() {
 			TargetFile:             targetFilename,
 		}
 		if err := runGoat(cfg); err != nil {
-			slog.Error("Error running goat (emit)", "err", err)
+			slog.Error("Error running goat (emit)", "error", err)
 			os.Exit(1)
 		}
 
@@ -96,7 +96,7 @@ func main() {
 		fset := token.NewFileSet()
 		cmdMetadata, _, err := scanMain(fset, cfg) // fileAST is not needed here
 		if err != nil {
-			slog.Error("Error scanning main for help-message", "err", err)
+			slog.Error("Error scanning main for help-message", "error", err)
 			os.Exit(1)
 		}
 
@@ -134,13 +134,13 @@ func main() {
 		fset := token.NewFileSet()
 		cmdMetadata, _, err := scanMain(fset, cfg) // fileAST is not needed here
 		if err != nil {
-			slog.Error("Error scanning main for scan", "err", err)
+			slog.Error("Error scanning main for scan", "error", err)
 			os.Exit(1)
 		}
 
 		jsonData, err := json.MarshalIndent(cmdMetadata, "", "  ")
 		if err != nil {
-			slog.Error("Error marshalling metadata to JSON for scan", "err", err)
+			slog.Error("Error marshalling metadata to JSON for scan", "error", err)
 			os.Exit(1)
 		}
 		fmt.Println(string(jsonData)) // Print JSON to stdout
@@ -193,7 +193,7 @@ func scanMain(fset *token.FileSet, cfg *config.Config) (*metadata.CommandMetadat
 	var importPath string
 	buildPkg, err := build.ImportDir(targetDir, 0)
 	if err != nil {
-		slog.Warn("go/build.ImportDir failed, attempting to use '.' as import path", "targetDir", targetDir, "err", err)
+		slog.Warn("go/build.ImportDir failed, attempting to use '.' as import path", "targetDir", targetDir, "error", err)
 		importPath = "."
 	} else {
 		importPath = buildPkg.ImportPath
@@ -215,7 +215,7 @@ func scanMain(fset *token.FileSet, cfg *config.Config) (*metadata.CommandMetadat
 	if err != nil {
 		// If loading package files fails, we might still proceed with targetFileAst if analysis supports single file.
 		// However, the new Analyze function expects a slice.
-		slog.Warn("Failed to load package files, proceeding with only the target file", "importPath", importPath, "targetFile", cfg.TargetFile, "err", err)
+		slog.Warn("Failed to load package files, proceeding with only the target file", "importPath", importPath, "targetFile", cfg.TargetFile, "error", err)
 		// Proceeding with just targetFileAst in filesForAnalysis
 	}
 
