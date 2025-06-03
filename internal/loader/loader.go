@@ -5,7 +5,6 @@ import (
 	"go/ast"
 	"go/parser"
 	"go/build"
-	// "go/parser" // Removed duplicate
 	"go/token"
 	"os"
 	"path/filepath"
