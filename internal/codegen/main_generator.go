@@ -44,14 +44,10 @@ func main() {
 	{{end}}
 
 	{{if .HelpText}}
-	for _, arg := range os.Args[1:] {
-		if arg == "-h" || arg == "--help" {
-			fmt.Fprintln(os.Stdout, {{printf "%q" .HelpText}})
-			os.Exit(0)
-		}
+	flag.Usage = func() {
+		fmt.Fprintln(os.Stderr, {{printf "%q" .HelpText}})
 	}
 	{{end}}
-
 	flag.Parse()
 
 	{{range .Options}}

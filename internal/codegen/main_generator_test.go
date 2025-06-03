@@ -416,20 +416,20 @@ func TestGenerateMain_WithHelpText(t *testing.T) {
 		t.Fatalf("GenerateMain with help text failed: %v", err)
 	}
 
-	expectedHelpTextSnippet := fmt.Sprintf(`fmt.Fprintln(os.Stdout, %q)`, helpText)
+	expectedHelpTextSnippet := fmt.Sprintf(`
+	flag.Usage = func() {
+		fmt.Fprintln(os.Stderr, %q)
+	}`, helpText)
 	assertCodeContains(t, actualCode, expectedHelpTextSnippet)
 
-	expectedArgParsingLogic := `
-	// Handle -h/--help flags
-	for _, arg := range os.Args[1:] {
-		if arg == "-h" || arg == "--help" {
-			fmt.Fprintln(os.Stdout, %q)
-			os.Exit(0)
-		}
-	}
-`
-	assertCodeContains(t, actualCode, fmt.Sprintf(expectedArgParsingLogic, helpText))
-	assertCodeContains(t, actualCode, "os.Exit(0)")
+	oldManualHelpLogic := `for _, arg := range os.Args[1:] {
+		if arg == "-h" || arg == "--help" {`
+	assertCodeNotContains(t, actualCode, oldManualHelpLogic)
+	// The os.Exit(0) specifically tied to the manual help logic should be gone.
+	// The flag package handles exit after Usage for -h/-help.
+	// However, other os.Exit(0) might exist for other reasons, so be specific if this test needs to be stricter.
+	// For now, we assume the one in the manual help is the primary one to check for removal.
+
 	assertCodeContains(t, actualCode, `flag.StringVar(&InputFlag, "input", "", "Input file")`)
 	assertCodeContains(t, actualCode, "err := mytool.RunMyTool(InputFlag)")
 }
@@ -454,7 +454,10 @@ func TestGenerateMain_WithEmptyHelpText(t *testing.T) {
 `
 	assertCodeNotContains(t, actualCode, unexpectedHelpLogic)
 
+	unexpectedFlagUsageAssignment := `flag.Usage = func()`
+	assertCodeNotContains(t, actualCode, unexpectedFlagUsageAssignment)
+
 	assertCodeContains(t, actualCode, "func main() {")
 	assertCodeContains(t, actualCode, "err := othertool.AnotherTool()")
-	assertCodeNotContains(t, actualCode, "os.Exit(0)") // This specific os.Exit(0) from help
+	assertCodeNotContains(t, actualCode, "os.Exit(0)") // This specific os.Exit(0) from help or flag.Usage
 }
