@@ -181,12 +181,9 @@ func main() {
 		var sb strings.Builder
 		sb.WriteString("package main\n\n")
 		sb.WriteString("import (\n")
-		sb.WriteString("\t\"flag\"\n")
-		sb.WriteString("\t\"fmt\"\n")
-		sb.WriteString("\t\"log\"\n")
-		sb.WriteString("\t\"os\"\n")
-		sb.WriteString("\t\"strconv\"\n")
-		sb.WriteString("\t\"strings\"\n") // strings might be used by generated code for e.g. enum validation
+		for _, imp := range defaultImports {
+			sb.WriteString("\t\"" + imp + "\"\n")
+		}
 		sb.WriteString(")\n\n")
 		sb.WriteString(generatedCode.String())
 		return sb.String(), nil
