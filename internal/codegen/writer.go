@@ -3,10 +3,12 @@ package codegen
 import (
 	"fmt"
 	"go/ast"
-	"go/format"
+	// "go/format" // No longer directly used
 	"go/token"
 	"os"
 	"strings"
+
+	"golang.org/x/tools/imports" // Added for goimports functionality
 )
 
 // WriteMain takes the original file path, its AST, the new main function content (as string),
@@ -108,9 +110,10 @@ func WriteMain(
 		}
 	}
 
-	formattedContent, err := format.Source(newContent)
+	// Use imports.Process to format and add/remove imports
+	formattedContent, err := imports.Process(filePath, newContent, nil)
 	if err != nil {
-		return fmt.Errorf("formatting generated code for %s: %w\nOriginal newContent was:\n%s", filePath, err, string(newContent))
+		return fmt.Errorf("processing (goimports) generated code for %s: %w\nOriginal newContent was:\n%s", filePath, err, string(newContent))
 	}
 
 	err = os.WriteFile(filePath, formattedContent, 0644) // Default permissions

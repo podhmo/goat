@@ -97,7 +97,7 @@ func main() {
 		}
 
 		helpMsg := help.GenerateHelp(cmdMetadata)
-		fmt.Println(helpMsg) // Print to stdout
+		fmt.Print(helpMsg) // Print to stdout, helpMsg likely has its own trailing newline
 
 	case "scan":
 		scanCmd := flag.NewFlagSet("scan", flag.ExitOnError)
@@ -167,7 +167,7 @@ func runGoat(cfg *config.Config) error {
 		return fmt.Errorf("failed to write modified main.go: %w", err)
 	}
 
-	log.Println("Goat: Processing finished.")
+	fmt.Fprintln(os.Stdout, "Goat: Processing finished.") // Print to stdout for test capture
 	return nil
 }
 
