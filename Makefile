@@ -9,3 +9,7 @@ check:
 format:
 	goimports -w $(shell find . -name '*.go' -not -path './vendor/*' -not -path './.git/*')
 .PHONY: format
+
+test:
+	go test ./...
+.PHONY: test
