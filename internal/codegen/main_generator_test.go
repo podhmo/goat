@@ -54,7 +54,7 @@ func TestGenerateMain_BasicCase(t *testing.T) {
 		Options: []metadata.Option{},
 	}
 
-	actualCode, err := codegen.GenerateMain(cmdMeta)
+	actualCode, err := codegen.GenerateMain(cmdMeta, "") // Corrected line
 	if err != nil {
 		t.Fatalf("GenerateMain failed: %v", err)
 	}
@@ -93,7 +93,7 @@ func TestGenerateMain_WithOptions(t *testing.T) {
 		},
 	}
 
-	actualCode, err := codegen.GenerateMain(cmdMeta)
+	actualCode, err := codegen.GenerateMain(cmdMeta, "") // Added ""
 	if err != nil {
 		t.Fatalf("GenerateMain failed: %v", err)
 	}
@@ -127,7 +127,7 @@ func TestGenerateMain_RequiredFlags(t *testing.T) {
 		},
 	}
 
-	actualCode, err := codegen.GenerateMain(cmdMeta)
+	actualCode, err := codegen.GenerateMain(cmdMeta, "") // Added ""
 	if err != nil {
 		t.Fatalf("GenerateMain failed: %v", err)
 	}
@@ -166,7 +166,7 @@ func TestGenerateMain_EnumValidation(t *testing.T) {
 		},
 	}
 
-	actualCode, err := codegen.GenerateMain(cmdMeta)
+	actualCode, err := codegen.GenerateMain(cmdMeta, "") // Added ""
 	if err != nil {
 		t.Fatalf("GenerateMain failed: %v", err)
 	}
@@ -193,13 +193,13 @@ func TestGenerateMain_EnvironmentVariables(t *testing.T) {
 	cmdMeta := &metadata.CommandMetadata{
 		RunFunc: metadata.Func{Name: "Configure", PackageName: "setup"},
 		Options: []metadata.Option{
-			{Name: "apiKey", Type: "string", Description: "API Key", Envvar: "API_KEY"}, // Default is ""
+			{Name: "apiKey", Type: "string", Description: "API Key", Envvar: "API_KEY"}, 
 			{Name: "timeout", Type: "int", Description: "Timeout in seconds", Default: "60", Envvar: "TIMEOUT_SECONDS"},
 			{Name: "enableFeature", Type: "bool", Description: "Enable new feature", Default: "false", Envvar: "ENABLE_MY_FEATURE"},
 		},
 	}
 
-	actualCode, err := codegen.GenerateMain(cmdMeta)
+	actualCode, err := codegen.GenerateMain(cmdMeta, "") // Added ""
 	if err != nil {
 		t.Fatalf("GenerateMain failed: %v", err)
 	}
@@ -249,7 +249,7 @@ func TestGenerateMain_RunFuncInvocation(t *testing.T) {
 	cmdMetaNoOpts := &metadata.CommandMetadata{
 		RunFunc: metadata.Func{Name: "Execute", PackageName: "action"},
 	}
-	actualCodeNoOpts, err := codegen.GenerateMain(cmdMetaNoOpts)
+	actualCodeNoOpts, err := codegen.GenerateMain(cmdMetaNoOpts, "") // Already correct from previous partial apply
 	if err != nil {
 		t.Fatalf("GenerateMain (no opts) failed: %v", err)
 	}
@@ -264,7 +264,7 @@ func TestGenerateMain_RunFuncInvocation(t *testing.T) {
 			{Name: "level", Type: "int"},
 		},
 	}
-	actualCodeWithOptions, err := codegen.GenerateMain(cmdMetaWithOptions)
+	actualCodeWithOptions, err := codegen.GenerateMain(cmdMetaWithOptions, "") // Already correct
 	if err != nil {
 		t.Fatalf("GenerateMain (with opts) failed: %v", err)
 	}
@@ -276,7 +276,7 @@ func TestGenerateMain_ErrorHandling(t *testing.T) {
 	cmdMeta := &metadata.CommandMetadata{
 		RunFunc: metadata.Func{Name: "DefaultRun", PackageName: "pkg"},
 	}
-	actualCode, err := codegen.GenerateMain(cmdMeta)
+	actualCode, err := codegen.GenerateMain(cmdMeta, "") // Already correct
 	if err != nil {
 		t.Fatalf("GenerateMain failed: %v", err)
 	}
@@ -298,11 +298,11 @@ func TestGenerateMain_Imports(t *testing.T) {
 			Imports:     []string{"github.com/custom/lib1", "github.com/another/lib2"},
 		},
 		Options: []metadata.Option{
-			{Name: "name", Type: "string", Envvar: "APP_NAME"}, // String env var does not need strconv
+			{Name: "name", Type: "string", Envvar: "APP_NAME"}, 
 		},
 	}
 
-	actualCodeNoStrconv, err := codegen.GenerateMain(cmdMetaNoStrconv)
+	actualCodeNoStrconv, err := codegen.GenerateMain(cmdMetaNoStrconv, "") // Already correct
 	if err != nil {
 		t.Fatalf("GenerateMain failed: %v", err)
 	}
@@ -316,53 +316,41 @@ func TestGenerateMain_Imports(t *testing.T) {
 	for _, imp := range customImports {
 		assertCodeContains(t, normalizedCodeNoStrconv, imp)
 	}
-	assertCodeNotContains(t, normalizedCodeNoStrconv, `"strconv"`) // Should not be there
+	assertCodeNotContains(t, normalizedCodeNoStrconv, `"strconv"`) 
 
-	// Now with an option that needs strconv
 	cmdMetaWithStrconv := &metadata.CommandMetadata{
 		RunFunc: metadata.Func{
 			Name:        "MyOtherFunc",
 			PackageName: "custompkg",
-			Imports:     []string{"github.com/custom/lib1"}, // No strconv here
+			Imports:     []string{"github.com/custom/lib1"}, 
 		},
 		Options: []metadata.Option{
-			{Name: "port", Type: "int", Envvar: "APP_PORT"}, // Needs strconv
+			{Name: "port", Type: "int", Envvar: "APP_PORT"}, 
 		},
 	}
-	actualCodeWithStrconv, err := codegen.GenerateMain(cmdMetaWithStrconv)
+	actualCodeWithStrconv, err := codegen.GenerateMain(cmdMetaWithStrconv, "") // Already correct
 	if err != nil {
 		t.Fatalf("GenerateMain failed: %v", err)
 	}
 	normalizedCodeWithStrconv := normalizeCode(t, actualCodeWithStrconv)
-	assertCodeContains(t, normalizedCodeWithStrconv, `"strconv"`) // Should be there
+	assertCodeContains(t, normalizedCodeWithStrconv, `"strconv"`) 
 
-	// With strconv already in user imports
 	cmdMetaWithUserStrconv := &metadata.CommandMetadata{
 		RunFunc: metadata.Func{
 			Name:        "MyOtherFunc",
 			PackageName: "custompkg",
-			Imports:     []string{"github.com/custom/lib1", "strconv"}, // User imports strconv
+			Imports:     []string{"github.com/custom/lib1", "strconv"}, 
 		},
 		Options: []metadata.Option{
-			{Name: "port", Type: "int", Envvar: "APP_PORT"}, // Needs strconv
+			{Name: "port", Type: "int", Envvar: "APP_PORT"}, 
 		},
 	}
-	actualCodeWithUserStrconv, err := codegen.GenerateMain(cmdMetaWithUserStrconv)
+	actualCodeWithUserStrconv, err := codegen.GenerateMain(cmdMetaWithUserStrconv, "") // Already correct
 	if err != nil {
 		t.Fatalf("GenerateMain failed: %v", err)
 	}
 	normalizedCodeWithUserStrconv := normalizeCode(t, actualCodeWithUserStrconv)
-	// Check that "strconv" is present (it will be from user imports)
-	// and that the template doesn't add a duplicate conditional import block for it.
-	// The current template logic for {{if .NeedsStrconv}} and how data.Imports is prepared
-	// should handle this by setting NeedsStrconv to false if user already imports it.
-	// So, we just check it's there (from user) and not that the specific conditional block is absent.
 	assertCodeContains(t, normalizedCodeWithUserStrconv, `"strconv"`)
-	// A bit harder to check for absence of the *conditional* import if user already has it.
-	// The key is that `go/format` would fail or `go build` would complain about unused duplicate import names
-	// if it were `import _ "strconv"` and `import "strconv"`.
-	// Our current logic in GenerateMain is to set `NeedsStrconv` to false if user imports it.
-	// So the `{{if .NeedsStrconv}} "strconv" {{end}}` block in template won't render.
 }
 
 
@@ -370,11 +358,11 @@ func TestGenerateMain_RequiredIntWithEnvVar(t *testing.T) {
 	cmdMeta := &metadata.CommandMetadata{
 		RunFunc: metadata.Func{Name: "SubmitData", PackageName: "submitter"},
 		Options: []metadata.Option{
-			{Name: "userId", Type: "int", Description: "User ID", Required: true, Envvar: "USER_ID"}, // Default is 0
+			{Name: "userId", Type: "int", Description: "User ID", Required: true, Envvar: "USER_ID"}, 
 		},
 	}
 
-	actualCode, err := codegen.GenerateMain(cmdMeta)
+	actualCode, err := codegen.GenerateMain(cmdMeta, "") // Already correct
 	if err != nil {
 		t.Fatalf("GenerateMain failed: %v", err)
 	}
@@ -401,7 +389,7 @@ func TestGenerateMain_RequiredIntWithEnvVar(t *testing.T) {
 `
 	assertCodeContains(t, normalizedActualCode, expectedCheck)
 	assertCodeContains(t, normalizedActualCode, "err := submitter.SubmitData(UserIdFlag)")
-	assertCodeContains(t, normalizedActualCode, `import ("strconv")`) // Because of Atoi in the check
+	assertCodeContains(t, normalizedActualCode, `import ("strconv")`) 
 }
 
 func TestGenerateMain_StringFlagWithQuotesInDefault(t *testing.T) {
@@ -411,14 +399,80 @@ func TestGenerateMain_StringFlagWithQuotesInDefault(t *testing.T) {
 			{Name: "greeting", Type: "string", Description: "A greeting message", Default: `hello "world"`},
 		},
 	}
-	actualCode, err := codegen.GenerateMain(cmdMeta)
+	actualCode, err := codegen.GenerateMain(cmdMeta, "") // Already correct
 	if err != nil {
 		t.Fatalf("GenerateMain failed: %v", err)
 	}
 	normalizedActualCode := normalizeCode(t, actualCode)
 
-	// Check that the default value is correctly quoted in the generated code
-	// The template uses {{printf "%q" .Default}}
 	expectedFlagParsing := `flag.StringVar(&GreetingFlag, "greeting", "hello \"world\"", "A greeting message")`
 	assertCodeContains(t, normalizedActualCode, expectedFlagParsing)
+}
+
+func TestGenerateMain_WithHelpText(t *testing.T) {
+	cmdMeta := &metadata.CommandMetadata{
+		RunFunc: metadata.Func{
+			Name:        "RunMyTool",
+			PackageName: "mytool",
+		},
+		Options: []metadata.Option{
+			{Name: "input", Type: "string", Description: "Input file"},
+		},
+	}
+	helpText := "This is my custom help message.\nUsage: mytool -input <file>"
+
+	actualCode, err := codegen.GenerateMain(cmdMeta, helpText)
+	if err != nil {
+		t.Fatalf("GenerateMain with help text failed: %v", err)
+	}
+	normalizedActualCode := normalizeCode(t, actualCode)
+
+	// Check for the help text itself, properly quoted for the template
+	expectedHelpTextSnippet := fmt.Sprintf(`fmt.Fprintln(os.Stdout, %q)`, helpText)
+	assertCodeContains(t, normalizedActualCode, expectedHelpTextSnippet)
+
+	// Check for the argument parsing logic
+	expectedArgParsingLogic := `
+	// Handle -h/--help flags
+	for _, arg := range os.Args[1:] {
+		if arg == "-h" || arg == "--help" {
+			fmt.Fprintln(os.Stdout, %q)
+			os.Exit(0)
+		}
+	}
+`
+	assertCodeContains(t, normalizedActualCode, fmt.Sprintf(expectedArgParsingLogic, helpText))
+	assertCodeContains(t, normalizedActualCode, "os.Exit(0)")
+	assertCodeContains(t, normalizedActualCode, "flag.StringVar(&InputFlag, \"input\", \"\", \"Input file\")")
+	assertCodeContains(t, normalizedActualCode, "err := mytool.RunMyTool(InputFlag)")
+}
+
+func TestGenerateMain_WithEmptyHelpText(t *testing.T) {
+	cmdMeta := &metadata.CommandMetadata{
+		RunFunc: metadata.Func{
+			Name:        "AnotherTool",
+			PackageName: "othertool",
+		},
+		Options: []metadata.Option{},
+	}
+
+	actualCode, err := codegen.GenerateMain(cmdMeta, "") // Empty help text
+	if err != nil {
+		t.Fatalf("GenerateMain with empty help text failed: %v", err)
+	}
+	normalizedActualCode := normalizeCode(t, actualCode)
+
+	// Assert that the help text block is NOT present
+	// This is a bit tricky as we need a snippet that's unique to that block
+	// and wouldn't appear elsewhere. The loop and os.Args check is a good candidate.
+	unexpectedHelpLogic := `
+	// Handle -h/--help flags
+	for _, arg := range os.Args[1:] {
+`
+	assertCodeNotContains(t, normalizedActualCode, unexpectedHelpLogic)
+
+	// Ensure standard parts are still there
+	assertCodeContains(t, normalizedActualCode, "func main() {")
+	assertCodeContains(t, normalizedActualCode, "err := othertool.AnotherTool()")
+	assertCodeNotContains(t, normalizedActualCode, "os.Exit(0)") // This specific os.Exit(0) from help
 }

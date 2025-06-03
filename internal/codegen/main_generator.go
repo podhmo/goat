@@ -12,7 +12,7 @@ import (
 
 // GenerateMain creates the Go code string for the new main() function
 // based on the extracted command metadata.
-func GenerateMain(cmdMeta *metadata.CommandMetadata) (string, error) {
+func GenerateMain(cmdMeta *metadata.CommandMetadata, helpText string) (string, error) {
 	// Helper function for the template to join option names for the function call
 	templateFuncs := template.FuncMap{
 		"Title": strings.Title,
@@ -62,6 +62,16 @@ func main() {
 	{{else if eq .Type "bool"}}
 	flag.BoolVar(&{{Title .Name}}Flag, "{{.Name}}", {{if .Default}}{{.Default}}{{else}}false{{end}}, "{{.Description}}")
 	{{end}}
+	{{end}}
+
+	{{if .HelpText}}
+	// Handle -h/--help flags
+	for _, arg := range os.Args[1:] {
+		if arg == "-h" || arg == "--help" {
+			fmt.Fprintln(os.Stdout, {{printf "%q" .HelpText}})
+			os.Exit(0)
+		}
+	}
 	{{end}}
 
 	flag.Parse()
@@ -193,6 +203,7 @@ func main() {
 		HasOptions     bool
 		Imports        []string
 		NeedsStrconv   bool
+		HelpText       string
 	}{
 		RunFuncName:    cmdMeta.RunFunc.Name,
 		RunFuncPackage: cmdMeta.RunFunc.PackageName,
@@ -200,6 +211,7 @@ func main() {
 		HasOptions:     len(cmdMeta.Options) > 0,
 		Imports:        finalImports,
 		NeedsStrconv:   needsStrconv,
+		HelpText:       helpText,
 	}
 
 	var generatedCode bytes.Buffer
