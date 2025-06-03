@@ -95,7 +95,8 @@ func TestGenerateMain_BasicCase(t *testing.T) {
 	assertCodeContains(t, actualCode, "func main() {")
 	assertCodeContains(t, actualCode, "err := mycmd.Run()")
 	assertCodeContains(t, actualCode, "if err != nil {")
-	assertCodeContains(t, actualCode, "log.Fatal(err)")
+	assertCodeContains(t, actualCode, `slog.Error("Runtime error", "error", err)`)
+	assertCodeContains(t, actualCode, `os.Exit(1)`)
 	assertCodeNotContains(t, actualCode, "type Options struct")
 }
 
@@ -153,7 +154,8 @@ func TestGenerateMain_RequiredFlags(t *testing.T) {
 
 	expectedConfigFileCheck := `
 	if ConfigFileFlag == "" {
-		log.Fatalf("Missing required flag: -configFile")
+		slog.Error("Missing required flag", "flag", "configFile")
+		os.Exit(1)
 	}
 `
 	assertCodeContains(t, actualCode, expectedConfigFileCheck)
@@ -168,7 +170,8 @@ func TestGenerateMain_RequiredFlags(t *testing.T) {
 		})
 		envIsSource_Retries := false
 		if !isSet_Retries && !envIsSource_Retries {
-			log.Fatalf("Missing required flag: -retries")
+			slog.Error("Missing required flag", "flag", "retries")
+			os.Exit(1)
 		}
 	}
 `
@@ -200,7 +203,8 @@ func TestGenerateMain_EnumValidation(t *testing.T) {
 		}
 	}
 	if !isValidChoice_ModeFlag {
-		log.Fatalf("Invalid value for -mode: %s. Allowed choices are: %s", ModeFlag, strings.Join(allowedChoices_ModeFlag, ", "))
+		slog.Error("Invalid value for flag", "flag", "mode", "value", ModeFlag, "allowedChoices", strings.Join(allowedChoices_ModeFlag, ", "))
+		os.Exit(1)
 	}
 `
 	assertCodeContains(t, actualCode, expectedEnumValidation)
@@ -237,7 +241,7 @@ func TestGenerateMain_EnvironmentVariables(t *testing.T) {
 			if v, err := strconv.Atoi(val); err == nil {
 				TimeoutFlag = v
 			} else {
-				log.Printf("Warning: could not parse environment variable TIMEOUT_SECONDS as int: %v", err)
+				slog.Warn("Could not parse environment variable as int", "envVar", "TIMEOUT_SECONDS", "error", err)
 			}
 		}
 	}
@@ -250,7 +254,7 @@ func TestGenerateMain_EnvironmentVariables(t *testing.T) {
 			if v, err := strconv.ParseBool(val); err == nil {
 				EnableFeatureFlag = v
 			} else {
-				log.Printf("Warning: could not parse environment variable ENABLE_MY_FEATURE as bool: %v", err)
+				slog.Warn("Could not parse environment variable as bool", "envVar", "ENABLE_MY_FEATURE", "error", err)
 			}
 		}
 	}
@@ -294,7 +298,8 @@ func TestGenerateMain_ErrorHandling(t *testing.T) {
 	}
 	expectedErrorHandling := `
 	if err != nil {
-		log.Fatal(err)
+		slog.Error("Runtime error", "error", err)
+		os.Exit(1)
 	}
 `
 	assertCodeContains(t, actualCode, expectedErrorHandling)
@@ -368,7 +373,8 @@ func TestGenerateMain_RequiredIntWithEnvVar(t *testing.T) {
 			}
 		}
 		if !isSet_UserId && !envIsSource_UserId {
-			log.Fatalf("Missing required flag: -userId or environment variable USER_ID")
+			slog.Error("Missing required flag", "flag", "userId", "envVar", "USER_ID")
+			os.Exit(1)
 		}
 	}
 `

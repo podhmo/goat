@@ -72,7 +72,7 @@ func main() {
 			if v, err := strconv.Atoi(val); err == nil {
 				{{Title .Name}}Flag = v
 			} else {
-				log.Printf("Warning: could not parse environment variable {{.EnvVar}} as int: %v", err)
+				slog.Warn("Could not parse environment variable as int", "envVar", "{{.EnvVar}}", "error", err)
 			}
 		}
 		{{else if eq .TypeName "bool"}}
@@ -80,7 +80,7 @@ func main() {
 			if v, err := strconv.ParseBool(val); err == nil {
 				{{Title .Name}}Flag = v
 			} else {
-				log.Printf("Warning: could not parse environment variable {{.EnvVar}} as bool: %v", err)
+				slog.Warn("Could not parse environment variable as bool", "envVar", "{{.EnvVar}}", "error", err)
 			}
 		}
 		{{end}}
@@ -90,7 +90,8 @@ func main() {
 	{{if .IsRequired}}
 	{{if eq .TypeName "string"}}
 	if {{Title .Name}}Flag == "" {
-		log.Fatalf("Missing required flag: -{{.Name}}{{if .EnvVar}} or environment variable {{.EnvVar}}{{end}}")
+		slog.Error("Missing required flag", "flag", "{{.Name}}"{{if .EnvVar}}, "envVar", "{{.EnvVar}}"{{end}})
+		os.Exit(1)
 	}
 	{{else if eq .TypeName "int"}}
 	// This check for required int is tricky if 0 is a valid value AND the default.
@@ -112,7 +113,8 @@ func main() {
 		}
 		{{end}}
 		if !isSet_{{Title .Name}} && !envIsSource_{{Title .Name}} {
-			log.Fatalf("Missing required flag: -{{.Name}}{{if .EnvVar}} or environment variable {{.EnvVar}}{{end}}")
+			slog.Error("Missing required flag", "flag", "{{.Name}}"{{if .EnvVar}}, "envVar", "{{.EnvVar}}"{{end}})
+			os.Exit(1)
 		}
 	}
 	{{else if eq .TypeName "bool"}}
@@ -133,7 +135,8 @@ func main() {
 		}
 	}
 	if !isValidChoice_{{Title .Name}}Flag {
-		log.Fatalf("Invalid value for -{{.Name}}: %s. Allowed choices are: %s", {{Title .Name}}Flag, strings.Join(allowedChoices_{{Title .Name}}Flag, ", "))
+		slog.Error("Invalid value for flag", "flag", "{{.Name}}", "value", {{Title .Name}}Flag, "allowedChoices", strings.Join(allowedChoices_{{Title .Name}}Flag, ", "))
+		os.Exit(1)
 	}
 	{{end}}
 	{{end}}
@@ -145,13 +148,14 @@ func main() {
 	err := {{.RunFuncPackage}}.{{.RunFuncName}}()
 	{{end}}
 	if err != nil {
-		log.Fatal(err)
+		slog.Error("Runtime error", "error", err)
+		os.Exit(1)
 	}
 }
 `))
 
 	// RunFuncInfo no longer provides Imports.
-	// Necessary direct imports like "flag", "fmt", "log", "os", "strconv", "strings"
+	// Necessary direct imports like "flag", "fmt", "log/slog", "os", "strconv", "strings"
 	// will be added explicitly to the generated code.
 	// User-specific imports from the original run command's package must be handled
 	// by the user ensuring the run command's package itself is importable and correct.
@@ -183,7 +187,7 @@ func main() {
 		sb.WriteString("import (\n")
 		sb.WriteString("\t\"flag\"\n")
 		sb.WriteString("\t\"fmt\"\n")
-		sb.WriteString("\t\"log\"\n")
+		sb.WriteString("\t\"log/slog\"\n")
 		sb.WriteString("\t\"os\"\n")
 		sb.WriteString("\t\"strconv\"\n")
 		sb.WriteString("\t\"strings\"\n") // strings might be used by generated code for e.g. enum validation
