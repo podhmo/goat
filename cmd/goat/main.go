@@ -20,9 +20,9 @@ import (
 	"github.com/podhmo/goat/internal/metadata"
 )
 
-// Config holds the configuration for the goat tool itself,
+// Options holds the configuration for the goat tool itself,
 // typically derived from its command-line arguments.
-type Config struct {
+type Options struct {
 	RunFuncName            string // Name of the target 'run' function (e.g., "run")
 	OptionsInitializerName string // Name of the options initializer function (e.g., "NewOptions")
 	TargetFile             string // Path to the target Go file to be processed
@@ -62,12 +62,12 @@ func main() {
 		}
 		targetFilename := emitCmd.Arg(0)
 
-		cfg := &Config{
+		opts := &Options{
 			RunFuncName:            runFuncName,
 			OptionsInitializerName: optionsInitializerName,
 			TargetFile:             targetFilename,
 		}
-		if err := runGoat(cfg); err != nil {
+		if err := runGoat(opts); err != nil {
 			slog.Error("Error running goat (emit)", "error", err)
 			os.Exit(1)
 		}
@@ -94,14 +94,14 @@ func main() {
 		}
 		targetFilename := helpMessageCmd.Arg(0)
 
-		cfg := &Config{
+		opts := &Options{
 			RunFuncName:            runFuncName,
 			OptionsInitializerName: optionsInitializerName,
 			TargetFile:             targetFilename,
 		}
 
 		fset := token.NewFileSet()
-		cmdMetadata, _, err := scanMain(fset, cfg) // fileAST is not needed here
+		cmdMetadata, _, err := scanMain(fset, opts) // fileAST is not needed here
 		if err != nil {
 			slog.Error("Error scanning main for help-message", "error", err)
 			os.Exit(1)
@@ -132,14 +132,14 @@ func main() {
 		}
 		targetFilename := scanCmd.Arg(0)
 
-		cfg := &Config{
+		opts := &Options{
 			RunFuncName:            runFuncName,
 			OptionsInitializerName: optionsInitializerName,
 			TargetFile:             targetFilename,
 		}
 
 		fset := token.NewFileSet()
-		cmdMetadata, _, err := scanMain(fset, cfg) // fileAST is not needed here
+		cmdMetadata, _, err := scanMain(fset, opts) // fileAST is not needed here
 		if err != nil {
 			slog.Error("Error scanning main for scan", "error", err)
 			os.Exit(1)
@@ -159,9 +159,9 @@ func main() {
 	}
 }
 
-func runGoat(cfg *Config) error {
+func runGoat(opts *Options) error {
 	fset := token.NewFileSet()
-	cmdMetadata, fileAST, err := scanMain(fset, cfg)
+	cmdMetadata, fileAST, err := scanMain(fset, opts)
 	if err != nil {
 		return fmt.Errorf("failed to scan main: %w", err)
 	}
@@ -177,7 +177,7 @@ func runGoat(cfg *Config) error {
 	}
 
 	// 6. TODO: Write the new content (Future Step)
-	err = codegen.WriteMain(cfg.TargetFile, fset, fileAST, newMainContent, cmdMetadata.MainFuncPosition)
+	err = codegen.WriteMain(opts.TargetFile, fset, fileAST, newMainContent, cmdMetadata.MainFuncPosition)
 	if err != nil {
 		return fmt.Errorf("failed to write modified main.go: %w", err)
 	}
@@ -186,17 +186,17 @@ func runGoat(cfg *Config) error {
 	return nil
 }
 
-func scanMain(fset *token.FileSet, cfg *Config) (*metadata.CommandMetadata, *ast.File, error) {
-	slog.Info("Goat: Analyzing file", "targetFile", cfg.TargetFile, "runFunc", cfg.RunFuncName, "optionsInitializer", cfg.OptionsInitializerName)
+func scanMain(fset *token.FileSet, opts *Options) (*metadata.CommandMetadata, *ast.File, error) {
+	slog.Info("Goat: Analyzing file", "targetFile", opts.TargetFile, "runFunc", opts.RunFuncName, "optionsInitializer", opts.OptionsInitializerName)
 
-	targetFileAst, err := loader.LoadFile(fset, cfg.TargetFile)
+	targetFileAst, err := loader.LoadFile(fset, opts.TargetFile)
 	if err != nil {
 		// Still return nil for *ast.File if targetFileAst itself failed to load
-		return nil, nil, fmt.Errorf("failed to load target file %s: %w", cfg.TargetFile, err)
+		return nil, nil, fmt.Errorf("failed to load target file %s: %w", opts.TargetFile, err)
 	}
 	currentPackageName := targetFileAst.Name.Name
 
-	targetDir := filepath.Dir(cfg.TargetFile)
+	targetDir := filepath.Dir(opts.TargetFile)
 	var importPath string
 	buildPkg, err := build.ImportDir(targetDir, 0)
 	if err != nil {
@@ -214,7 +214,7 @@ func scanMain(fset *token.FileSet, cfg *Config) (*metadata.CommandMetadata, *ast
 	}
 	// Ensure currentPackageName has a default if still empty
 	if strings.TrimSpace(currentPackageName) == "" {
-		slog.Warn("Could not determine package name, defaulting to 'main'", "targetFile", cfg.TargetFile, "astName", targetFileAst.Name.Name, "buildPkgName", buildPkg.Name)
+		slog.Warn("Could not determine package name, defaulting to 'main'", "targetFile", opts.TargetFile, "astName", targetFileAst.Name.Name, "buildPkgName", buildPkg.Name)
 		currentPackageName = "main"
 	}
 
@@ -222,7 +222,7 @@ func scanMain(fset *token.FileSet, cfg *Config) (*metadata.CommandMetadata, *ast
 	if err != nil {
 		// If loading package files fails, we might still proceed with targetFileAst if analysis supports single file.
 		// However, the new Analyze function expects a slice.
-		slog.Warn("Failed to load package files, proceeding with only the target file", "importPath", importPath, "targetFile", cfg.TargetFile, "error", err)
+		slog.Warn("Failed to load package files, proceeding with only the target file", "importPath", importPath, "targetFile", opts.TargetFile, "error", err)
 		// Proceeding with just targetFileAst in filesForAnalysis
 	}
 
@@ -231,11 +231,11 @@ func scanMain(fset *token.FileSet, cfg *Config) (*metadata.CommandMetadata, *ast
 	// or if it errored but we decided to proceed, make sure we at least have the target file.
 	// if len(filesForAnalysis) == 0 { // Old logic
 	// 	if targetFileAst != nil {
-	// 		slog.Warn("loader.LoadPackageFiles returned no files for import path, proceeding with only the directly loaded target file", "importPath", importPath, "targetFile", cfg.TargetFile)
+	// 		slog.Warn("loader.LoadPackageFiles returned no files for import path, proceeding with only the directly loaded target file", "importPath", importPath, "targetFile", opts.TargetFile)
 	// 		filesForAnalysis = []*ast.File{targetFileAst}
 	// 	} else {
 	// 		// This case should ideally be caught by the initial LoadFile failure, but as a safeguard:
-	// 		return nil, nil, fmt.Errorf("no Go files found for package (import path %s) and target file %s also failed to load or was nil", importPath, cfg.TargetFile)
+	// 		return nil, nil, fmt.Errorf("no Go files found for package (import path %s) and target file %s also failed to load or was nil", importPath, opts.TargetFile)
 	// 	}
 	// }
 
@@ -246,7 +246,7 @@ func scanMain(fset *token.FileSet, cfg *Config) (*metadata.CommandMetadata, *ast
 		seenFilePaths[fset.File(targetFileAst.Pos()).Name()] = true
 	} else {
 		// Fallback if position is not available, though unlikely for a loaded AST
-		seenFilePaths[cfg.TargetFile] = true
+		seenFilePaths[opts.TargetFile] = true
 	}
 
 	for _, f := range packageFiles {
@@ -260,12 +260,12 @@ func scanMain(fset *token.FileSet, cfg *Config) (*metadata.CommandMetadata, *ast
 		}
 	}
 	if len(finalFilesForAnalysis) == 0 && targetFileAst == nil { // Should be caught by LoadFile earlier
-		return nil, nil, fmt.Errorf("no Go files could be prepared for analysis, target file %s failed to load", cfg.TargetFile)
+		return nil, nil, fmt.Errorf("no Go files could be prepared for analysis, target file %s failed to load", opts.TargetFile)
 	}
 
 
 	// The optionsStructName returned by Analyze needs to be captured.
-	cmdMetadata, returnedOptionsStructName, err := analyzer.Analyze(fset, finalFilesForAnalysis, cfg.RunFuncName, currentPackageName)
+	cmdMetadata, returnedOptionsStructName, err := analyzer.Analyze(fset, finalFilesForAnalysis, opts.RunFuncName, currentPackageName)
 	if err != nil {
 		return nil, targetFileAst, fmt.Errorf("failed to analyze AST: %w", err)
 	}
@@ -273,17 +273,17 @@ func scanMain(fset *token.FileSet, cfg *Config) (*metadata.CommandMetadata, *ast
 
 	const goatMarkersImportPath = "github.com/podhmo/goat/goat" // Define the correct import path
 
-	if cfg.OptionsInitializerName != "" && returnedOptionsStructName != "" {
+	if opts.OptionsInitializerName != "" && returnedOptionsStructName != "" {
 		// InterpretInitializer might need to look into multiple files if the initializer is not in the main target file.
 		// For now, it's passed targetFileAst, which might need adjustment if initializers can be in other package files.
 		// The currentPackageName is now more accurately determined.
-		err = interpreter.InterpretInitializer(targetFileAst, returnedOptionsStructName, cfg.OptionsInitializerName, cmdMetadata.Options, goatMarkersImportPath)
+		err = interpreter.InterpretInitializer(targetFileAst, returnedOptionsStructName, opts.OptionsInitializerName, cmdMetadata.Options, goatMarkersImportPath)
 		if err != nil {
-			return nil, targetFileAst, fmt.Errorf("failed to interpret options initializer %s: %w", cfg.OptionsInitializerName, err)
+			return nil, targetFileAst, fmt.Errorf("failed to interpret options initializer %s: %w", opts.OptionsInitializerName, err)
 		}
 		slog.Info("Goat: Options initializer interpreted successfully.")
 	} else {
-		slog.Info("Goat: Skipping options initializer interpretation", "initializerName", cfg.OptionsInitializerName, "optionsStructName", returnedOptionsStructName)
+		slog.Info("Goat: Skipping options initializer interpretation", "initializerName", opts.OptionsInitializerName, "optionsStructName", returnedOptionsStructName)
 	}
 	return cmdMetadata, targetFileAst, nil
 }

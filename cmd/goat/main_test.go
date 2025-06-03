@@ -123,14 +123,14 @@ func TestHelpGenerateHelpOutput(t *testing.T) {
 		t.Fatalf("Failed to write temp file: %v", err)
 	}
 
-	cfg := &Config{
+	opts := &Options{
 		RunFuncName:            "Run",
 		OptionsInitializerName: "NewOptions",
 		TargetFile:             tmpFile,
 	}
 
 	fset := token.NewFileSet()
-	cmdMetadata, _, err := scanMain(fset, cfg)
+	cmdMetadata, _, err := scanMain(fset, opts)
 	if err != nil {
 		t.Fatalf("scanMain() error = %v", err)
 	}
