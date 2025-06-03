@@ -1,12 +1,12 @@
 package codegen
 
 import (
-	"bytes"
 	"fmt"
 	"go/ast"
 	"go/format"
 	"go/token"
 	"os"
+	"strings"
 )
 
 // WriteMain takes the original file path, its AST, the new main function content (as string),
@@ -61,7 +61,15 @@ func WriteMain(
 		} else {
 			// New line-by-line replacement logic
 			originalLines := strings.Split(string(originalContent), "\n")
-			mainDeclStartLine := fileSet.Position(mainFuncNode.Pos()).Line // 1-based
+
+			// Determine the correct start line for replacement.
+			// If the function has documentation comments, start replacement from the beginning of those comments.
+			// Otherwise, start from the 'func' keyword.
+			var mainDeclStartNode ast.Node = mainFuncNode
+			if mainFuncNode.Doc != nil && len(mainFuncNode.Doc.List) > 0 {
+				mainDeclStartNode = mainFuncNode.Doc
+			}
+			mainDeclStartLine := fileSet.Position(mainDeclStartNode.Pos()).Line // 1-based
 			mainDeclEndLine := fileSet.Position(mainFuncNode.Body.Rbrace).Line // 1-based
 
 			var builder strings.Builder

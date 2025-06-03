@@ -7,7 +7,6 @@ import (
 	"go/token"
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
 
 	"github.com/podhmo/goat/internal/codegen"
@@ -425,14 +424,18 @@ func main() {
 
 	tempFilePath := createTempFile(t, initialContent)
 	fset := token.NewFileSet()
+	var fileAst *ast.File = nil
+	var err error
 
-	// Parsing an empty string might result in a non-nil fileAst with no decls.
-	fileAst, err := parser.ParseFile(fset, tempFilePath, nil, parser.ParseComments) // Pass nil for []byte for empty
-	if err != nil {
-		t.Fatalf("Failed to parse initial (empty) content: %v", err)
+	if initialContent != "" {
+		// Parsing an empty string might result in a non-nil fileAst with no decls.
+		fileAst, err = parser.ParseFile(fset, tempFilePath, []byte(initialContent), parser.ParseComments)
+		if err != nil {
+			t.Fatalf("Failed to parse initial content: %v", err)
+		}
 	}
-
-	// mainFuncPos is nil as the file is empty
+	// If initialContent is empty, fileAst remains nil.
+	// mainFuncPos is nil as the file is empty or main is not present.
 	err = codegen.WriteMain(tempFilePath, fset, fileAst, newMainContent, nil)
 	if err != nil {
 		t.Fatalf("WriteMain failed: %v", err)
