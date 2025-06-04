@@ -26,11 +26,11 @@ func main() {
 
 	{{range .Options}}
 	{{if eq .TypeName "string"}}
-	flag.StringVar(&options.{{.Name}}, "{{ KebabCase .Name }}", {{if .DefaultValue}}{{printf "%q" .DefaultValue}}{{else}}""{{end}}, "{{.HelpText}}"{{if .DefaultValue}} /* Default: {{.DefaultValue}} */{{end}})
+	flag.StringVar(&options.{{.Name}}, "{{ KebabCase .Name }}", {{if .DefaultValue}}{{printf "%q" .DefaultValue}}{{else}}""{{end}}, "{{.HelpText}}"{{- if ne .DefaultValue nil -}}/* Default: {{.DefaultValue}} */{{- end -}})
 	{{else if eq .TypeName "int"}}
-	flag.IntVar(&options.{{.Name}}, "{{ KebabCase .Name }}", {{if .DefaultValue}}{{.DefaultValue}}{{else}}0{{end}}, "{{.HelpText}}"{{if .DefaultValue}} /* Default: {{.DefaultValue}} */{{end}})
+	flag.IntVar(&options.{{.Name}}, "{{ KebabCase .Name }}", {{if .DefaultValue}}{{.DefaultValue}}{{else}}0{{end}}, "{{.HelpText}}"{{- if ne .DefaultValue nil -}}/* Default: {{.DefaultValue}} */{{- end -}})
 	{{else if eq .TypeName "bool"}}
-	flag.BoolVar(&options.{{.Name}}, "{{ KebabCase .Name }}", {{if .DefaultValue}}{{.DefaultValue}}{{else}}false{{end}}, "{{.HelpText}}"{{if .DefaultValue}} /* Default: {{.DefaultValue}} */{{end}})
+	flag.BoolVar(&options.{{.Name}}, "{{ KebabCase .Name }}", {{if ne .DefaultValue nil}}{{.DefaultValue}}{{else}}false{{end}}, "{{.HelpText}}"{{- if ne .DefaultValue nil -}}/* Default: {{.DefaultValue}} */{{- end -}})
 	{{end}}
 	{{end}}
 	{{end}}
@@ -70,11 +70,13 @@ func main() {
 		// If the default is true, we only change if env var is explicitly "false".
 		// This avoids overriding a true default with a missing or invalid env var.
 		if defaultValForBool_{{.Name}} := {{if .DefaultValue}}{{.DefaultValue}}{{else}}false{{end}}; !defaultValForBool_{{.Name}} {
+			{{if not .DefaultValue}} // Only generate this block if DefaultValue is actually false
 			if v, err := strconv.ParseBool(val); err == nil && v { // Only set to true if default is false
 				options.{{.Name}} = true
 			} else if err != nil {
 				slog.Warn("Could not parse environment variable as bool", "envVar", "{{.EnvVar}}", "value", val, "error", err)
 			}
+			{{end}}
 		} else { // Default is true
 			if v, err := strconv.ParseBool(val); err == nil && !v { // Only set to false if default is true and env is "false"
 				options.{{.Name}} = false
