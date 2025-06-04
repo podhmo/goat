@@ -490,7 +490,7 @@ func TestGenerateMain_StringFlagWithQuotesInDefault(t *testing.T) {
 	}
 
 	assertCodeContains(t, actualCode, "var options = &PrintOpts{}")
-	expectedFlagParsing := `flag.StringVar(&options.Greeting, "greeting", "hello \"world\"", "A greeting message"/* Default: hello "world" */)`
+	expectedFlagParsing := `flag.StringVar(&options.Greeting, "greeting", "hello \"world\"", "A greeting message" /* Default: hello "world" */)`
 	assertCodeContains(t, actualCode, expectedFlagParsing)
 }
 
