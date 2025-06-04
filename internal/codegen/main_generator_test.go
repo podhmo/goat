@@ -125,9 +125,9 @@ func TestGenerateMain_WithOptions(t *testing.T) {
 	assertCodeContains(t, actualCode, "var options = &MyOptionsType{}")
 
 	expectedFlagParsing := `
-	flag.StringVar(&options.Name, "name", "guest", "Name of the user"/* Default: guest */)
-	flag.IntVar(&options.Age, "age", 30, "Age of the user"/* Default: 30 */)
-	flag.BoolVar(&options.Verbose, "verbose", false, "Enable verbose output"/* Default: false */)
+	flag.StringVar(&options.Name, "name", "guest", "Name of the user" /* Default: guest */)
+	flag.IntVar(&options.Age, "age", 30, "Age of the user" /* Default: 30 */)
+	flag.BoolVar(&options.Verbose, "verbose", false, "Enable verbose output" /* Default: false */)
 	flag.Parse()
 `
 	assertCodeContains(t, actualCode, expectedFlagParsing)
@@ -157,8 +157,8 @@ func TestGenerateMain_KebabCaseFlagNames(t *testing.T) {
 	assertCodeContains(t, actualCode, "var options = &DataProcOptions{}")
 	expectedFlagParsing := `
 	flag.StringVar(&options.InputFile, "input-file", "", "Input file path")
-	flag.StringVar(&options.OutputDirectory, "output-directory", "/tmp", "Output directory path"/* Default: /tmp */)
-	flag.IntVar(&options.MaximumRetries, "maximum-retries", 3, "Maximum number of retries"/* Default: 3 */)
+	flag.StringVar(&options.OutputDirectory, "output-directory", "/tmp", "Output directory path" /* Default: /tmp */)
+	flag.IntVar(&options.MaximumRetries, "maximum-retries", 3, "Maximum number of retries" /* Default: 3 */)
 	flag.Parse()
 `
 	assertCodeContains(t, actualCode, expectedFlagParsing)
@@ -186,8 +186,8 @@ func TestGenerateMain_RequiredFlags(t *testing.T) {
 
 	assertCodeContains(t, actualCode, "var options = &Config{}")
 	// Check flag definitions with default comments
-	assertCodeContains(t, actualCode, `flag.StringVar(&options.ConfigFile, "config-file", "", "Path to config file")`)
-	assertCodeContains(t, actualCode, `flag.IntVar(&options.Retries, "retries", 0, "Number of retries"/* Default: 0 */)`)
+	assertCodeContains(t, actualCode, `flag.StringVar(&options.ConfigFile, "config-file", "", "Path to config file")`) // No default, so no comment to worry about space
+	assertCodeContains(t, actualCode, `flag.IntVar(&options.Retries, "retries", 0, "Number of retries" /* Default: 0 */)`)
 
 	expectedConfigFileCheck := `
 	if options.ConfigFile == "" {
@@ -232,7 +232,7 @@ func TestGenerateMain_EnumValidation(t *testing.T) {
 	}
 
 	assertCodeContains(t, actualCode, "var options = &ModeOptions{}")
-	assertCodeContains(t, actualCode, `flag.StringVar(&options.Mode, "mode", "auto", "Mode of operation"/* Default: auto */)`)
+	assertCodeContains(t, actualCode, `flag.StringVar(&options.Mode, "mode", "auto", "Mode of operation" /* Default: auto */)`)
 
 	expectedEnumValidation := `
 	isValidChoice_Mode := false
@@ -275,9 +275,9 @@ func TestGenerateMain_EnvironmentVariables(t *testing.T) {
 
 	assertCodeContains(t, actualCode, "var options = &AppSettings{}")
 	// Check flag definitions with default comments
-	assertCodeContains(t, actualCode, `flag.StringVar(&options.APIKey, "api-key", "", "API Key")`)
-	assertCodeContains(t, actualCode, `flag.IntVar(&options.Timeout, "timeout", 60, "Timeout in seconds"/* Default: 60 */)`)
-	assertCodeContains(t, actualCode, `flag.BoolVar(&options.EnableFeature, "enable-feature", false, "Enable new feature"/* Default: false */)`)
+	assertCodeContains(t, actualCode, `flag.StringVar(&options.APIKey, "api-key", "", "API Key")`) // No default, no comment
+	assertCodeContains(t, actualCode, `flag.IntVar(&options.Timeout, "timeout", 60, "Timeout in seconds" /* Default: 60 */)`)
+	assertCodeContains(t, actualCode, `flag.BoolVar(&options.EnableFeature, "enable-feature", false, "Enable new feature" /* Default: false */)`)
 
 	expectedApiKeyEnv := `
 	if val, ok := os.LookupEnv("API_KEY"); ok {
@@ -342,7 +342,7 @@ func TestGenerateMain_EnvVarForBoolWithTrueDefault(t *testing.T) {
 	}
 
 	assertCodeContains(t, actualCode, "var options = &FeatureOptions{}")
-	assertCodeContains(t, actualCode, `flag.BoolVar(&options.SmartParsing, "smart-parsing", true, "Enable smart parsing"/* Default: true */)`)
+	assertCodeContains(t, actualCode, `flag.BoolVar(&options.SmartParsing, "smart-parsing", true, "Enable smart parsing" /* Default: true */)`)
 
 	// Test the specific logic for a boolean flag with a true default
 	expectedEnvLogic := `
@@ -447,7 +447,7 @@ func TestGenerateMain_RequiredIntWithEnvVar(t *testing.T) {
 	}
 
 	assertCodeContains(t, actualCode, "var options = &UserData{}")
-	assertCodeContains(t, actualCode, `flag.IntVar(&options.UserId, "user-id", 0, "User ID"/* Default: 0 */)`)
+	assertCodeContains(t, actualCode, `flag.IntVar(&options.UserId, "user-id", 0, "User ID" /* Default: 0 */)`)
 
 	expectedCheck := `
 	isSetOrFromEnv_UserId := false
