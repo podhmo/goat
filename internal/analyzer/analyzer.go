@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"go/ast"
 	"go/token" // Added import
+	"strings"  // Added import
 
 	"github.com/podhmo/goat/internal/metadata"
 )
@@ -23,6 +24,17 @@ func Analyze(fset *token.FileSet, files []*ast.File, runFuncName string, mainPac
 	}
 	if runFuncInfo != nil {
 		runFuncInfo.PackageName = mainPackageName // Set the package name here
+
+		// Populate OptionsArgTypeNameStripped and OptionsArgIsPointer
+		if runFuncInfo.OptionsArgType != "" {
+			if strings.HasPrefix(runFuncInfo.OptionsArgType, "*") {
+				runFuncInfo.OptionsArgIsPointer = true
+				runFuncInfo.OptionsArgTypeNameStripped = strings.TrimPrefix(runFuncInfo.OptionsArgType, "*")
+			} else {
+				runFuncInfo.OptionsArgIsPointer = false
+				runFuncInfo.OptionsArgTypeNameStripped = runFuncInfo.OptionsArgType
+			}
+		}
 	}
 
 	cmdMeta.Name = mainPackageName // Use provided main package name
