@@ -4,7 +4,8 @@ import (
 	"fmt"
 	"go/ast"
 	"go/token" // Added import
-	"strings"  // Added import
+	"log/slog"
+	"strings" // Added import
 
 	"github.com/podhmo/goat/internal/metadata"
 )
@@ -56,12 +57,22 @@ func Analyze(fset *token.FileSet, files []*ast.File, runFuncName string, mainPac
 		return nil, "", fmt.Errorf("run function '%s' must have an options parameter, or it's not in the expected format", runFuncName)
 	}
 
-	// 3. TODO: Find the main function to get its position for future code replacement
-	// mainFuncPos, err := FindMainFuncPosition(fileAst)
-	// if err != nil {
-	//    // Optional: main func might not exist if user is building a library part
-	// }
-	// cmdMeta.MainFuncPosition = mainFuncPos
+	// Find the main function to get its position for future code replacement
+	emitTargetFuncName := "main" // TODO: Make this configurable if needed
+	for _, targetFileAst := range files {
+		funcOb := targetFileAst.Scope.Lookup(emitTargetFuncName)
+		if funcOb != nil && funcOb.Kind == ast.Fun && funcOb.Decl != nil {
+			// We found the main function, capture its position
+			if funcDecl, ok := funcOb.Decl.(*ast.FuncDecl); ok {
+				pos := fset.Position(funcDecl.Pos())
+				cmdMeta.MainFuncPosition = &pos
+				slog.Info("Goat: Found main function", "name", emitTargetFuncName, "position", cmdMeta.MainFuncPosition)
+			} else {
+				slog.Warn("Goat: Found main function but it is not a FuncDecl", "name", emitTargetFuncName, "type", fmt.Sprintf("%T", funcOb.Decl))
+			}
+			break
+		}
+	}
 
 	return cmdMeta, optionsStructName, nil
 }
