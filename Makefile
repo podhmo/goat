@@ -1,8 +1,13 @@
 
-check:
+examples-check:
 #	go run ./cmd/goat/ help-message examples/fullset/main.go
 	go run ./cmd/goat/ help-message examples/hello/main.go
-.PHONY: check
+.PHONY: examples-check
+
+examples-emit:
+	go run ./cmd/goat/ emit examples/hello/main.go
+	go run ./cmd/goat/ emit -initializer newOptions examples/fullset/main.go
+.PHONY: examples-emit
 
 # format the code
 # need: go install golang.org/x/tools/cmd/goimports@latest
