@@ -10,13 +10,27 @@ import (
 	"github.com/podhmo/goat/internal/utils/stringutils"
 )
 
+// formatHelpText formats the help text string for inclusion in the generated Go code.
+// If the string contains a newline, it will return the string formatted as a Go raw string literal (e.g., `string content`).
+// Otherwise, it will return the string formatted as a regular Go string literal (e.g., "string content").
+func formatHelpText(text string) string {
+	if strings.Contains(text, "\n") {
+		// For multi-line strings, use a raw string literal.
+		// The backticks themselves are part of the string returned.
+		return "`" + text + "`"
+	}
+	// For single-line strings, use a regular quoted string literal.
+	return fmt.Sprintf("%q", text)
+}
+
 // GenerateMain creates the Go code string for the new main() function
 // based on the extracted command metadata.
 // If generateFullFile is true, it returns a complete Go file content including package and imports.
 // Otherwise, it returns only the main function body.
 func GenerateMain(cmdMeta *metadata.CommandMetadata, helpText string, generateFullFile bool) (string, error) {
 	templateFuncs := template.FuncMap{
-		"KebabCase": stringutils.ToKebabCase,
+		"KebabCase":      stringutils.ToKebabCase,
+		"FormatHelpText": formatHelpText, // Add this line
 	}
 
 	tmpl := template.Must(template.New("main").Funcs(templateFuncs).Parse(`
@@ -37,7 +51,7 @@ func main() {
 
 	{{if .HelpText}}
 	flag.Usage = func() {
-		fmt.Fprintln(os.Stderr, {{printf "%q" .HelpText}})
+		fmt.Fprintln(os.Stderr, {{FormatHelpText .HelpText}})
 		flag.PrintDefaults()
 	}
 	{{end}}
