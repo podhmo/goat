@@ -514,11 +514,14 @@ func TestGenerateMain_WithHelpText(t *testing.T) {
 	}
 
 	assertCodeContains(t, actualCode, "var options = &ToolOptions{}")
-	expectedHelpTextSnippet := fmt.Sprintf(`
+	// Since helpText contains a newline, formatHelpText will use a raw string literal.
+	// The content of the raw string literal will be helpText itself.
+	// normalizeForContains used by assertCodeContains will replace the newline in the raw string with a space.
+	expectedHelpTextSnippet := `
 	flag.Usage = func() {
-		fmt.Fprintln(os.Stderr, %q)
+		fmt.Fprintln(os.Stderr, ` + "`" + helpText + "`" + `)
 		flag.PrintDefaults()
-	}`, helpText) // Note: PrintDefaults is now part of the template
+	}`
 	assertCodeContains(t, actualCode, expectedHelpTextSnippet)
 
 	oldManualHelpLogic := `for _, arg := range os.Args[1:] { if arg == "-h" || arg == "--help" {`
@@ -556,4 +559,90 @@ func TestGenerateMain_WithEmptyHelpText(t *testing.T) {
 	assertCodeContains(t, actualCode, "func main() {")
 	assertCodeContains(t, actualCode, "err = othertool.AnotherTool()")
 	// os.Exit(0) is not part of the template for empty help
+}
+
+func TestGenerateMain_HelpTextNewlineFormatting(t *testing.T) {
+	baseCmdMeta := &metadata.CommandMetadata{
+		RunFunc: &metadata.RunFuncInfo{
+			Name:                       "RunMyTool",
+			PackageName:                "mytool",
+			OptionsArgTypeNameStripped: "ToolOptions",
+			OptionsArgIsPointer:        true,
+		},
+		Options: []*metadata.OptionMetadata{}, // No options needed for this test
+	}
+
+	t.Run("WithNewlines", func(t *testing.T) {
+		helpTextWithNewlines := "This is line one.\nThis is line two."
+		// expectedSnippet := "fmt.Fprintln(os.Stderr, `This is line one.\nThis is line two.`)" // Note: raw string literal means \n is literal here
+
+		actualCode, err := codegen.GenerateMain(baseCmdMeta, helpTextWithNewlines, true)
+		if err != nil {
+			t.Fatalf("GenerateMain with help text failed: %v", err)
+		}
+
+		// We need a more precise check than assertCodeContains for the literal format.
+		// Let's normalize the actual code and then check for the exact snippet.
+		// The existing normalizeCode formats and then normalizeForContains (which strips newlines from the code itself).
+		// For this specific test, we want to ensure the raw string literal `...` is used.
+
+		// Construct the expected Usage func string carefully
+		// The template is:
+		// flag.Usage = func() {
+		// 	fmt.Fprintln(os.Stderr, {{FormatHelpText .HelpText}})
+		// 	flag.PrintDefaults()
+		// }
+		// So we expect:
+		// flag.Usage = func() {
+		// fmt.Fprintln(os.Stderr, `This is line one.
+		// This is line two.`)
+		// flag.PrintDefaults()
+		// }
+
+		// Let's use a regex or a more direct string check after gofmt.
+		formattedActualCode, err := format.Source([]byte(actualCode))
+		if err != nil {
+			t.Fatalf("Failed to format actual generated code: %v\nOriginal code:\n%s", err, actualCode)
+		}
+
+		// The raw string in Go will preserve the \n literally if that's what FormatHelpText produces.
+		// If FormatHelpText is supposed to convert \n to actual newlines inside the raw string,
+		// then expected string should be:
+		// expectedUsageFunc := "fmt.Fprintln(os.Stderr, `This is line one.\nThis is line two.`)"
+		// The plan is for FormatHelpText to return a string that IS the Go source code for the literal.
+		// So for "foo\nbar", FormatHelpText should return "`foo\\nbar`" if we want it to be a raw string containing literal \n.
+		// Or, if we want the raw string to contain an actual newline character, FormatHelpText should return "`foo\nbar`".
+		// The plan says: "it will return the string formatted as a Go raw string literal (e.g., `string content`)".
+		// This means the content should be as-is. So "foo\nbar" becomes `foo\nbar`.
+
+		expectedUsageFunc := "fmt.Fprintln(os.Stderr, `This is line one.\nThis is line two.`)"
+
+		// normalizeForContains removes newlines and collapses spaces, which is too aggressive here.
+		// We'll check for the presence of the exact string.
+		if !strings.Contains(string(formattedActualCode), expectedUsageFunc) {
+			t.Errorf("Expected generated code to contain exact snippet for multiline help text with raw string literal.\nExpected snippet:\n%s\n\nFormatted actual code:\n%s", expectedUsageFunc, string(formattedActualCode))
+		}
+	})
+
+	t.Run("WithoutNewlines", func(t *testing.T) {
+		helpTextWithoutNewlines := "This is a single line."
+		// If no newline, it should use printf "%q" style.
+		// So, for "This is a single line.", fmt.Sprintf("%q", text) would yield "\"This is a single line.\""
+		expectedFormattedText := fmt.Sprintf("%q", helpTextWithoutNewlines)
+		expectedSnippet := fmt.Sprintf("fmt.Fprintln(os.Stderr, %s)", expectedFormattedText)
+
+		actualCode, err := codegen.GenerateMain(baseCmdMeta, helpTextWithoutNewlines, true)
+		if err != nil {
+			t.Fatalf("GenerateMain with help text failed: %v", err)
+		}
+
+		formattedActualCode, err := format.Source([]byte(actualCode))
+		if err != nil {
+			t.Fatalf("Failed to format actual generated code: %v\nOriginal code:\n%s", err, actualCode)
+		}
+
+		if !strings.Contains(string(formattedActualCode), expectedSnippet) {
+			t.Errorf("Expected generated code to contain exact snippet for single line help text with quoted string literal.\nExpected snippet:\n%s\n\nFormatted actual code:\n%s", expectedSnippet, string(formattedActualCode))
+		}
+	})
 }
