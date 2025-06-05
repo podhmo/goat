@@ -18,7 +18,7 @@ func InterpretInitializer(
 	optionsStructName string,
 	initializerFuncName string,
 	options []*metadata.OptionMetadata,
-	markerPkgImportPath string, // e.g., "github.com/podhmo/goat/goat"
+	markerPkgImportPath string, // e.g., "github.com/podhmo/goat"
 ) error {
 	var initializerFunc *ast.FuncDecl
 	ast.Inspect(fileAst, func(n ast.Node) bool {

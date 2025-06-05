@@ -37,7 +37,7 @@ import (
 	"fmt"
 	"log"
 
-	"github.com/podhmo/goat/goat" // Import goat marker package
+	"github.com/podhmo/goat" // Import goat marker package
 )
 
 //go:generate goat emit -run RunApp -initializer NewAppOptions main.go

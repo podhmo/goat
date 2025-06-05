@@ -22,12 +22,12 @@ func parseTestFileForInterpreter(t *testing.T, content string) *ast.File {
 	return fileAst
 }
 
-const goatPkgImportPath = "github.com/podhmo/goat/goat"
+const goatPkgImportPath = "github.com/podhmo/goat"
 
 func TestInterpretInitializer_SimpleDefaults(t *testing.T) {
 	content := `
 package main
-import g "github.com/podhmo/goat/goat"
+import g "github.com/podhmo/goat"
 
 type Options struct {
 	Name string
@@ -77,7 +77,7 @@ func NewOpts() *Options {
 func TestInterpretInitializer_EnumAndCombined(t *testing.T) {
 	content := `
 package main
-import "github.com/podhmo/goat/goat"
+import "github.com/podhmo/goat"
 
 type Options struct {
 	Level string
@@ -124,7 +124,7 @@ func InitOptions() *Options {
 func TestInterpretInitializer_AssignmentStyle(t *testing.T) {
 	content := `
 package main
-import customgoat "github.com/podhmo/goat/goat"
+import customgoat "github.com/podhmo/goat"
 
 type Options struct {
 	Path string
@@ -165,7 +165,7 @@ func New() *Options {
 	fileAst := parseTestFileForInterpreter(t, content)
 	optionsMeta := []*metadata.OptionMetadata{{Name: "Name"}}
 
-	err := InterpretInitializer(fileAst, "Options", "New", optionsMeta, goatPkgImportPath) // goatPkgImportPath is for "github.com/podhmo/goat/goat"
+	err := InterpretInitializer(fileAst, "Options", "New", optionsMeta, goatPkgImportPath) // goatPkgImportPath is for "github.com/podhmo/goat"
 	if err != nil {
 		t.Fatalf("InterpretInitializer failed: %v", err)
 	}
@@ -201,7 +201,7 @@ func TestInterpretInitializer_FileMarkers(t *testing.T) {
 			name: "File with default path only",
 			content: `
 package main
-import g "github.com/podhmo/goat/goat"
+import g "github.com/podhmo/goat"
 type Config struct { InputFile string }
 func NewConfig() *Config { return &Config{ InputFile: g.File("/path/to/default.txt") } }`,
 			optionsName:     "Config",
@@ -215,7 +215,7 @@ func NewConfig() *Config { return &Config{ InputFile: g.File("/path/to/default.t
 			name: "File with MustExist",
 			content: `
 package main
-import g "github.com/podhmo/goat/goat"
+import g "github.com/podhmo/goat"
 type Config struct { DataFile string }
 func NewConfig() *Config { return &Config{ DataFile: g.File("data.csv", g.MustExist()) } }`,
 			optionsName:     "Config",
@@ -229,7 +229,7 @@ func NewConfig() *Config { return &Config{ DataFile: g.File("data.csv", g.MustEx
 			name: "File with GlobPattern",
 			content: `
 package main
-import g "github.com/podhmo/goat/goat"
+import g "github.com/podhmo/goat"
 type Config struct { Pattern string }
 func NewConfig() *Config { return &Config{ Pattern: g.File("*.json", g.GlobPattern()) } }`,
 			optionsName:     "Config",
@@ -243,7 +243,7 @@ func NewConfig() *Config { return &Config{ Pattern: g.File("*.json", g.GlobPatte
 			name: "File with MustExist and GlobPattern",
 			content: `
 package main
-import g "github.com/podhmo/goat/goat"
+import g "github.com/podhmo/goat"
 type Config struct { AssetsDir string }
 func NewConfig() *Config { return &Config{ AssetsDir: g.File("./assets", g.MustExist(), g.GlobPattern()) } }`,
 			optionsName:     "Config",
@@ -257,7 +257,7 @@ func NewConfig() *Config { return &Config{ AssetsDir: g.File("./assets", g.MustE
 			name: "File with assignment style",
 			content: `
 package main
-import goat "github.com/podhmo/goat/goat"
+import goat "github.com/podhmo/goat"
 type Settings struct { ConfigFile string }
 func LoadSettings() *Settings {
 	s := &Settings{}
@@ -275,7 +275,7 @@ func LoadSettings() *Settings {
 			name: "File with option from different package",
 			content: `
 package main
-import g "github.com/podhmo/goat/goat"
+import g "github.com/podhmo/goat"
 import other "github.com/some/other/pkg"
 type Config struct { Input string }
 func New() *Config { return &Config{ Input: g.File("in.txt", other.SomeOption()) } }`, // other.SomeOption() should be ignored

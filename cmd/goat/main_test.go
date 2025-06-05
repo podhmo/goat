@@ -17,7 +17,7 @@ import (
 const testGoFileContent = `
 package main
 
-import "github.com/podhmo/goat/goat"
+import "github.com/podhmo/goat"
 
 // Options for testapp.
 // This is a test application.

@@ -5,7 +5,7 @@ import (
 	"log"
 	"os"
 
-	"github.com/podhmo/goat/goat"
+	"github.com/podhmo/goat"
 )
 
 //go:generate goat -run run -initializer newOptions main.go

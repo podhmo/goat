@@ -42,7 +42,7 @@
 -   **構造体タグ:**
     -   `env:"ENV_VAR_NAME"`: 対応する環境変数名を指定。
 
-## 4. マーカー関数 (`github.com/podhmo/goat/goat` パッケージ)
+## 4. マーカー関数 (`github.com/podhmo/goat` パッケージ)
 
 -   `goat.Default[T](defaultValue T, enumConstraint ...[]T) T`:
     -   フィールドのデフォルト値を指定。

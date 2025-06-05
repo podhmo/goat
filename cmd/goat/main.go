@@ -253,7 +253,7 @@ func scanMain(fset *token.FileSet, opts *Options) (*metadata.CommandMetadata, *a
 	}
 	slog.Info("Goat: Command metadata extracted", "commandName", cmdMetadata.Name, "optionsStruct", returnedOptionsStructName)
 
-	const goatMarkersImportPath = "github.com/podhmo/goat/goat" // Define the correct import path
+	const goatMarkersImportPath = "github.com/podhmo/goat" // Define the correct import path
 
 	if opts.OptionsInitializerName != "" && returnedOptionsStructName != "" {
 		// InterpretInitializer might need to look into multiple files if the initializer is not in the main target file.
