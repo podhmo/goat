@@ -544,66 +544,6 @@ func TestGenerateMain_RequiredIntWithEnvVar(t *testing.T) {
 	assertCodeContains(t, actualCode, "err := SubmitData(options)")
 }
 
-// TestGenerateMain_EnvironmentVariables is commented out as its functionality
-// is superseded by TestGenerateMain_EnvVarPrecendenceStrategy.
-/*
-func TestGenerateMain_EnvironmentVariables(t *testing.T) {
-	cmdMeta := &metadata.CommandMetadata{
-		RunFunc: &metadata.RunFuncInfo{
-			Name:                       "Configure",
-			PackageName:                "setup",
-			OptionsArgTypeNameStripped: "AppSettings",
-			OptionsArgIsPointer:        true,
-		},
-		Options: []*metadata.OptionMetadata{
-			{Name: "APIKey", TypeName: "string", HelpText: "API Key", EnvVar: "API_KEY"},
-			{Name: "Timeout", TypeName: "int", HelpText: "Timeout in seconds", DefaultValue: 60, EnvVar: "TIMEOUT_SECONDS"},
-			{Name: "EnableFeature", TypeName: "bool", HelpText: "Enable new feature", DefaultValue: false, EnvVar: "ENABLE_MY_FEATURE"},
-		},
-	}
-
-	actualCode, err := GenerateMain(cmdMeta, "", true)
-	if err != nil {
-		t.Fatalf("GenerateMain failed: %v", err)
-	}
-
-	assertCodeContains(t, actualCode, "var options = &AppSettings{}")
-	assertCodeContains(t, actualCode, `flag.StringVar(&options.APIKey, "api-key", "", "API Key")`)
-	assertCodeContains(t, actualCode, `flag.IntVar(&options.Timeout, "timeout", 60, "Timeout in seconds" /* Default: 60 */)`)
-	assertCodeContains(t, actualCode, `flag.BoolVar(&options.EnableFeature, "enable-feature", false, "Enable new feature" /* Default: false */)`)
-
-	expectedApiKeyEnv := `
-	if val, ok := os.LookupEnv("API_KEY"); ok {
-		if options.APIKey == "" { // This was the old logic
-			options.APIKey = val
-		}
-	}
-`
-	assertCodeContains(t, actualCode, expectedApiKeyEnv)
-
-	expectedTimeoutEnv := `
-	if val, ok := os.LookupEnv("TIMEOUT_SECONDS"); ok {
-		if options.Timeout == 60 { // This was the old logic
-			if v, err := strconv.Atoi(val); err == nil {
-				options.Timeout = v
-			} else {
-				slog.Warn("Could not parse environment variable as int", "envVar", "TIMEOUT_SECONDS", "value", val, "error", err)
-			}
-		}
-	}
-`
-	assertCodeContains(t, actualCode, expectedTimeoutEnv)
-
-	expectedEnableFeatureEnv := `
-	if val, ok := os.LookupEnv("ENABLE_MY_FEATURE"); ok {
-		// This was the old complex bool logic
-	}
-`
-	assertCodeContains(t, actualCode, expectedEnableFeatureEnv)
-	assertCodeContains(t, actualCode, "err := Configure(options)")
-}
-*/
-
 func TestGenerateMain_EnvVarPrecendenceStrategy(t *testing.T) {
 	cmdMeta := &metadata.CommandMetadata{
 		RunFunc: &metadata.RunFuncInfo{
@@ -704,7 +644,6 @@ func TestGenerateMain_EnvVarPrecendenceStrategy(t *testing.T) {
 	// 4. Assertion for absence of old logic for non-pointers (example)
 	assertCodeNotContains(t, actualCode, `if options.StringOpt == "original_string" { if val, ok := os.LookupEnv("ENV_STRING"); ok { options.StringOpt = val } }`)
 }
-
 
 func TestGenerateMain_StringFlagWithQuotesInDefault(t *testing.T) {
 	cmdMeta := &metadata.CommandMetadata{
