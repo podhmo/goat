@@ -207,36 +207,32 @@ func main() {
 	{{if .EnumValues}}
 	isValidChoice_{{.Name}} := false
 	allowedChoices_{{.Name}} := []string{ {{range $i, $e := .EnumValues}}{{if $i}}, {{end}}{{printf "%q" $e}}{{end}} }
-	currentValue_{{.Name}}Str := fmt.Sprintf("%v", options.{{.Name}})
+
 	{{if or (eq .TypeName "*string") (eq .TypeName "*int") (eq .TypeName "*bool")}} // Handle pointer types for enum
-	if options.{{.Name}} != nil {
-		currentValue_{{.Name}}Str = fmt.Sprintf("%v", *options.{{.Name}})
-	} else if {{.IsRequired}} { // if required and nil, it's an error (already caught for *string, *int)
-		// For *bool that is required and an enum, this is an edge case.
-		// If it's nil here, it means it wasn't set by default, env, or flag.
-		slog.Error("Required enum flag is nil", "flag", "{{ KebabCase .Name }}", "option", "{{.Name}}")
-		os.Exit(1)
-	} else { // Optional pointer enum that is nil, skip validation
-		isValidChoice_{{.Name}} = true // Treat as valid if nil and not required
-	}
+		if options.{{.Name}} != nil {
+			currentValue_{{.Name}}Str := fmt.Sprintf("%v", *options.{{.Name}})
+			isValidChoice_{{.Name}} = slices.Contains(allowedChoices_{{.Name}}, currentValue_{{.Name}}Str)
+		} else { // options.{{.Name}} is nil
+			{{if .IsRequired}}
+			slog.Error("Required enum flag is nil", "flag", "{{ KebabCase .Name }}", "option", "{{.Name}}")
+			os.Exit(1)
+			{{else}}
+			isValidChoice_{{.Name}} = true // Optional pointer enum that is nil is valid.
+			{{end}}
+		}
+	{{else}} // Handle non-pointer types for enum
+		currentValue_{{.Name}}Str := fmt.Sprintf("%v", options.{{.Name}})
+		isValidChoice_{{.Name}} = slices.Contains(allowedChoices_{{.Name}}, currentValue_{{.Name}}Str)
 	{{end}}
 
-	if !isValidChoice_{{.Name}} && (options.{{.Name}} != nil || {{or (eq .TypeName "string") (eq .TypeName "int") (eq .TypeName "bool") .IsRequired}}) { // only validate if not nil or is a non-pointer or is required
-		for _, choice := range allowedChoices_{{.Name}} {
-			if currentValue_{{.Name}}Str == choice {
-				isValidChoice_{{.Name}} = true
-				break
-			}
-		}
-	} else if isValidChoice_{{.Name}} { // it was already set to true (e.g. optional pointer is nil)
-		// do nothing
-	} else { // not isValidChoice and (options.Name is nil AND it's an optional pointer)
-		isValidChoice_{{.Name}} = true // Optional pointer enum that is nil is valid
-	}
-
-
 	if !isValidChoice_{{.Name}} {
-		slog.Error("Invalid value for flag", "flag", "{{ KebabCase .Name }}", "value", options.{{.Name}}, "allowedChoices", strings.Join(allowedChoices_{{.Name}}, ", "))
+		var currentValueForMsg interface{} = options.{{.Name}}
+		{{if or (eq .TypeName "*string") (eq .TypeName "*int") (eq .TypeName "*bool")}}
+		if options.{{.Name}} != nil {
+			currentValueForMsg = *options.{{.Name}}
+		}
+		{{end}}
+		slog.Error("Invalid value for flag", "flag", "{{ KebabCase .Name }}", "value", currentValueForMsg, "allowedChoices", strings.Join(allowedChoices_{{.Name}}, ", "))
 		os.Exit(1)
 	}
 	{{end}}
@@ -344,6 +340,7 @@ func GenerateMain(cmdMeta *metadata.CommandMetadata, helpText string, generateFu
 			"fmt",
 			"log/slog",
 			"os",
+			"slices", // Added slices
 			"strconv",
 			"strings", // strings might be used by generated code for e.g. enum validation
 		} {

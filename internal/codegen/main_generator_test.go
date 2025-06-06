@@ -312,20 +312,11 @@ func TestGenerateMain_EnumValidation(t *testing.T) {
 	isValidChoice_Mode := false
 	allowedChoices_Mode := []string{"auto", "manual", "standby"}
 	currentValue_ModeStr := fmt.Sprintf("%v", options.Mode)
-	if !isValidChoice_Mode && (options.Mode != nil || true) { // only validate if not nil or is a non-pointer or is required
-		for _, choice := range allowedChoices_Mode {
-			if currentValue_ModeStr == choice {
-				isValidChoice_Mode = true
-				break
-			}
-		}
-	} else if isValidChoice_Mode { // it was already set to true (e.g. optional pointer is nil)
-		// do nothing
-	} else { // not isValidChoice and (options.Name is nil AND it's an optional pointer)
-		isValidChoice_Mode = true // Optional pointer enum that is nil is valid
-	}
+	isValidChoice_Mode = slices.Contains(allowedChoices_Mode, currentValue_ModeStr)
+
 	if !isValidChoice_Mode {
-		slog.Error("Invalid value for flag", "flag", "mode", "value", options.Mode, "allowedChoices", strings.Join(allowedChoices_Mode, ", "))
+		var currentValueForMsg interface{} = options.Mode
+		slog.Error("Invalid value for flag", "flag", "mode", "value", currentValueForMsg, "allowedChoices", strings.Join(allowedChoices_Mode, ", "))
 		os.Exit(1)
 	}
 `

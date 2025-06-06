@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -241,23 +242,15 @@ Defaults to "output" if not specified by the user.` /* Original Default: output,
 
 	isValidChoice_LogLevel := false
 	allowedChoices_LogLevel := []string{"debug", "info", "warning", "error"}
-	currentValue_LogLevelStr := fmt.Sprintf("%v", options.LogLevel)
 
-	if !isValidChoice_LogLevel && (options.LogLevel != nil || true) { // only validate if not nil or is a non-pointer or is required
-		for _, choice := range allowedChoices_LogLevel {
-			if currentValue_LogLevelStr == choice {
-				isValidChoice_LogLevel = true
-				break
-			}
-		}
-	} else if isValidChoice_LogLevel { // it was already set to true (e.g. optional pointer is nil)
-		// do nothing
-	} else { // not isValidChoice and (options.Name is nil AND it's an optional pointer)
-		isValidChoice_LogLevel = true // Optional pointer enum that is nil is valid
-	}
+	// Handle non-pointer types for enum
+	currentValue_LogLevelStr := fmt.Sprintf("%v", options.LogLevel)
+	isValidChoice_LogLevel = slices.Contains(allowedChoices_LogLevel, currentValue_LogLevelStr)
 
 	if !isValidChoice_LogLevel {
-		slog.Error("Invalid value for flag", "flag", "log-level", "value", options.LogLevel, "allowedChoices", strings.Join(allowedChoices_LogLevel, ", "))
+		var currentValueForMsg interface{} = options.LogLevel
+
+		slog.Error("Invalid value for flag", "flag", "log-level", "value", currentValueForMsg, "allowedChoices", strings.Join(allowedChoices_LogLevel, ", "))
 		os.Exit(1)
 	}
 
@@ -289,23 +282,15 @@ Defaults to "output" if not specified by the user.` /* Original Default: output,
 
 	isValidChoice_Mode := false
 	allowedChoices_Mode := []string{"standard", "turbo", "eco"}
-	currentValue_ModeStr := fmt.Sprintf("%v", options.Mode)
 
-	if !isValidChoice_Mode && (options.Mode != nil || true) { // only validate if not nil or is a non-pointer or is required
-		for _, choice := range allowedChoices_Mode {
-			if currentValue_ModeStr == choice {
-				isValidChoice_Mode = true
-				break
-			}
-		}
-	} else if isValidChoice_Mode { // it was already set to true (e.g. optional pointer is nil)
-		// do nothing
-	} else { // not isValidChoice and (options.Name is nil AND it's an optional pointer)
-		isValidChoice_Mode = true // Optional pointer enum that is nil is valid
-	}
+	// Handle non-pointer types for enum
+	currentValue_ModeStr := fmt.Sprintf("%v", options.Mode)
+	isValidChoice_Mode = slices.Contains(allowedChoices_Mode, currentValue_ModeStr)
 
 	if !isValidChoice_Mode {
-		slog.Error("Invalid value for flag", "flag", "mode", "value", options.Mode, "allowedChoices", strings.Join(allowedChoices_Mode, ", "))
+		var currentValueForMsg interface{} = options.Mode
+
+		slog.Error("Invalid value for flag", "flag", "mode", "value", currentValueForMsg, "allowedChoices", strings.Join(allowedChoices_Mode, ", "))
 		os.Exit(1)
 	}
 
