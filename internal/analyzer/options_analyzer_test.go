@@ -85,10 +85,10 @@ type AnotherExternalEmbedded struct {
 	// ---
 	// Expected results
 	expectedOptions := []*metadata.OptionMetadata{
-		{Name: "LocalName", CliName: "local-name", TypeName: "string", HelpText: "", IsRequired: false, EnvVar: "LOCAL_NAME"}, // No goat:"required"
-		{Name: "IsRemote", CliName: "is-remote", TypeName: "bool", HelpText: "Flag from external package.", IsRequired: false, EnvVar: "IS_REMOTE_TAG"}, // No goat:"required"
-		{Name: "APIKey", CliName: "api-key", TypeName: "string", HelpText: "APIKey for external service.", IsRequired: false, EnvVar: "API_KEY_TAG"}, // No goat:"required"
-		{Name: "Token", CliName: "token", TypeName: "string", HelpText: "Token for another service.", IsRequired: false, EnvVar: ""}, // No goat:"required"
+		{Name: "LocalName", CliName: "local-name", TypeName: "string", HelpText: "", IsRequired: true, EnvVar: "LOCAL_NAME"},
+		{Name: "IsRemote", CliName: "is-remote", TypeName: "bool", HelpText: "Flag from external package.", IsRequired: true, EnvVar: "IS_REMOTE_TAG"},
+		{Name: "APIKey", CliName: "api-key", TypeName: "string", HelpText: "APIKey for external service.", IsRequired: true, EnvVar: "API_KEY_TAG"},
+		{Name: "Token", CliName: "token", TypeName: "string", HelpText: "Token for another service.", IsRequired: true, EnvVar: ""},
 	}
 
 	// Call AnalyzeOptions with all ASTs
@@ -143,29 +143,16 @@ type Config struct {
 		expectedOptions []*metadata.OptionMetadata
 	}{
 		{
-			name:    "Mixed required",
-			nameTag: "`goat:\"required\" env:\"APP_NAME\"`",
-			ageTag:  "`env:\"USER_AGE\"`", // Age is a pointer, so IsRequired is false by default and without goat:"required"
-			adminTag: "`goat:\"required\"`",
-			featTag: "", // Features is not a pointer, IsRequired false without tag
+			name:     "All not required (required tag ignored)",
+			nameTag:  "`env:\"APP_NAME\"`", // goat:"required"は無視
+			ageTag:   "`env:\"USER_AGE\"`",
+			adminTag: "",
+			featTag:  "`env:\"APP_FEATURES\"`",
 			expectedOptions: []*metadata.OptionMetadata{
 				{Name: "Name", CliName: "name", TypeName: "string", HelpText: "Name of the user.", IsRequired: true, EnvVar: "APP_NAME"},
 				{Name: "Age", CliName: "age", TypeName: "*int", HelpText: "Age of the user, optional.", IsPointer: true, IsRequired: false, EnvVar: "USER_AGE"},
 				{Name: "IsAdmin", CliName: "is-admin", TypeName: "bool", HelpText: "IsAdmin flag.", IsRequired: true},
-				{Name: "Features", CliName: "features", TypeName: "[]string", HelpText: "Features list.", IsRequired: false},
-			},
-		},
-		{
-			name:    "None required explicitly (all IsRequired=false)",
-			nameTag: "`env:\"APP_NAME\"`", // No goat:"required"
-			ageTag:  "`env:\"USER_AGE\"`",
-			adminTag: "",
-			featTag: "`env:\"APP_FEATURES\"`",
-			expectedOptions: []*metadata.OptionMetadata{
-				{Name: "Name", CliName: "name", TypeName: "string", HelpText: "Name of the user.", IsRequired: false, EnvVar: "APP_NAME"},
-				{Name: "Age", CliName: "age", TypeName: "*int", HelpText: "Age of the user, optional.", IsPointer: true, IsRequired: false, EnvVar: "USER_AGE"},
-				{Name: "IsAdmin", CliName: "is-admin", TypeName: "bool", HelpText: "IsAdmin flag.", IsRequired: false},
-				{Name: "Features", CliName: "features", TypeName: "[]string", HelpText: "Features list.", IsRequired: false, EnvVar: "APP_FEATURES"},
+				{Name: "Features", CliName: "features", TypeName: "[]string", HelpText: "Features list.", IsRequired: true, EnvVar: "APP_FEATURES"},
 			},
 		},
 	}
@@ -256,10 +243,10 @@ type ParentConfig struct {
 	fset1, fileAst1 := parseSingleFileAst(t, formattedContent1)
 
 	expectedOptions1 := []*metadata.OptionMetadata{
-		{Name: "ParentField", CliName: "parent-field", TypeName: "bool", HelpText: "Description for ParentField.", IsRequired: false, EnvVar: "PARENT_FIELD"}, // No goat:"required"
-		{Name: "EmbeddedString", CliName: "embedded-string", TypeName: "string", HelpText: "Description for EmbeddedString.", IsRequired: false, EnvVar: "EMBEDDED_STRING"}, // No goat:"required"
+		{Name: "ParentField", CliName: "parent-field", TypeName: "bool", HelpText: "Description for ParentField.", IsRequired: true, EnvVar: "PARENT_FIELD"},               // No goat:"required"
+		{Name: "EmbeddedString", CliName: "embedded-string", TypeName: "string", HelpText: "Description for EmbeddedString.", IsRequired: true, EnvVar: "EMBEDDED_STRING"}, // No goat:"required"
 		{Name: "EmbeddedInt", CliName: "embedded-int", TypeName: "*int", HelpText: "Description for EmbeddedInt, it's optional.", IsPointer: true, IsRequired: false, EnvVar: "EMBEDDED_INT"},
-		{Name: "AnotherField", CliName: "another-field", TypeName: "string", HelpText: "", IsRequired: false, EnvVar: ""}, // No goat:"required"
+		{Name: "AnotherField", CliName: "another-field", TypeName: "string", HelpText: "", IsRequired: true, EnvVar: ""}, // No goat:"required"
 	}
 
 	options1, structName1, err1 := AnalyzeOptions(fset1, []*ast.File{fileAst1}, "ParentConfig", "main")
@@ -299,8 +286,8 @@ type ParentWithPointerEmbedded struct {
 	formattedContent2 := fmt.Sprintf(content2, "`env:\"PTR_EMBEDDED_FLOAT\"`")
 	fset2, fileAst2 := parseSingleFileAst(t, formattedContent2)
 	expectedOptions2 := []*metadata.OptionMetadata{
-		{Name: "ParentOwn", CliName: "parent-own", TypeName: "string", HelpText: "", IsRequired: false, EnvVar: ""}, // No goat:"required"
-		{Name: "PtrEmbeddedField", CliName: "ptr-embedded-field", TypeName: "float64", HelpText: "Desc for PtrEmbeddedField", IsRequired: false, EnvVar: "PTR_EMBEDDED_FLOAT"}, // No goat:"required"
+		{Name: "ParentOwn", CliName: "parent-own", TypeName: "string", HelpText: "", IsRequired: true, EnvVar: ""},
+		{Name: "PtrEmbeddedField", CliName: "ptr-embedded-field", TypeName: "float64", HelpText: "Desc for PtrEmbeddedField", IsRequired: true, EnvVar: "PTR_EMBEDDED_FLOAT"},
 	}
 	options2, structName2, err2 := AnalyzeOptions(fset2, []*ast.File{fileAst2}, "ParentWithPointerEmbedded", "main")
 	if err2 != nil {
@@ -367,10 +354,10 @@ type AnotherExternalEmbedded struct {
 	_, anotherFileAst := parseSingleFileAst(t, anotherPkgContent)
 
 	expectedOptions := []*metadata.OptionMetadata{
-		{Name: "LocalName", CliName: "local-name", TypeName: "string", HelpText: "Tag for a field directly in MainConfig", IsRequired: false, EnvVar: "LOCAL_NAME"}, // No goat:"required"
-		{Name: "IsRemote", CliName: "is-remote", TypeName: "bool", HelpText: "Flag from external package.", IsRequired: false, EnvVar: "IS_REMOTE_TAG"}, // No goat:"required"
-		{Name: "APIKey", CliName: "api-key", TypeName: "string", HelpText: "APIKey for external service.", IsRequired: false, EnvVar: "API_KEY_TAG"}, // No goat:"required"
-		{Name: "Token", CliName: "token", TypeName: "string", HelpText: "Token for another service.", IsRequired: false, EnvVar: ""}, // No goat:"required"
+		{Name: "LocalName", CliName: "local-name", TypeName: "string", HelpText: "Tag for a field directly in MainConfig", IsRequired: true, EnvVar: "LOCAL_NAME"},
+		{Name: "IsRemote", CliName: "is-remote", TypeName: "bool", HelpText: "Flag from external package.", IsRequired: true, EnvVar: "IS_REMOTE_TAG"},
+		{Name: "APIKey", CliName: "api-key", TypeName: "string", HelpText: "APIKey for external service.", IsRequired: true, EnvVar: "API_KEY_TAG"},
+		{Name: "Token", CliName: "token", TypeName: "string", HelpText: "Token for another service.", IsRequired: true, EnvVar: ""},
 	}
 
 	// Pass all ASTs directly
@@ -412,8 +399,8 @@ type ExternalConfig struct {
 	_, externalFileAst := parseSingleFileAst(t, externalPkgContent)
 
 	expectedOptions := []*metadata.OptionMetadata{
-		{Name: "ExternalURL", CliName: "external-url", TypeName: "string", HelpText: "URL for the external service.", IsRequired: false, EnvVar: ""}, // No goat:"required"
-		{Name: "ExternalRetryCount", CliName: "external-retry-count", TypeName: "int", HelpText: "Retry count for external service.", IsRequired: false, EnvVar: ""}, // No goat:"required"
+		{Name: "ExternalURL", CliName: "external-url", TypeName: "string", HelpText: "URL for the external service.", IsRequired: true, EnvVar: ""},
+		{Name: "ExternalRetryCount", CliName: "external-retry-count", TypeName: "int", HelpText: "Retry count for external service.", IsRequired: true, EnvVar: ""},
 	}
 
 	// Analyze "ExternalConfig" struct within the parsed AST for "myexternalpkg"
