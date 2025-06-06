@@ -82,7 +82,12 @@ func main() {
 	{{else if eq .TypeName "int"}}
 	flag.IntVar(&options.{{.Name}}, "{{ KebabCase .Name }}", {{if .DefaultValue}}{{.DefaultValue}}{{else}}0{{end}}, {{FormatHelpText .HelpText}}{{- if ne .DefaultValue nil -}}/* Default: {{.DefaultValue}} */{{- end -}})
 	{{else if eq .TypeName "bool"}}
+	{{if and .IsRequired (ne .DefaultValue nil) (eq .DefaultValue true)}}
+	var {{.Name}}_NoFlagIsPresent bool
+	flag.BoolVar(&{{.Name}}_NoFlagIsPresent, "no-{{ KebabCase .Name }}", false, {{FormatHelpText .HelpText}})
+	{{else}}
 	flag.BoolVar(&options.{{.Name}}, "{{ KebabCase .Name }}", {{if ne .DefaultValue nil}}{{.DefaultValue}}{{else}}false{{end}}, {{FormatHelpText .HelpText}}{{- if ne .DefaultValue nil -}}/* Default: {{.DefaultValue}} */{{- end -}})
+	{{end}}
 	{{else if eq .TypeName "*string"}}
 	flag.StringVar(options.{{.Name}}, "{{ KebabCase .Name }}", {{if .DefaultValue}}{{printf "%q" .DefaultValue}}{{else}}""{{end}}, {{FormatHelpText .HelpText}}   {{- if ne .DefaultValue nil -}}/* Default: {{.DefaultValue}} */{{- end -}})
 	{{else if eq .TypeName "*int"}}
@@ -97,6 +102,14 @@ func main() {
 
 	{{if .HasOptions}}
 	{{range .Options}}
+	{{if eq .TypeName "bool"}}
+	{{if and .IsRequired (ne .DefaultValue nil) (eq .DefaultValue true)}}
+	options.{{.Name}} = true // Default to true
+	if {{.Name}}_NoFlagIsPresent { // If --no-{{KebabCase .Name}} was present
+		options.{{.Name}} = false
+	}
+	{{end}}
+	{{end}}
 	{{if .EnvVar}}
 	if val, ok := os.LookupEnv("{{.EnvVar}}"); ok {
 		// If flag was set, it takes precedence. Only use env if flag is still its zero value.

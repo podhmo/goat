@@ -40,3 +40,11 @@ type OptionMetadata struct {
 	FileMustExist   bool `json:"fileMustExist,omitempty"`
 	FileGlobPattern bool `json:"fileGlobPattern,omitempty"`
 }
+
+// DefaultValueAsBool checks if the DefaultValue is a boolean and true.
+func (om *OptionMetadata) DefaultValueAsBool() bool {
+	if b, ok := om.DefaultValue.(bool); ok {
+		return b
+	}
+	return false
+}

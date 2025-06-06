@@ -88,7 +88,7 @@ type AnotherExternalEmbedded struct {
 		{Name: "LocalName", CliName: "local-name", TypeName: "string", HelpText: "", IsRequired: true, EnvVar: "LOCAL_NAME"},
 		{Name: "IsRemote", CliName: "is-remote", TypeName: "bool", HelpText: "Flag from external package.", IsRequired: true, EnvVar: "IS_REMOTE_TAG"},
 		{Name: "APIKey", CliName: "api-key", TypeName: "string", HelpText: "APIKey for external service.", IsRequired: true, EnvVar: "API_KEY_TAG"},
-		{Name: "Token", CliName: "token", TypeName: "string", HelpText: "Token for another service.", IsRequired: true, EnvVar: ""}, // Assuming no tag for Token
+		{Name: "Token", CliName: "token", TypeName: "string", HelpText: "Token for another service.", IsRequired: true, EnvVar: ""},
 	}
 
 	// Call AnalyzeOptions with all ASTs
@@ -134,8 +134,8 @@ type Config struct {
 	Features []string %s
 }
 `
-	// Test with and without tags to ensure tags are parsed if present
 	testCases := []struct {
+		name            string
 		nameTag         string
 		ageTag          string
 		adminTag        string
@@ -143,62 +143,47 @@ type Config struct {
 		expectedOptions []*metadata.OptionMetadata
 	}{
 		{
-			nameTag: ` %s`, ageTag: ` %s`, adminTag: ` %s`, featTag: ` %s`,
-			expectedOptions: []*metadata.OptionMetadata{
-				{Name: "Name", CliName: "name", TypeName: "string", HelpText: "Name of the user.", IsRequired: true},
-				{Name: "Age", CliName: "age", TypeName: "*int", HelpText: "Age of the user, optional.", IsPointer: true, IsRequired: false},
-				{Name: "IsAdmin", CliName: "is-admin", TypeName: "bool", HelpText: "IsAdmin flag.", IsRequired: true},
-				{Name: "Features", CliName: "features", TypeName: "[]string", HelpText: "Features list.", IsRequired: true},
-			},
-		},
-		{
-			nameTag: ` %s`, ageTag: ` %s`, adminTag: ` %s`, featTag: ` %s`,
+			name:     "All not required (required tag ignored)",
+			nameTag:  "`env:\"APP_NAME\"`", // goat:"required"は無視
+			ageTag:   "`env:\"USER_AGE\"`",
+			adminTag: "",
+			featTag:  "`env:\"APP_FEATURES\"`",
 			expectedOptions: []*metadata.OptionMetadata{
 				{Name: "Name", CliName: "name", TypeName: "string", HelpText: "Name of the user.", IsRequired: true, EnvVar: "APP_NAME"},
 				{Name: "Age", CliName: "age", TypeName: "*int", HelpText: "Age of the user, optional.", IsPointer: true, IsRequired: false, EnvVar: "USER_AGE"},
-				{Name: "IsAdmin", CliName: "is-admin", TypeName: "bool", HelpText: "IsAdmin flag.", IsRequired: true}, // No env tag
+				{Name: "IsAdmin", CliName: "is-admin", TypeName: "bool", HelpText: "IsAdmin flag.", IsRequired: true},
 				{Name: "Features", CliName: "features", TypeName: "[]string", HelpText: "Features list.", IsRequired: true, EnvVar: "APP_FEATURES"},
 			},
 		},
 	}
 
-	// Inject tags into content format string
-	testCases[0].nameTag = ""
-	testCases[0].ageTag = ""
-	testCases[0].adminTag = ""
-	testCases[0].featTag = ""
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			formattedContent := fmt.Sprintf(content, tc.nameTag, tc.ageTag, tc.adminTag, tc.featTag)
+			fset, fileAst := parseSingleFileAst(t, formattedContent)
 
-	testCases[1].nameTag = "`env:\"APP_NAME\"`"
-	testCases[1].ageTag = "`env:\"USER_AGE\"`"
-	testCases[1].adminTag = ""
-	testCases[1].featTag = "`env:\"APP_FEATURES\"`"
-
-	for i, tc := range testCases {
-		formattedContent := fmt.Sprintf(content, tc.nameTag, tc.ageTag, tc.adminTag, tc.featTag)
-		fset, fileAst := parseSingleFileAst(t, formattedContent)
-
-		options, structName, err := AnalyzeOptions(fset, []*ast.File{fileAst}, "Config", "main")
-		if err != nil {
-			t.Fatalf("Test case %d: AnalyzeOptions failed: %v. Content:\n%s", i, err, formattedContent)
-		}
-		if structName != "Config" {
-			t.Errorf("Test case %d: Expected struct name 'Config', got '%s'", i, structName)
-		}
-
-		if len(options) != len(tc.expectedOptions) {
-			t.Fatalf("Test case %d: Expected %d options, got %d. Options: %+v", i, len(tc.expectedOptions), len(options), options)
-		}
-
-		for j, opt := range options {
-			expectedOpt := tc.expectedOptions[j]
-			// Compare relevant fields, reflect.DeepEqual might be too strict for uninitialized fields
-			if opt.Name != expectedOpt.Name || opt.CliName != expectedOpt.CliName ||
-				opt.TypeName != expectedOpt.TypeName || strings.TrimSpace(opt.HelpText) != strings.TrimSpace(expectedOpt.HelpText) ||
-				opt.IsPointer != expectedOpt.IsPointer || opt.IsRequired != expectedOpt.IsRequired ||
-				opt.EnvVar != expectedOpt.EnvVar {
-				t.Errorf("Test case %d, Option %d: Mismatch.\nExpected: %+v\nGot:      %+v", i, j, expectedOpt, opt)
+			options, structName, err := AnalyzeOptions(fset, []*ast.File{fileAst}, "Config", "main")
+			if err != nil {
+				t.Fatalf("AnalyzeOptions failed: %v. Content:\n%s", err, formattedContent)
 			}
-		}
+			if structName != "Config" {
+				t.Errorf("Expected struct name 'Config', got '%s'", structName)
+			}
+
+			if len(options) != len(tc.expectedOptions) {
+				t.Fatalf("Expected %d options, got %d. Options: %+v", len(tc.expectedOptions), len(options), options)
+			}
+
+			for j, opt := range options {
+				expectedOpt := tc.expectedOptions[j]
+				if opt.Name != expectedOpt.Name || opt.CliName != expectedOpt.CliName ||
+					opt.TypeName != expectedOpt.TypeName || strings.TrimSpace(opt.HelpText) != strings.TrimSpace(expectedOpt.HelpText) ||
+					opt.IsPointer != expectedOpt.IsPointer || opt.IsRequired != expectedOpt.IsRequired ||
+					opt.EnvVar != expectedOpt.EnvVar {
+					t.Errorf("Option %d (%s) Mismatch:\nExpected: %+v\nGot:      %+v", j, opt.Name, expectedOpt, opt)
+				}
+			}
+		})
 	}
 }
 
@@ -258,10 +243,10 @@ type ParentConfig struct {
 	fset1, fileAst1 := parseSingleFileAst(t, formattedContent1)
 
 	expectedOptions1 := []*metadata.OptionMetadata{
-		{Name: "ParentField", CliName: "parent-field", TypeName: "bool", HelpText: "Description for ParentField.", IsRequired: true, EnvVar: "PARENT_FIELD"},
-		{Name: "EmbeddedString", CliName: "embedded-string", TypeName: "string", HelpText: "Description for EmbeddedString.", IsRequired: true, EnvVar: "EMBEDDED_STRING"},
+		{Name: "ParentField", CliName: "parent-field", TypeName: "bool", HelpText: "Description for ParentField.", IsRequired: true, EnvVar: "PARENT_FIELD"},               // No goat:"required"
+		{Name: "EmbeddedString", CliName: "embedded-string", TypeName: "string", HelpText: "Description for EmbeddedString.", IsRequired: true, EnvVar: "EMBEDDED_STRING"}, // No goat:"required"
 		{Name: "EmbeddedInt", CliName: "embedded-int", TypeName: "*int", HelpText: "Description for EmbeddedInt, it's optional.", IsPointer: true, IsRequired: false, EnvVar: "EMBEDDED_INT"},
-		{Name: "AnotherField", CliName: "another-field", TypeName: "string", HelpText: "", IsRequired: true, EnvVar: ""},
+		{Name: "AnotherField", CliName: "another-field", TypeName: "string", HelpText: "", IsRequired: true, EnvVar: ""}, // No goat:"required"
 	}
 
 	options1, structName1, err1 := AnalyzeOptions(fset1, []*ast.File{fileAst1}, "ParentConfig", "main")
@@ -372,7 +357,7 @@ type AnotherExternalEmbedded struct {
 		{Name: "LocalName", CliName: "local-name", TypeName: "string", HelpText: "Tag for a field directly in MainConfig", IsRequired: true, EnvVar: "LOCAL_NAME"},
 		{Name: "IsRemote", CliName: "is-remote", TypeName: "bool", HelpText: "Flag from external package.", IsRequired: true, EnvVar: "IS_REMOTE_TAG"},
 		{Name: "APIKey", CliName: "api-key", TypeName: "string", HelpText: "APIKey for external service.", IsRequired: true, EnvVar: "API_KEY_TAG"},
-		{Name: "Token", CliName: "token", TypeName: "string", HelpText: "Token for another service.", IsRequired: true, EnvVar: ""}, // anotherpkg.AnotherExternalEmbedded has no env tag for Token
+		{Name: "Token", CliName: "token", TypeName: "string", HelpText: "Token for another service.", IsRequired: true, EnvVar: ""},
 	}
 
 	// Pass all ASTs directly

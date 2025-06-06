@@ -36,7 +36,7 @@ func AnalyzeOptions(fset *token.FileSet, files []*ast.File, optionsTypeName stri
 						optionsStruct = ts
 						actualStructName = ts.Name.Name
 						fileContainingOptionsStruct = fileAst // Store the file
-						return false // Stop searching this file
+						return false                          // Stop searching this file
 					}
 				}
 			}
@@ -166,7 +166,7 @@ func AnalyzeOptions(fset *token.FileSet, files []*ast.File, optionsTypeName stri
 			if envVar, ok := tag.Lookup("env"); ok {
 				opt.EnvVar = envVar
 			}
-			// TODO: Add support for other tags like 'file', 'default', 'enum' if defined directly in tags
+			// TODO: Add support for other non-goat tags if needed, or consolidate all tag parsing.
 		}
 
 		extractedOptions = append(extractedOptions, opt)
