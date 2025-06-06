@@ -1,3 +1,0 @@
-## workspace
-# example.com/myexternalpkg => ./internal/analyzer/testdata/src/myexternalpkg
-# example.com/anotherpkg => ./internal/analyzer/testdata/src/anotherpkg

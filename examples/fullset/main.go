@@ -11,7 +11,7 @@ import (
 	"github.com/podhmo/goat"
 )
 
-//go:generate goat -run run -initializer newOptions main.go
+//go:generate goat emit -run run -initializer newOptions main.go
 
 // Options defines the command line options for this simple example tool.
 // This tool demonstrates the basic capabilities of goat for CLI generation.
@@ -158,6 +158,25 @@ Defaults to "output" if not specified by the user.` /* Default: output */)
 		// A more robust way might involve checking if the flag was explicitly set using flag.Visit().
 		// For now, if default is zero-value, env var will override if set.
 		// If default is non-zero, flag value (even if it's the default) takes precedence.
+
+		// Check if the flag was already set. If so, it takes precedence.
+		// This is a simplified check; flag.Visit would be more robust.
+		// Assuming options.Age is initialized by flag.IntVar.
+		if options.Age != nil && *options.Age == 0 {
+			if v, err := strconv.Atoi(val); err == nil {
+				*options.Age = v
+			} else {
+				slog.Warn("Could not parse environment variable as *int", "envVar", "SIMPLE_AGE", "value", val, "error", err)
+			}
+		} else if options.Age == nil { // If the pointer itself is nil (e.g. flag not processed or no default)
+			if v, err := strconv.Atoi(val); err == nil {
+				// Allocate and set
+				temp := v
+				options.Age = &temp
+			} else {
+				slog.Warn("Could not parse environment variable as *int (nil pointer)", "envVar", "SIMPLE_AGE", "value", val, "error", err)
+			}
+		}
 
 	}
 

@@ -149,6 +149,54 @@ func main() {
 				slog.Warn("Could not parse environment variable as bool", "envVar", "{{.EnvVar}}", "value", val, "error", err)
 			}
 		}
+		{{else if eq .TypeName "*int"}}
+		// Check if the flag was already set. If so, it takes precedence.
+		// This is a simplified check; flag.Visit would be more robust.
+		// Assuming options.{{.Name}} is initialized by flag.IntVar.
+		if options.{{.Name}} != nil && *options.{{.Name}} == {{if .DefaultValue}}{{.DefaultValue}}{{else}}0{{end}} {
+			if v, err := strconv.Atoi(val); err == nil {
+				*options.{{.Name}} = v
+			} else {
+				slog.Warn("Could not parse environment variable as *int", "envVar", "{{.EnvVar}}", "value", val, "error", err)
+			}
+		} else if options.{{.Name}} == nil { // If the pointer itself is nil (e.g. flag not processed or no default)
+			if v, err := strconv.Atoi(val); err == nil {
+				// Allocate and set
+				temp := v
+				options.{{.Name}} = &temp
+			} else {
+				slog.Warn("Could not parse environment variable as *int (nil pointer)", "envVar", "{{.EnvVar}}", "value", val, "error", err)
+			}
+		}
+		{{else if eq .TypeName "*string"}}
+		// Check if the flag was already set (simplified check)
+		if options.{{.Name}} != nil && *options.{{.Name}} == {{if .DefaultValue}}{{printf "%q" .DefaultValue}}{{else}}""{{end}} {
+			*options.{{.Name}} = val
+		} else if options.{{.Name}} == nil { // If the pointer itself is nil
+			temp := val
+			options.{{.Name}} = &temp
+		}
+		{{else if eq .TypeName "*bool"}}
+		// Simplified check: only override if current value is default.
+		// Assumes options.{{.Name}} is non-nil due to flag processing, or handles nil if not.
+		expectedDefaultBool := {{if .DefaultValue}}{{.DefaultValue}}{{else}}false{{end}}
+		currentValueMatchesDefault := false
+		if options.{{.Name}} != nil && *options.{{.Name}} == expectedDefaultBool {
+			currentValueMatchesDefault = true
+		}
+
+		if currentValueMatchesDefault || options.{{.Name}} == nil {
+			if v, err := strconv.ParseBool(val); err == nil {
+				if options.{{.Name}} == nil {
+					temp := v
+					options.{{.Name}} = &temp
+				} else {
+					*options.{{.Name}} = v
+				}
+			} else {
+				slog.Warn("Could not parse environment variable as *bool", "envVar", "{{.EnvVar}}", "value", val, "error", err)
+			}
+		}
 		{{end}}
 	}
 	{{end}}
