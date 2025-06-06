@@ -83,6 +83,12 @@ func main() {
 	flag.IntVar(&options.{{.Name}}, "{{ KebabCase .Name }}", {{if .DefaultValue}}{{.DefaultValue}}{{else}}0{{end}}, {{FormatHelpText .HelpText}}{{- if ne .DefaultValue nil -}}/* Default: {{.DefaultValue}} */{{- end -}})
 	{{else if eq .TypeName "bool"}}
 	flag.BoolVar(&options.{{.Name}}, "{{ KebabCase .Name }}", {{if ne .DefaultValue nil}}{{.DefaultValue}}{{else}}false{{end}}, {{FormatHelpText .HelpText}}{{- if ne .DefaultValue nil -}}/* Default: {{.DefaultValue}} */{{- end -}})
+	{{else if eq .TypeName "*string"}}
+	flag.StringVar(options.{{.Name}}, "{{ KebabCase .Name }}", {{if .DefaultValue}}{{printf "%q" .DefaultValue}}{{else}}""{{end}}, {{FormatHelpText .HelpText}}   {{- if ne .DefaultValue nil -}}/* Default: {{.DefaultValue}} */{{- end -}})
+	{{else if eq .TypeName "*int"}}
+	flag.IntVar(options.{{.Name}}, "{{ KebabCase .Name }}", {{if .DefaultValue}}{{.DefaultValue}}{{else}}0{{end}}, {{FormatHelpText .HelpText}}{{- if ne .DefaultValue nil -}}/* Default: {{.DefaultValue}} */{{- end -}})
+	{{else if eq .TypeName "*bool"}}
+	flag.BoolVar(options.{{.Name}}, "{{ KebabCase .Name }}", {{if ne .DefaultValue nil}}{{.DefaultValue}}{{else}}false{{end}}, {{FormatHelpText .HelpText}}{{- if ne .DefaultValue nil -}}/* Default: {{.DefaultValue}} */{{- end -}})
 	{{end}}
 	{{end}}
 	{{end}}
@@ -167,16 +173,7 @@ func main() {
 		os.Exit(1)
 	}
 	{{end}}
-	// Required bool flags are implicitly handled by their nature if they must be true.
-	// If a bool flag is required and must be true, and its default is false, then if it's still false, error out.
-	// If its default is true, it's always "set". This doesn't quite fit the "required" model for bools unless "required" means "must be true".
-	// For now, we assume "required" for a bool means it must be explicitly set to true if its default is false.
-	{{if and .IsRequired (eq .TypeName "bool") (not .DefaultValue) }}
-	if !options.{{.Name}} {
-		slog.Error("Missing required flag (must be true)", "flag", "{{ KebabCase .Name }}"{{if .EnvVar}}, "envVar", "{{.EnvVar}}"{{end}})
-		os.Exit(1)
-	}
-	{{end}}
+
 	{{end}}
 
 	{{if .EnumValues}}
@@ -197,11 +194,10 @@ func main() {
 	{{end}}
 	{{end}}
 
-	var err error
 	{{if .HasOptions}}
-	err = {{.RunFunc.Name}}( {{if .RunFunc.OptionsArgIsPointer}} options {{else}} *options {{end}} )
+	err := {{.RunFunc.Name}}( {{if .RunFunc.OptionsArgIsPointer}} options {{else}} *options {{end}} )
 	{{else}}
-	err = {{.RunFunc.Name}}()
+	err := {{.RunFunc.Name}}()
 	{{end}}
 	if err != nil {
 		slog.Error("Runtime error", "error", err)
