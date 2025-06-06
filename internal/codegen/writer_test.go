@@ -7,11 +7,56 @@ import (
 	"go/token"
 	"os"
 	"path/filepath"
+	"regexp" // Added for regexes
+	"strings" // Added for strings
 	"testing"
+	"go/format" // Added for format.Source in normalizeCode
 
 	"github.com/podhmo/goat/internal/codegen"
 	// Assuming normalizeCode is in the same package or adjust import
 )
+
+// Helper functions (copied from main_generator_test.go as writer_test.go is in a different package)
+var (
+	lineCommentRegex = regexp.MustCompile(`//.*`)
+	// whitespaceRegex matches all whitespace characters, including newlines.
+	// It's used to replace any sequence of whitespace with a single space.
+	whitespaceRegex = regexp.MustCompile(`\s+`)
+)
+
+// normalizeForContains prepares a code snippet for robust substring checking.
+// It removes comments, replaces various whitespace with single spaces, and trims.
+func normalizeForContains(snippet string) string {
+	// Remove Go line comments first to prevent // from becoming part of a word.
+	var noCommentsLines []string
+	for _, line := range strings.Split(snippet, "\n") {
+		if idx := strings.Index(line, "//"); idx != -1 {
+			noCommentsLines = append(noCommentsLines, line[:idx])
+		} else {
+			noCommentsLines = append(noCommentsLines, line)
+		}
+	}
+	processed := strings.Join(noCommentsLines, " ") // Join with space to process as a single "line"
+
+	// Replace tabs with spaces first to ensure uniform space characters.
+	processed = strings.ReplaceAll(processed, "\t", " ")
+	// Compact all sequences of whitespace (now including newlines replaced by spaces) into a single space.
+	processed = whitespaceRegex.ReplaceAllString(processed, " ")
+	return strings.TrimSpace(processed)
+}
+
+// normalizeCode formats the actual generated Go code string.
+func normalizeCode(t *testing.T, code string) string {
+	t.Helper()
+	formatted, err := format.Source([]byte(code))
+	if err != nil {
+		// If go/format.Source fails on the actual generated code, it's a critical error.
+		t.Fatalf("Failed to format actual generated code: %v\nOriginal code:\n%s", err, code)
+	}
+	// After gofmt, further normalize for robust comparison (remove comments, compact whitespace)
+	return normalizeForContains(string(formatted))
+}
+// End of helper functions
 
 // createTempFile creates a temporary Go file with the given initial content.
 // It returns the path to the temporary file.

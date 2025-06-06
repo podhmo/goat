@@ -11,16 +11,49 @@ import (
 )
 
 // formatHelpText formats the help text string for inclusion in the generated Go code.
-// If the string contains a newline, it will return the string formatted as a Go raw string literal (e.g., `string content`).
-// Otherwise, it will return the string formatted as a regular Go string literal (e.g., "string content").
+// It handles escaped newlines (\\n) and placeholder single quotes (') for backticks (`).
+// It then chooses the best Go string literal representation.
 func formatHelpText(text string) string {
-	if strings.Contains(text, "\n") {
-		// For multi-line strings, use a raw string literal.
-		// The backticks themselves are part of the string returned.
-		return "`" + text + "`"
+	// Initial transformations
+	// 1. Replace literal "\\n" with actual newline character '\n'.
+	processedText := strings.ReplaceAll(text, "\\n", "\n")
+	// 2. Replace placeholder single quote "'" with actual backtick '`'.
+	processedText = strings.ReplaceAll(processedText, "'", "`")
+
+	hasNewlines := strings.Contains(processedText, "\n")
+	hasBackticks := strings.Contains(processedText, "`")
+
+	if hasNewlines && hasBackticks {
+		// Case 1: String contains both newlines and backticks.
+		// Must be represented as a concatenation of raw string literals and quoted backticks.
+		// Example: "line1\n`code`\nline3" becomes "`line1\n` + "`" + `code` + "`" + `\nline3`"
+		var sb strings.Builder
+		sb.WriteString("`") // Start the first raw string segment
+		last := 0
+		for i, r := range processedText {
+			if r == '`' {
+				sb.WriteString(processedText[last:i]) // Write content before the backtick
+				sb.WriteString("`")                   // Close current raw string segment
+				sb.WriteString(" + \"`\" + ")         // Concatenate a quoted backtick
+				sb.WriteString("`")                   // Start a new raw string segment
+				last = i + 1
+			}
+		}
+		sb.WriteString(processedText[last:]) // Write the remaining content after the last backtick
+		sb.WriteString("`")                  // Close the final raw string segment
+		return sb.String()
+
+	} else if hasNewlines {
+		// Case 2: String contains newlines but no backticks.
+		// Safe to use a single raw string literal.
+		return "`" + processedText + "`"
+	} else {
+		// Case 3: String contains no newlines. It might contain backticks, or it might not.
+		// `fmt.Sprintf("%q", ...)` handles this correctly.
+		// It will produce a standard quoted string, escaping backticks (e.g., as `)
+		// and other necessary characters.
+		return fmt.Sprintf("%q", processedText)
 	}
-	// For single-line strings, use a regular quoted string literal.
-	return fmt.Sprintf("%q", text)
 }
 
 // GenerateMain creates the Go code string for the new main() function
@@ -35,26 +68,31 @@ func GenerateMain(cmdMeta *metadata.CommandMetadata, helpText string, generateFu
 
 	tmpl := template.Must(template.New("main").Funcs(templateFuncs).Parse(`
 func main() {
-	{{if .HasOptions}}
-	var options = &{{.RunFunc.OptionsArgTypeNameStripped}}{}
-
-	{{range .Options}}
-	{{if eq .TypeName "string"}}
-	flag.StringVar(&options.{{.Name}}, "{{ KebabCase .Name }}", {{if .DefaultValue}}{{printf "%q" .DefaultValue}}{{else}}""{{end}}, "{{.HelpText}}"{{- if ne .DefaultValue nil -}}/* Default: {{.DefaultValue}} */{{- end -}})
-	{{else if eq .TypeName "int"}}
-	flag.IntVar(&options.{{.Name}}, "{{ KebabCase .Name }}", {{if .DefaultValue}}{{.DefaultValue}}{{else}}0{{end}}, "{{.HelpText}}"{{- if ne .DefaultValue nil -}}/* Default: {{.DefaultValue}} */{{- end -}})
-	{{else if eq .TypeName "bool"}}
-	flag.BoolVar(&options.{{.Name}}, "{{ KebabCase .Name }}", {{if ne .DefaultValue nil}}{{.DefaultValue}}{{else}}false{{end}}, "{{.HelpText}}"{{- if ne .DefaultValue nil -}}/* Default: {{.DefaultValue}} */{{- end -}})
-	{{end}}
-	{{end}}
-	{{end}}
-
 	{{if .HelpText}}
 	flag.Usage = func() {
-		fmt.Fprintln(os.Stderr, {{FormatHelpText .HelpText}})
-		flag.PrintDefaults()
+		fmt.Fprint(os.Stderr, {{FormatHelpText .HelpText}})
 	}
 	{{end}}
+
+	{{if .HasOptions}}
+	var options = &{{.RunFunc.OptionsArgTypeNameStripped}}{}
+	{{range .Options}}
+	{{if eq .TypeName "string"}}
+	flag.StringVar(&options.{{.Name}}, "{{ KebabCase .Name }}", {{if .DefaultValue}}{{printf "%q" .DefaultValue}}{{else}}""{{end}}, {{FormatHelpText .HelpText}}   {{- if ne .DefaultValue nil -}}/* Default: {{.DefaultValue}} */{{- end -}})
+	{{else if eq .TypeName "int"}}
+	flag.IntVar(&options.{{.Name}}, "{{ KebabCase .Name }}", {{if .DefaultValue}}{{.DefaultValue}}{{else}}0{{end}}, {{FormatHelpText .HelpText}}{{- if ne .DefaultValue nil -}}/* Default: {{.DefaultValue}} */{{- end -}})
+	{{else if eq .TypeName "bool"}}
+	flag.BoolVar(&options.{{.Name}}, "{{ KebabCase .Name }}", {{if ne .DefaultValue nil}}{{.DefaultValue}}{{else}}false{{end}}, {{FormatHelpText .HelpText}}{{- if ne .DefaultValue nil -}}/* Default: {{.DefaultValue}} */{{- end -}})
+	{{else if eq .TypeName "*string"}}
+	flag.StringVar(options.{{.Name}}, "{{ KebabCase .Name }}", {{if .DefaultValue}}{{printf "%q" .DefaultValue}}{{else}}""{{end}}, {{FormatHelpText .HelpText}}   {{- if ne .DefaultValue nil -}}/* Default: {{.DefaultValue}} */{{- end -}})
+	{{else if eq .TypeName "*int"}}
+	flag.IntVar(options.{{.Name}}, "{{ KebabCase .Name }}", {{if .DefaultValue}}{{.DefaultValue}}{{else}}0{{end}}, {{FormatHelpText .HelpText}}{{- if ne .DefaultValue nil -}}/* Default: {{.DefaultValue}} */{{- end -}})
+	{{else if eq .TypeName "*bool"}}
+	flag.BoolVar(options.{{.Name}}, "{{ KebabCase .Name }}", {{if ne .DefaultValue nil}}{{.DefaultValue}}{{else}}false{{end}}, {{FormatHelpText .HelpText}}{{- if ne .DefaultValue nil -}}/* Default: {{.DefaultValue}} */{{- end -}})
+	{{end}}
+	{{end}}
+	{{end}}
+
 	flag.Parse()
 
 	{{if .HasOptions}}
@@ -135,16 +173,7 @@ func main() {
 		os.Exit(1)
 	}
 	{{end}}
-	// Required bool flags are implicitly handled by their nature if they must be true.
-	// If a bool flag is required and must be true, and its default is false, then if it's still false, error out.
-	// If its default is true, it's always "set". This doesn't quite fit the "required" model for bools unless "required" means "must be true".
-	// For now, we assume "required" for a bool means it must be explicitly set to true if its default is false.
-	{{if and .IsRequired (eq .TypeName "bool") (not .DefaultValue) }}
-	if !options.{{.Name}} {
-		slog.Error("Missing required flag (must be true)", "flag", "{{ KebabCase .Name }}"{{if .EnvVar}}, "envVar", "{{.EnvVar}}"{{end}})
-		os.Exit(1)
-	}
-	{{end}}
+
 	{{end}}
 
 	{{if .EnumValues}}
@@ -165,11 +194,10 @@ func main() {
 	{{end}}
 	{{end}}
 
-	var err error
 	{{if .HasOptions}}
-	err = {{.RunFunc.PackageName}}.{{.RunFunc.Name}}( {{if .RunFunc.OptionsArgIsPointer}} options {{else}} *options {{end}} )
+	err := {{.RunFunc.Name}}( {{if .RunFunc.OptionsArgIsPointer}} options {{else}} *options {{end}} )
 	{{else}}
-	err = {{.RunFunc.PackageName}}.{{.RunFunc.Name}}()
+	err := {{.RunFunc.Name}}()
 	{{end}}
 	if err != nil {
 		slog.Error("Runtime error", "error", err)
@@ -177,12 +205,6 @@ func main() {
 	}
 }
 `))
-
-	// RunFuncInfo no longer provides Imports.
-	// Necessary direct imports like "flag", "fmt", "log/slog", "os", "strconv", "strings"
-	// will be added explicitly to the generated code.
-	// User-specific imports from the original run command's package must be handled
-	// by the user ensuring the run command's package itself is importable and correct.
 
 	if len(cmdMeta.Options) > 0 && cmdMeta.RunFunc.OptionsArgTypeNameStripped == "" {
 		return "", fmt.Errorf("OptionsArgTypeNameStripped is empty for command %s, but options are present. This indicates an issue with parsing the run function's options struct type", cmdMeta.Name)
@@ -210,12 +232,16 @@ func main() {
 		var sb strings.Builder
 		sb.WriteString("package main\n\n")
 		sb.WriteString("import (\n")
-		sb.WriteString("\t\"flag\"\n")
-		sb.WriteString("\t\"fmt\"\n")
-		sb.WriteString("\t\"log/slog\"\n")
-		sb.WriteString("\t\"os\"\n")
-		sb.WriteString("\t\"strconv\"\n")
-		sb.WriteString("\t\"strings\"\n") // strings might be used by generated code for e.g. enum validation
+		for _, name := range []string{
+			"flag",
+			"fmt",
+			"log/slog",
+			"os",
+			"strconv",
+			"strings", // strings might be used by generated code for e.g. enum validation
+		} {
+			sb.WriteString(fmt.Sprintf("\t\"%s\"\n", name))
+		}
 		sb.WriteString(")\n\n")
 		sb.WriteString(generatedCode.String())
 		return sb.String(), nil
