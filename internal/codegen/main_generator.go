@@ -33,9 +33,9 @@ func formatHelpText(text string) string {
 		for i, r := range processedText {
 			if r == '`' {
 				sb.WriteString(processedText[last:i]) // Write content before the backtick
-				sb.WriteString("`")                  // Close current raw string segment
-				sb.WriteString(" + \"`\" + ")        // Concatenate a quoted backtick
-				sb.WriteString("`")                  // Start a new raw string segment
+				sb.WriteString("`")                   // Close current raw string segment
+				sb.WriteString(" + \"`\" + ")         // Concatenate a quoted backtick
+				sb.WriteString("`")                   // Start a new raw string segment
 				last = i + 1
 			}
 		}
@@ -68,9 +68,15 @@ func GenerateMain(cmdMeta *metadata.CommandMetadata, helpText string, generateFu
 
 	tmpl := template.Must(template.New("main").Funcs(templateFuncs).Parse(`
 func main() {
+	{{if .HelpText}}
+	flag.Usage = func() {
+		fmt.Fprintln(os.Stderr, {{FormatHelpText .HelpText}})
+		flag.PrintDefaults()
+	}
+	{{end}}
+
 	{{if .HasOptions}}
 	var options = &{{.RunFunc.OptionsArgTypeNameStripped}}{}
-
 	{{range .Options}}
 	{{if eq .TypeName "string"}}
 	flag.StringVar(&options.{{.Name}}, "{{ KebabCase .Name }}", {{if .DefaultValue}}{{printf "%q" .DefaultValue}}{{else}}""{{end}}, {{FormatHelpText .HelpText}}   {{- if ne .DefaultValue nil -}}/* Default: {{.DefaultValue}} */{{- end -}})
@@ -82,12 +88,6 @@ func main() {
 	{{end}}
 	{{end}}
 
-	{{if .HelpText}}
-	flag.Usage = func() {
-		fmt.Fprintln(os.Stderr, {{FormatHelpText .HelpText}})
-		flag.PrintDefaults()
-	}
-	{{end}}
 	flag.Parse()
 
 	{{if .HasOptions}}
