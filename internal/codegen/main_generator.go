@@ -73,11 +73,11 @@ func main() {
 
 	{{range .Options}}
 	{{if eq .TypeName "string"}}
-	flag.StringVar(&options.{{.Name}}, "{{ KebabCase .Name }}", {{if .DefaultValue}}{{printf "%q" .DefaultValue}}{{else}}""{{end}}, "{{.HelpText}}"{{- if ne .DefaultValue nil -}}/* Default: {{.DefaultValue}} */{{- end -}})
+	flag.StringVar(&options.{{.Name}}, "{{ KebabCase .Name }}", {{if .DefaultValue}}{{printf "%q" .DefaultValue}}{{else}}""{{end}}, {{FormatHelpText .HelpText}}   {{- if ne .DefaultValue nil -}}/* Default: {{.DefaultValue}} */{{- end -}})
 	{{else if eq .TypeName "int"}}
-	flag.IntVar(&options.{{.Name}}, "{{ KebabCase .Name }}", {{if .DefaultValue}}{{.DefaultValue}}{{else}}0{{end}}, "{{.HelpText}}"{{- if ne .DefaultValue nil -}}/* Default: {{.DefaultValue}} */{{- end -}})
+	flag.IntVar(&options.{{.Name}}, "{{ KebabCase .Name }}", {{if .DefaultValue}}{{.DefaultValue}}{{else}}0{{end}}, {{FormatHelpText .HelpText}}{{- if ne .DefaultValue nil -}}/* Default: {{.DefaultValue}} */{{- end -}})
 	{{else if eq .TypeName "bool"}}
-	flag.BoolVar(&options.{{.Name}}, "{{ KebabCase .Name }}", {{if ne .DefaultValue nil}}{{.DefaultValue}}{{else}}false{{end}}, "{{.HelpText}}"{{- if ne .DefaultValue nil -}}/* Default: {{.DefaultValue}} */{{- end -}})
+	flag.BoolVar(&options.{{.Name}}, "{{ KebabCase .Name }}", {{if ne .DefaultValue nil}}{{.DefaultValue}}{{else}}false{{end}}, {{FormatHelpText .HelpText}}{{- if ne .DefaultValue nil -}}/* Default: {{.DefaultValue}} */{{- end -}})
 	{{end}}
 	{{end}}
 	{{end}}
