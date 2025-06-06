@@ -183,6 +183,12 @@ func runGoat(opts *Options) error {
 }
 
 func scanMain(fset *token.FileSet, opts *Options) (*metadata.CommandMetadata, *ast.File, error) {
+	absTargetFile, err := filepath.Abs(opts.TargetFile)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to get absolute path for target file %s: %w", opts.TargetFile, err)
+	}
+	opts.TargetFile = absTargetFile // Update to absolute path
+
 	slog.Info("Goat: Analyzing file", "targetFile", opts.TargetFile, "runFunc", opts.RunFuncName, "optionsInitializer", opts.OptionsInitializerName)
 
 	targetFileAst, err := loader.LoadFile(fset, opts.TargetFile)
@@ -193,63 +199,95 @@ func scanMain(fset *token.FileSet, opts *Options) (*metadata.CommandMetadata, *a
 	currentPackageName := targetFileAst.Name.Name
 
 	targetDir := filepath.Dir(opts.TargetFile)
-	var importPath string
-	buildPkg, err := build.ImportDir(targetDir, 0)
-	if err != nil {
-		slog.Warn("go/build.ImportDir failed, attempting to use '.' as import path", "targetDir", targetDir, "error", err)
-		importPath = "."
-	} else {
-		importPath = buildPkg.ImportPath
-		if buildPkg.Name != "" && currentPackageName == "" {
-			currentPackageName = buildPkg.Name
-		}
-	}
-	if importPath == "" {
-		slog.Warn("Could not determine specific import path via go/build, using '.'", "targetDir", targetDir)
-		importPath = "."
-	}
-	// Ensure currentPackageName has a default if still empty
-	if strings.TrimSpace(currentPackageName) == "" {
-		slog.Warn("Could not determine package name, defaulting to 'main'", "targetFile", opts.TargetFile, "astName", targetFileAst.Name.Name, "buildPkgName", buildPkg.Name)
-		currentPackageName = "main"
+	// Determine currentPackageName from the targetFileAst first.
+	if targetFileAst.Name != nil {
+		currentPackageName = targetFileAst.Name.Name
 	}
 
-	packageFiles, err := loader.LoadPackageFiles(fset, importPath, "")
+	// Use targetDir directly to load other files from the same package.
+	// This avoids relying on build.ImportDir for temporary/non-standard paths,
+	// which might default to "." (current working directory) if it can't resolve targetDir.
+	slog.Info("Loading other files from package directory", "dir", targetDir)
+	packageFiles, err := loader.LoadPackageFiles(fset, targetDir, "") // Pass targetDir directly
 	if err != nil {
-		// If loading package files fails, we might still proceed with targetFileAst if analysis supports single file.
-		// However, the new Analyze function expects a slice.
-		slog.Warn("Failed to load package files, proceeding with only the target file", "importPath", importPath, "targetFile", opts.TargetFile, "error", err)
-		// Proceeding with just targetFileAst in filesForAnalysis
+		slog.Warn("Failed to load other package files, proceeding with only the target file.", "dir", targetDir, "error", err)
+		// Proceeding with just targetFileAst in filesForAnalysis is handled by subsequent logic.
+	}
+
+	// Ensure currentPackageName has a default if still empty (e.g. if targetFileAst.Name was nil)
+	if strings.TrimSpace(currentPackageName) == "" {
+		// Try to get package name from build context of targetDir as a fallback
+		buildPkg, buildErr := build.ImportDir(targetDir, 0)
+		if buildErr == nil && buildPkg.Name != "" {
+			currentPackageName = buildPkg.Name
+		} else {
+			slog.Warn("Could not determine package name from AST or build context, defaulting to 'main'", "targetFile", opts.TargetFile, "targetDir", targetDir)
+			currentPackageName = "main"
+		}
 	}
 
 	// New logic: Ensure targetFileAst is always included and handle potential duplicates.
 	finalFilesForAnalysis := []*ast.File{targetFileAst}
 	seenFilePaths := make(map[string]bool)
-	if fset.File(targetFileAst.Pos()) != nil {
-		seenFilePaths[fset.File(targetFileAst.Pos()).Name()] = true
-	} else {
-		// Fallback if position is not available, though unlikely for a loaded AST
-		seenFilePaths[opts.TargetFile] = true
-	}
+	targetFileRegisteredPath := fset.File(targetFileAst.Pos()).Name() // Absolute path from fset
+	seenFilePaths[targetFileRegisteredPath] = true
 
 	for _, f := range packageFiles {
 		tokenFile := fset.File(f.Pos())
 		if tokenFile != nil {
-			filePath := tokenFile.Name()
+			filePath := tokenFile.Name() // Absolute path from fset
 			if !seenFilePaths[filePath] {
 				finalFilesForAnalysis = append(finalFilesForAnalysis, f)
 				seenFilePaths[filePath] = true
 			}
 		}
 	}
-	if len(finalFilesForAnalysis) == 0 && targetFileAst == nil { // Should be caught by LoadFile earlier
-		return nil, nil, fmt.Errorf("no Go files could be prepared for analysis, target file %s failed to load", opts.TargetFile)
+	if len(finalFilesForAnalysis) == 0 { // targetFileAst must have been nil if this is true
+		return nil, nil, fmt.Errorf("no Go files could be prepared for analysis (target file %s was not loaded)", opts.TargetFile)
 	}
 
-	// The optionsStructName returned by Analyze needs to be captured.
-	cmdMetadata, returnedOptionsStructName, err := analyzer.Analyze(fset, finalFilesForAnalysis, opts.RunFuncName, currentPackageName)
+	// Determine moduleRootPath and targetPackageID
+	// For tests, opts.TargetFile is like /tmp/TestXYZ.../moduleName/example.com/pkg/file.go
+	// or /tmp/TestXYZ.../file.go (if moduleName is used directly for TempDir)
+	// The go.mod would be at /tmp/TestXYZ.../go.mod or /tmp/TestXYZ.../moduleName/go.mod
+
+	moduleRootPath, err := loader.FindModuleRoot(targetFileRegisteredPath)
 	if err != nil {
-		return nil, targetFileAst, fmt.Errorf("failed to analyze AST: %w", err)
+		slog.Warn("Failed to find module root, using directory of target file as root.", "target", targetFileRegisteredPath, "error", err)
+		moduleRootPath = filepath.Dir(targetFileRegisteredPath)
+	}
+
+	moduleName, err := loader.GetModuleName(moduleRootPath)
+	if err != nil {
+		slog.Warn("Failed to get module name from go.mod, using fallback.", "modRoot", moduleRootPath, "error", err)
+		// Fallback: if go.mod is unparsable or module name is weird, construct a pseudo-ID.
+		// This part is tricky; robustly finding a package ID outside a module is hard.
+		// For now, many tests create a module name. If not, this will be an issue.
+		// If module name is essential, this should be a hard error.
+		// Let's assume tests provide a clear module structure.
+		// If not, use "." for packageID and moduleRootPath as Dir for packages.Load.
+		// The currentPackageName (Go package name) is already derived.
+	}
+
+	// targetPackageID should be like "moduleName/path/to/pkg" or just "path/to/pkg" if moduleName is empty/unknown
+	relPathFromModRoot, err := filepath.Rel(moduleRootPath, filepath.Dir(targetFileRegisteredPath))
+	if err != nil {
+		return nil, targetFileAst, fmt.Errorf("failed to make target path relative to module root: %w", err)
+	}
+	targetPackageID := filepath.ToSlash(relPathFromModRoot)
+	if moduleName != "" {
+		if targetPackageID == "." { // File is in module root
+			targetPackageID = moduleName
+		} else {
+			targetPackageID = moduleName + "/" + targetPackageID
+		}
+	}
+	// If moduleName is empty and targetPackageID is ".", it implies a simple dir-based package.
+	// currentPackageName (the Go `package foo` name) is used by AnalyzeOptionsV2 for struct lookup within the package.
+
+	cmdMetadata, returnedOptionsStructName, err := analyzer.Analyze(fset, finalFilesForAnalysis, opts.RunFuncName, targetPackageID, moduleRootPath)
+	if err != nil {
+		return nil, targetFileAst, fmt.Errorf("failed to analyze AST (targetPkgID: %s, modRoot: %s): %w", targetPackageID, moduleRootPath, err)
 	}
 	slog.Info("Goat: Command metadata extracted", "commandName", cmdMetadata.Name, "optionsStruct", returnedOptionsStructName)
 

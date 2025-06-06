@@ -1,7 +1,5 @@
 package textvar_pkg
 
-import "fmt"
-
 // Type with value receiver for marshaling, pointer for unmarshaling
 type MyTextValue string
 

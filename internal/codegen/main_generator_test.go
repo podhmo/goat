@@ -123,17 +123,17 @@ func TestGenerateMain_WithTextVarOptions(t *testing.T) {
 	expectedFlag_Case1 := `flag.TextVar(&options.FieldA, "field-a", options.FieldA, "Help for FieldA" /* Env: FIELD_A_ENV */)`
 	assertCodeContains(t, actualCode, expectedFlag_Case1)
 
-	expectedEnv_Case1 := `
-	if val, ok := os.LookupEnv("FIELD_A_ENV"); ok {
-		if options.FieldA.IsTextUnmarshaler { //This is a slight misuse of the field, it should be a direct call
-			err := (&options.FieldA).UnmarshalText([]byte(val))
-			if err != nil {
-				slog.Warn("Could not parse environment variable for TextUnmarshaler option; using default or previously set value.", "envVar", "FIELD_A_ENV", "option", "field-a", "value", val, "error", err)
-			}
-        } else if eq options.FieldA.TypeName "string" {
-            // ... this structure is based on the template logic, the IsTextUnmarshaler should be a top-level if
-        }
-	}`
+	// expectedEnv_Case1 := `
+	// if val, ok := os.LookupEnv("FIELD_A_ENV"); ok {
+	// 	if options.FieldA.IsTextUnmarshaler { //This is a slight misuse of the field, it should be a direct call
+	// 		err := (&options.FieldA).UnmarshalText([]byte(val))
+	// 		if err != nil {
+	// 			slog.Warn("Could not parse environment variable for TextUnmarshaler option; using default or previously set value.", "envVar", "FIELD_A_ENV", "option", "field-a", "value", val, "error", err)
+	// 		}
+    //     } else if eq options.FieldA.TypeName "string" {
+    //         // ... this structure is based on the template logic, the IsTextUnmarshaler should be a top-level if
+    //     }
+	// }`
 	// The above expectedEnv_Case1 is a bit complex due to how the template is structured.
 	// Let's simplify and check for the core UnmarshalText call.
 	simplifiedEnv_Case1_UnmarshalCall := `err := (&options.FieldA).UnmarshalText([]byte(val))`

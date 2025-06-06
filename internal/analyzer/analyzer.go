@@ -10,42 +10,57 @@ import (
 	"github.com/podhmo/goat/internal/metadata"
 )
 
-// Analyze inspects the AST of Go files to extract command metadata,
-// focusing on the run function and its associated options struct.
-// It returns the main CommandMetadata, the name of the Options struct, and any error encountered.
-func Analyze(fset *token.FileSet, files []*ast.File, runFuncName string, mainPackageName string) (*metadata.CommandMetadata, string, error) {
+// Analyze inspects the AST of Go files to extract command metadata.
+// - fset: Token FileSet.
+// - files: ASTs of the files to analyze (typically from the target package).
+// - runFuncName: Name of the main run function.
+// - targetPackageID: Import path of the package containing the runFuncName (e.g., "testmodule/example.com/mainpkg").
+// - moduleRootPath: Absolute path to the root of the module this package belongs to.
+func Analyze(fset *token.FileSet, files []*ast.File, runFuncName string, targetPackageID string, moduleRootPath string) (*metadata.CommandMetadata, string, error) {
 	cmdMeta := &metadata.CommandMetadata{
 		Options: []*metadata.OptionMetadata{},
 	}
 	var optionsStructName string // Will be returned
 
+	// AnalyzeRunFunc finds the run function within the provided files.
+	// It does not need module context, only ASTs.
 	runFuncInfo, runFuncDoc, err := AnalyzeRunFunc(files, runFuncName)
 	if err != nil {
-		return nil, "", fmt.Errorf("analyzing run function '%s': %w", runFuncName, err)
+		return nil, "", fmt.Errorf("analyzing run function '%s' in package '%s': %w", runFuncName, targetPackageID, err)
 	}
-	if runFuncInfo != nil {
-		runFuncInfo.PackageName = mainPackageName // Set the package name here
+	if runFuncInfo == nil { // Should be caught by AnalyzeRunFunc's error, but as a safeguard.
+		return nil, "", fmt.Errorf("run function '%s' not found in package '%s'", runFuncName, targetPackageID)
+	}
 
-		// Populate OptionsArgTypeNameStripped and OptionsArgIsPointer
-		if runFuncInfo.OptionsArgType != "" {
-			if strings.HasPrefix(runFuncInfo.OptionsArgType, "*") {
-				runFuncInfo.OptionsArgIsPointer = true
-				runFuncInfo.OptionsArgTypeNameStripped = strings.TrimPrefix(runFuncInfo.OptionsArgType, "*")
-			} else {
-				runFuncInfo.OptionsArgIsPointer = false
-				runFuncInfo.OptionsArgTypeNameStripped = runFuncInfo.OptionsArgType
-			}
+	// runFuncInfo.PackageName should be the actual Go package name (e.g. "mainpkg"),
+	// not necessarily the full targetPackageID. This might need refinement if targetPackageID is different.
+	// For now, let's assume the last part of targetPackageID is the Go package name.
+	pkgNameParts := strings.Split(targetPackageID, "/")
+	runFuncInfo.PackageName = pkgNameParts[len(pkgNameParts)-1]
+
+
+	// Populate OptionsArgTypeNameStripped and OptionsArgIsPointer
+	if runFuncInfo.OptionsArgType != "" {
+		if strings.HasPrefix(runFuncInfo.OptionsArgType, "*") {
+			runFuncInfo.OptionsArgIsPointer = true
+			runFuncInfo.OptionsArgTypeNameStripped = strings.TrimPrefix(runFuncInfo.OptionsArgType, "*")
+		} else {
+			runFuncInfo.OptionsArgIsPointer = false
+			runFuncInfo.OptionsArgTypeNameStripped = runFuncInfo.OptionsArgType
 		}
 	}
 
-	cmdMeta.Name = mainPackageName // Use provided main package name
+	cmdMeta.Name = targetPackageID // Use targetPackageID as the command name identifier
 	cmdMeta.Description = runFuncDoc
 	cmdMeta.RunFunc = runFuncInfo
 
-	if runFuncInfo != nil && runFuncInfo.OptionsArgName != "" && runFuncInfo.OptionsArgType != "" {
-		options, foundOptionsStructName, err := AnalyzeOptions(fset, files, runFuncInfo.OptionsArgType, mainPackageName)
+	if runFuncInfo.OptionsArgName != "" && runFuncInfo.OptionsArgType != "" {
+		// optionsTypeName is the simple name of the type, e.g. "Options" or "*Options"
+		// targetPackageID is the import path of the package where this type is defined.
+		// moduleRootPath is the filesystem root of the module containing this package.
+		options, foundOptionsStructName, err := AnalyzeOptionsV2(fset, files, runFuncInfo.OptionsArgType, targetPackageID, moduleRootPath)
 		if err != nil {
-			return nil, "", fmt.Errorf("analyzing options struct for run function '%s': %w", runFuncName, err)
+			return nil, "", fmt.Errorf("analyzing options struct for run function '%s' in package '%s': %w", runFuncName, targetPackageID, err)
 		}
 		cmdMeta.Options = options
 		optionsStructName = foundOptionsStructName // Assign to the variable that will be returned
