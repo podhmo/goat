@@ -36,7 +36,7 @@ func AnalyzeOptions(fset *token.FileSet, files []*ast.File, optionsTypeName stri
 						optionsStruct = ts
 						actualStructName = ts.Name.Name
 						fileContainingOptionsStruct = fileAst // Store the file
-						return false // Stop searching this file
+						return false                          // Stop searching this file
 					}
 				}
 			}
@@ -148,7 +148,7 @@ func AnalyzeOptions(fset *token.FileSet, files []*ast.File, optionsTypeName stri
 			CliName:    stringutils.ToKebabCase(fieldName),
 			TypeName:   astutils.ExprToTypeName(field.Type),
 			IsPointer:  astutils.IsPointerType(field.Type),
-			IsRequired: false, // Default to false, will be set by tag
+			IsRequired: !astutils.IsPointerType(field.Type), // Basic assumption: non-pointer is required
 		}
 
 		if field.Doc != nil {
@@ -165,12 +165,6 @@ func AnalyzeOptions(fset *token.FileSet, files []*ast.File, optionsTypeName stri
 			tag := reflect.StructTag(tagStr)
 			if envVar, ok := tag.Lookup("env"); ok {
 				opt.EnvVar = envVar
-			}
-			if goatTag, ok := tag.Lookup("goat"); ok {
-				if strings.Contains(goatTag, "required") {
-					opt.IsRequired = true
-				}
-				// TODO: Potentially parse other goat-specific options here if any, e.g., "file", "enum"
 			}
 			// TODO: Add support for other non-goat tags if needed, or consolidate all tag parsing.
 		}
