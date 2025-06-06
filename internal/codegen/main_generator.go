@@ -47,7 +47,25 @@ func main() {
 	{{range .Options}}
 	{{if .EnvVar}}
 	if val, ok := os.LookupEnv("{{.EnvVar}}"); ok {
-		{{if eq .TypeName "string"}}
+		{{if .IsTextUnmarshaler}}
+			{{if .IsPointer}}
+			// options.{{.Name}} is type *CustomType. CustomType implements TextUnmarshaler (likely via *CustomType receiver)
+			if options.{{.Name}} == nil {
+				options.{{.Name}} = new({{.TypeName | TrimStar}})
+			}
+			err := options.{{.Name}}.UnmarshalText([]byte(val))
+			if err != nil {
+				slog.Warn("Could not parse environment variable for TextUnmarshaler option; using default or previously set value.", "envVar", "{{.EnvVar}}", "option", "{{.CliName}}", "value", val, "error", err)
+			}
+			{{else}}
+			// options.{{.Name}} is type CustomType. Assumes UnmarshalText has a pointer receiver (*CustomType).
+			// The field itself must be addressable.
+			err := (&options.{{.Name}}).UnmarshalText([]byte(val))
+			if err != nil {
+				slog.Warn("Could not parse environment variable for TextUnmarshaler option; using default or previously set value.", "envVar", "{{.EnvVar}}", "option", "{{.CliName}}", "value", val, "error", err)
+			}
+			{{end}}
+		{{else if eq .TypeName "string"}}
 		options.{{.Name}} = val
 		{{else if eq .TypeName "int"}}
 		if v, err := strconv.Atoi(val); err == nil {
@@ -116,6 +134,25 @@ func main() {
 	if options.{{.Name}} != nil { default{{.Name}}ValForFlag = *options.{{.Name}} }
 	if options.{{.Name}} == nil { options.{{.Name}} = new(bool) }
 	flag.BoolVar(options.{{.Name}}, "{{ KebabCase .Name }}", default{{.Name}}ValForFlag, {{FormatHelpText .HelpText}}{{- if ne .DefaultValue nil -}}/* Original Default: {{.DefaultValue}}, Env: {{.EnvVar}} */{{- else if .EnvVar}}/* Env: {{.EnvVar}} */{{- end -}})
+	{{else if and .IsTextUnmarshaler .IsTextMarshaler}}
+	{{if .IsPointer}}
+	// options.{{.Name}} is type *CustomType. CustomType implements TextUnmarshaler and TextMarshaler (likely via *CustomType receiver)
+	// Ensure options.{{.Name}} is initialized before use if it's nil.
+	if options.{{.Name}} == nil {
+		options.{{.Name}} = new({{.TypeName | TrimStar}})
+		// Note: Assumes new({{.TypeName | TrimStar}}) results in a state
+		// that is valid for MarshalText (e.g., gives empty string or a sensible default).
+	}
+	// First argument to TextVar is the TextUnmarshaler (options.{{.Name}} itself).
+	// Third argument (value) is the TextMarshaler for the default (options.{{.Name}} itself).
+	flag.TextVar(options.{{.Name}}, "{{.CliName}}", options.{{.Name}}, {{FormatHelpText .HelpText}} {{- if .EnvVar}}/* Env: {{.EnvVar}} */{{- end -}})
+	{{else}}
+	// options.{{.Name}} is type CustomType.
+	// &options.{{.Name}} will be the TextUnmarshaler.
+	// options.{{.Name}} will be the TextMarshaler for the default value.
+	// This assumes CustomType implements TextMarshaler, and *CustomType implements TextUnmarshaler.
+	flag.TextVar(&options.{{.Name}}, "{{.CliName}}", options.{{.Name}}, {{FormatHelpText .HelpText}} {{- if .EnvVar}}/* Env: {{.EnvVar}} */{{- end -}})
+	{{end}}
 	{{end}}
 	{{end}}
 
@@ -304,7 +341,13 @@ func formatHelpText(text string) string {
 func GenerateMain(cmdMeta *metadata.CommandMetadata, helpText string, generateFullFile bool) (string, error) {
 	templateFuncs := template.FuncMap{
 		"KebabCase":      stringutils.ToKebabCase,
-		"FormatHelpText": formatHelpText, // Add this line
+		"FormatHelpText": formatHelpText,
+		"TrimStar": func(s string) string {
+			if strings.HasPrefix(s, "*") {
+				return s[1:]
+			}
+			return s
+		},
 	}
 
 	tmpl := template.Must(template.New("main").Funcs(templateFuncs).Parse(mainFuncTmpl))

@@ -39,6 +39,68 @@
     -   ポインタ型でないフィールド: 必須オプションとして扱われる (`IsRequired = true`)。
     -   ポインタ型フィールド: オプショナルなオプションとして扱われる (`IsRequired = false`)。
     -   サポートされる型 (初期): `string`, `int`, `bool`, `float64` およびこれらのポインタ型、`[]string` 等。
+        - **カスタム型と `encoding.TextUnmarshaler` / `encoding.TextMarshaler`:**
+          フィールドの型が `encoding.TextUnmarshaler` インターフェースを実装している場合、`goat` は環境変数やフラグからの文字列値をその型の `UnmarshalText` メソッドを使ってパースします。
+          さらに、その型が `encoding.TextMarshaler` インターフェースも実装している場合、`flag.TextVar` を使用してフラグが設定されます。これにより、型のデフォルト値をテキスト形式で表現し、フラグのヘルプメッセージに表示できるようになります。
+          通常、`flag.TextVar` を利用するためには、対象の型（またはそのポインタ型）がこれら両方のインターフェースを実装している必要があります。
+
+          例: コンマ区切りリストを扱うカスタム型
+          ```go
+          package main
+
+          import (
+		"strings"
+		// "errors" // errors パッケージは例では未使用のためコメントアウト
+          )
+
+          type CommaSeparatedStringList []string
+
+          func (c *CommaSeparatedStringList) String() string { // flag.Valueインターフェースの一部 (TextVar使用時は必須ではない)
+		return strings.Join(*c, ",")
+          }
+
+          // flag.Valueインターフェースの一部 (TextVar使用時はUnmarshalTextが優先される)
+          // TextVarを使わない場合のフォールバックや、他のflagパッケージ関数との互換性のために残しても良い
+          func (c *CommaSeparatedStringList) Set(value string) error {
+              if value == "" {
+                  *c = []string{}
+                  return nil
+              }
+              *c = strings.Split(value, ",")
+              return nil
+          }
+
+          // encoding.TextUnmarshaler の実装
+          func (c *CommaSeparatedStringList) UnmarshalText(text []byte) error {
+              if len(text) == 0 {
+                  *c = []string{}
+                  return nil
+              }
+              *c = strings.Split(string(text), ",")
+              return nil
+          }
+
+          // encoding.TextMarshaler の実装
+          func (c CommaSeparatedStringList) MarshalText() ([]byte, error) {
+              return []byte(strings.Join(c, ",")), nil
+          }
+
+          // --- Options struct ---
+          type MyOptions struct {
+              CustomList CommaSeparatedStringList `env:"CUSTOM_LIST"`
+              // ... other fields
+          }
+
+          // --- Initializer ---
+          // goat.Default を使用したデフォルト値設定の例 (オプション)
+          // func NewMyOptions() *MyOptions {
+          // 	return &MyOptions{
+          // 		CustomList: goat.Default(CommaSeparatedStringList{"default", "values"}),
+          // 	}
+          // }
+          ```
+          この例では、`CustomList` フィールドはコンマ区切りの文字列としてフラグ (`--custom-list`) や環境変数 (`CUSTOM_LIST`) で設定でき、デフォルト値も適切に処理されます。
+          `goat.Default()` を使用する場合、`CommaSeparatedStringList{"default", "values"}` のようなリテラル値で初期化できます。
 -   **構造体タグ:**
     -   `env:"ENV_VAR_NAME"`: 対応する環境変数名を指定。
 
