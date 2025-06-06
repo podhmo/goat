@@ -11,16 +11,49 @@ import (
 )
 
 // formatHelpText formats the help text string for inclusion in the generated Go code.
-// If the string contains a newline, it will return the string formatted as a Go raw string literal (e.g., `string content`).
-// Otherwise, it will return the string formatted as a regular Go string literal (e.g., "string content").
+// It handles escaped newlines (\\n) and placeholder single quotes (') for backticks (`).
+// It then chooses the best Go string literal representation.
 func formatHelpText(text string) string {
-	if strings.Contains(text, "\n") {
-		// For multi-line strings, use a raw string literal.
-		// The backticks themselves are part of the string returned.
-		return "`" + text + "`"
+	// Initial transformations
+	// 1. Replace literal "\\n" with actual newline character '\n'.
+	processedText := strings.ReplaceAll(text, "\\n", "\n")
+	// 2. Replace placeholder single quote "'" with actual backtick '`'.
+	processedText = strings.ReplaceAll(processedText, "'", "`")
+
+	hasNewlines := strings.Contains(processedText, "\n")
+	hasBackticks := strings.Contains(processedText, "`")
+
+	if hasNewlines && hasBackticks {
+		// Case 1: String contains both newlines and backticks.
+		// Must be represented as a concatenation of raw string literals and quoted backticks.
+		// Example: "line1\n`code`\nline3" becomes "`line1\n` + "`" + `code` + "`" + `\nline3`"
+		var sb strings.Builder
+		sb.WriteString("`") // Start the first raw string segment
+		last := 0
+		for i, r := range processedText {
+			if r == '`' {
+				sb.WriteString(processedText[last:i]) // Write content before the backtick
+				sb.WriteString("`")                  // Close current raw string segment
+				sb.WriteString(" + \"`\" + ")        // Concatenate a quoted backtick
+				sb.WriteString("`")                  // Start a new raw string segment
+				last = i + 1
+			}
+		}
+		sb.WriteString(processedText[last:]) // Write the remaining content after the last backtick
+		sb.WriteString("`")                  // Close the final raw string segment
+		return sb.String()
+
+	} else if hasNewlines {
+		// Case 2: String contains newlines but no backticks.
+		// Safe to use a single raw string literal.
+		return "`" + processedText + "`"
+	} else {
+		// Case 3: String contains no newlines. It might contain backticks, or it might not.
+		// `fmt.Sprintf("%q", ...)` handles this correctly.
+		// It will produce a standard quoted string, escaping backticks (e.g., as `)
+		// and other necessary characters.
+		return fmt.Sprintf("%q", processedText)
 	}
-	// For single-line strings, use a regular quoted string literal.
-	return fmt.Sprintf("%q", text)
 }
 
 // GenerateMain creates the Go code string for the new main() function

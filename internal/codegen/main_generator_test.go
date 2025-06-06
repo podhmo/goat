@@ -1,4 +1,4 @@
-package codegen_test
+package codegen // Changed from codegen_test
 
 import (
 	"fmt"
@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/podhmo/goat/internal/codegen"
+	// "github.com/podhmo/goat/internal/codegen" // Removed this import
 	"github.com/podhmo/goat/internal/metadata"
 )
 
@@ -78,20 +78,17 @@ func TestGenerateMain_BasicCase(t *testing.T) {
 		RunFunc: &metadata.RunFuncInfo{
 			Name:                       "Run",
 			PackageName:                "mycmd",
-			OptionsArgTypeNameStripped: "OptionsType", // Assume some type if options were present
+			OptionsArgTypeNameStripped: "OptionsType",
 			OptionsArgIsPointer:        true,
 		},
 		Options: []*metadata.OptionMetadata{},
 	}
 
-	actualCode, err := codegen.GenerateMain(cmdMeta, "", true)
+	actualCode, err := GenerateMain(cmdMeta, "", true) // Changed codegen.GenerateMain to GenerateMain
 	if err != nil {
 		t.Fatalf("GenerateMain failed: %v", err)
 	}
 
-	// Assertions use normalizeCode for actualCode, and normalizeForContains for snippets (done inside helpers)
-	// For the RunFuncPackage, assert that the quoted package name exists.
-	// This check is for the call site like `mycmd.Run()`, not for an import statement.
 	assertCodeContains(t, actualCode, cmdMeta.RunFunc.PackageName)
 	assertCodeContains(t, actualCode, "func main() {")
 	assertCodeContains(t, actualCode, "var err error")
@@ -99,7 +96,7 @@ func TestGenerateMain_BasicCase(t *testing.T) {
 	assertCodeContains(t, actualCode, "if err != nil {")
 	assertCodeContains(t, actualCode, `slog.Error("Runtime error", "error", err)`)
 	assertCodeContains(t, actualCode, `os.Exit(1)`)
-	assertCodeNotContains(t, actualCode, "var options =") // No options struct if no options
+	assertCodeNotContains(t, actualCode, "var options =")
 }
 
 func TestGenerateMain_WithOptions(t *testing.T) {
@@ -111,13 +108,13 @@ func TestGenerateMain_WithOptions(t *testing.T) {
 			OptionsArgIsPointer:        true,
 		},
 		Options: []*metadata.OptionMetadata{
-			{Name: "Name", TypeName: "string", HelpText: "Name of the user", DefaultValue: "guest"}, // Field names are typically capitalized
+			{Name: "Name", TypeName: "string", HelpText: "Name of the user", DefaultValue: "guest"},
 			{Name: "Age", TypeName: "int", HelpText: "Age of the user", DefaultValue: 30},
 			{Name: "Verbose", TypeName: "bool", HelpText: "Enable verbose output", DefaultValue: false},
 		},
 	}
 
-	actualCode, err := codegen.GenerateMain(cmdMeta, "", true)
+	actualCode, err := GenerateMain(cmdMeta, "", true) // Changed codegen.GenerateMain to GenerateMain
 	if err != nil {
 		t.Fatalf("GenerateMain failed: %v", err)
 	}
@@ -149,7 +146,7 @@ func TestGenerateMain_KebabCaseFlagNames(t *testing.T) {
 		},
 	}
 
-	actualCode, err := codegen.GenerateMain(cmdMeta, "", true)
+	actualCode, err := GenerateMain(cmdMeta, "", true) // Changed codegen.GenerateMain to GenerateMain
 	if err != nil {
 		t.Fatalf("GenerateMain failed: %v", err)
 	}
@@ -171,22 +168,21 @@ func TestGenerateMain_RequiredFlags(t *testing.T) {
 			Name:                       "DoSomething",
 			PackageName:                "task",
 			OptionsArgTypeNameStripped: "Config",
-			OptionsArgIsPointer:        false, // Test with value receiver for options
+			OptionsArgIsPointer:        false,
 		},
 		Options: []*metadata.OptionMetadata{
-			{Name: "ConfigFile", TypeName: "string", HelpText: "Path to config file", IsRequired: true}, // No default, so no comment
-			{Name: "Retries", TypeName: "int", HelpText: "Number of retries", IsRequired: true, DefaultValue: 0}, // Default comment
+			{Name: "ConfigFile", TypeName: "string", HelpText: "Path to config file", IsRequired: true},
+			{Name: "Retries", TypeName: "int", HelpText: "Number of retries", IsRequired: true, DefaultValue: 0},
 		},
 	}
 
-	actualCode, err := codegen.GenerateMain(cmdMeta, "", true)
+	actualCode, err := GenerateMain(cmdMeta, "", true) // Changed codegen.GenerateMain to GenerateMain
 	if err != nil {
 		t.Fatalf("GenerateMain failed: %v", err)
 	}
 
 	assertCodeContains(t, actualCode, "var options = &Config{}")
-	// Check flag definitions with default comments
-	assertCodeContains(t, actualCode, `flag.StringVar(&options.ConfigFile, "config-file", "", "Path to config file")`) // No default, so no comment to worry about space
+	assertCodeContains(t, actualCode, `flag.StringVar(&options.ConfigFile, "config-file", "", "Path to config file")`)
 	assertCodeContains(t, actualCode, `flag.IntVar(&options.Retries, "retries", 0, "Number of retries" /* Default: 0 */)`)
 
 	expectedConfigFileCheck := `
@@ -204,7 +200,7 @@ func TestGenerateMain_RequiredFlags(t *testing.T) {
 			isSetOrFromEnv_Retries = true
 		}
 	})
-	if !isSetOrFromEnv_Retries && options.Retries == 0 { // Default is 0
+	if !isSetOrFromEnv_Retries && options.Retries == 0 {
 		slog.Error("Missing required flag", "flag", "retries")
 		os.Exit(1)
 	}
@@ -226,7 +222,7 @@ func TestGenerateMain_EnumValidation(t *testing.T) {
 		},
 	}
 
-	actualCode, err := codegen.GenerateMain(cmdMeta, "", true)
+	actualCode, err := GenerateMain(cmdMeta, "", true) // Changed codegen.GenerateMain to GenerateMain
 	if err != nil {
 		t.Fatalf("GenerateMain failed: %v", err)
 	}
@@ -262,26 +258,25 @@ func TestGenerateMain_EnvironmentVariables(t *testing.T) {
 			OptionsArgIsPointer:        true,
 		},
 		Options: []*metadata.OptionMetadata{
-			{Name: "APIKey", TypeName: "string", HelpText: "API Key", EnvVar: "API_KEY"}, // Field name capitalized
+			{Name: "APIKey", TypeName: "string", HelpText: "API Key", EnvVar: "API_KEY"},
 			{Name: "Timeout", TypeName: "int", HelpText: "Timeout in seconds", DefaultValue: 60, EnvVar: "TIMEOUT_SECONDS"},
 			{Name: "EnableFeature", TypeName: "bool", HelpText: "Enable new feature", DefaultValue: false, EnvVar: "ENABLE_MY_FEATURE"},
 		},
 	}
 
-	actualCode, err := codegen.GenerateMain(cmdMeta, "", true)
+	actualCode, err := GenerateMain(cmdMeta, "", true) // Changed codegen.GenerateMain to GenerateMain
 	if err != nil {
 		t.Fatalf("GenerateMain failed: %v", err)
 	}
 
 	assertCodeContains(t, actualCode, "var options = &AppSettings{}")
-	// Check flag definitions with default comments
-	assertCodeContains(t, actualCode, `flag.StringVar(&options.APIKey, "api-key", "", "API Key")`) // No default, no comment
+	assertCodeContains(t, actualCode, `flag.StringVar(&options.APIKey, "api-key", "", "API Key")`)
 	assertCodeContains(t, actualCode, `flag.IntVar(&options.Timeout, "timeout", 60, "Timeout in seconds" /* Default: 60 */)`)
 	assertCodeContains(t, actualCode, `flag.BoolVar(&options.EnableFeature, "enable-feature", false, "Enable new feature" /* Default: false */)`)
 
 	expectedApiKeyEnv := `
 	if val, ok := os.LookupEnv("API_KEY"); ok {
-		if options.APIKey == "" { // Default is ""
+		if options.APIKey == "" {
 			options.APIKey = val
 		}
 	}
@@ -290,7 +285,7 @@ func TestGenerateMain_EnvironmentVariables(t *testing.T) {
 
 	expectedTimeoutEnv := `
 	if val, ok := os.LookupEnv("TIMEOUT_SECONDS"); ok {
-		if options.Timeout == 60 { // Default is 60
+		if options.Timeout == 60 {
 			if v, err := strconv.Atoi(val); err == nil {
 				options.Timeout = v
 			} else {
@@ -301,16 +296,15 @@ func TestGenerateMain_EnvironmentVariables(t *testing.T) {
 `
 	assertCodeContains(t, actualCode, expectedTimeoutEnv)
 
-	// Updated logic for bool env var handling
 	expectedEnableFeatureEnv := `
 	if val, ok := os.LookupEnv("ENABLE_MY_FEATURE"); ok {
-		if defaultValForBool_EnableFeature := false; !defaultValForBool_EnableFeature { // Default is false
+		if defaultValForBool_EnableFeature := false; !defaultValForBool_EnableFeature {
 			if v, err := strconv.ParseBool(val); err == nil && v {
 				options.EnableFeature = true
 			} else if err != nil {
 				slog.Warn("Could not parse environment variable as bool", "envVar", "ENABLE_MY_FEATURE", "value", val, "error", err)
 			}
-		} else { // Default is true branch (not hit in this case as default is false)
+		} else {
 			if v, err := strconv.ParseBool(val); err == nil && !v {
 				options.EnableFeature = false
 			} else if err != nil && val != "" {
@@ -336,7 +330,7 @@ func TestGenerateMain_EnvVarForBoolWithTrueDefault(t *testing.T) {
 		},
 	}
 
-	actualCode, err := codegen.GenerateMain(cmdMeta, "", true)
+	actualCode, err := GenerateMain(cmdMeta, "", true) // Changed codegen.GenerateMain to GenerateMain
 	if err != nil {
 		t.Fatalf("GenerateMain failed: %v", err)
 	}
@@ -344,13 +338,11 @@ func TestGenerateMain_EnvVarForBoolWithTrueDefault(t *testing.T) {
 	assertCodeContains(t, actualCode, "var options = &FeatureOptions{}")
 	assertCodeContains(t, actualCode, `flag.BoolVar(&options.SmartParsing, "smart-parsing", true, "Enable smart parsing" /* Default: true */)`)
 
-	// Test the specific logic for a boolean flag with a true default
 	expectedEnvLogic := `
 	if val, ok := os.LookupEnv("SMART_PARSING_ENABLED"); ok {
 		if defaultValForBool_SmartParsing := true; !defaultValForBool_SmartParsing {
-			// This branch should not be taken for true default
-		} else { // Default is true
-			if v, err := strconv.ParseBool(val); err == nil && !v { // Only set to false if default is true and env is "false"
+		} else {
+			if v, err := strconv.ParseBool(val); err == nil && !v {
 				options.SmartParsing = false
 			} else if err != nil && val != "" {
 				slog.Warn("Could not parse environment variable as bool", "envVar", "SMART_PARSING_ENABLED", "value", val, "error", err)
@@ -362,10 +354,6 @@ func TestGenerateMain_EnvVarForBoolWithTrueDefault(t *testing.T) {
 	assertCodeContains(t, actualCode, "err = featureproc.ProcessWithFeature(options)")
 }
 
-// TestGenerateMain_RunFuncInvocation is effectively covered by TestGenerateMain_BasicCase (no options)
-// and TestGenerateMain_WithOptions / TestGenerateMain_RequiredFlags (with options, pointer/value receiver).
-// We can add more specific tests for invocation if needed, but the core logic is tested.
-
 func TestGenerateMain_ErrorHandling(t *testing.T) {
 	cmdMeta := &metadata.CommandMetadata{
 		RunFunc: &metadata.RunFuncInfo{
@@ -375,7 +363,7 @@ func TestGenerateMain_ErrorHandling(t *testing.T) {
 			OptionsArgIsPointer:        true,
 		},
 	}
-	actualCode, err := codegen.GenerateMain(cmdMeta, "", true)
+	actualCode, err := GenerateMain(cmdMeta, "", true) // Changed codegen.GenerateMain to GenerateMain
 	if err != nil {
 		t.Fatalf("GenerateMain failed: %v", err)
 	}
@@ -393,14 +381,14 @@ func TestGenerateMain_Imports(t *testing.T) {
 		RunFunc: &metadata.RunFuncInfo{
 			Name:                       "MyFunc",
 			PackageName:                "custompkg",
-			OptionsArgTypeNameStripped: "AppConfig", // No default for Name, so no comment
+			OptionsArgTypeNameStripped: "AppConfig",
 			OptionsArgIsPointer:        true,
 		},
 		Options: []*metadata.OptionMetadata{
 			{Name: "Name", TypeName: "string", EnvVar: "APP_NAME", HelpText: "app name"},
 		},
 	}
-	actualCodeNoStrconv, err := codegen.GenerateMain(cmdMetaNoStrconv, "", true)
+	actualCodeNoStrconv, err := GenerateMain(cmdMetaNoStrconv, "", true) // Changed codegen.GenerateMain to GenerateMain
 	if err != nil {
 		t.Fatalf("GenerateMain failed: %v", err)
 	}
@@ -412,18 +400,18 @@ func TestGenerateMain_Imports(t *testing.T) {
 		RunFunc: &metadata.RunFuncInfo{
 			Name:                       "MyOtherFunc",
 			PackageName:                "custompkg",
-			OptionsArgTypeNameStripped: "ServerConfig", // No default for Port, so no comment
+			OptionsArgTypeNameStripped: "ServerConfig",
 			OptionsArgIsPointer:        false,
 		},
 		Options: []*metadata.OptionMetadata{
-			{Name: "Port", TypeName: "int", EnvVar: "APP_PORT", HelpText: "app port"}, // DefaultValue not set
+			{Name: "Port", TypeName: "int", EnvVar: "APP_PORT", HelpText: "app port"},
 		},
 	}
-	actualCodeWithStrconv, err := codegen.GenerateMain(cmdMetaWithStrconv, "", true)
+	actualCodeWithStrconv, err := GenerateMain(cmdMetaWithStrconv, "", true) // Changed codegen.GenerateMain to GenerateMain
 	if err != nil {
 		t.Fatalf("GenerateMain failed: %v", err)
 	}
-	assertCodeContains(t, actualCodeWithStrconv, `flag.IntVar(&options.Port, "port", 0, "app port")`) // Default 0 for int
+	assertCodeContains(t, actualCodeWithStrconv, `flag.IntVar(&options.Port, "port", 0, "app port")`)
 	assertCodeContains(t, actualCodeWithStrconv, `strconv.Atoi`)
 	assertCodeContains(t, actualCodeWithStrconv, cmdMetaWithStrconv.RunFunc.PackageName)
 }
@@ -437,11 +425,11 @@ func TestGenerateMain_RequiredIntWithEnvVar(t *testing.T) {
 			OptionsArgIsPointer:        true,
 		},
 		Options: []*metadata.OptionMetadata{
-			{Name: "UserId", TypeName: "int", HelpText: "User ID", IsRequired: true, EnvVar: "USER_ID", DefaultValue: 0}, // Default 0
+			{Name: "UserId", TypeName: "int", HelpText: "User ID", IsRequired: true, EnvVar: "USER_ID", DefaultValue: 0},
 		},
 	}
 
-	actualCode, err := codegen.GenerateMain(cmdMeta, "", true)
+	actualCode, err := GenerateMain(cmdMeta, "", true) // Changed codegen.GenerateMain to GenerateMain
 	if err != nil {
 		t.Fatalf("GenerateMain failed: %v", err)
 	}
@@ -463,7 +451,7 @@ func TestGenerateMain_RequiredIntWithEnvVar(t *testing.T) {
 			}
 		}
 	}
-	if !isSetOrFromEnv_UserId && options.UserId == 0 { // Default is 0
+	if !isSetOrFromEnv_UserId && options.UserId == 0 {
 		slog.Error("Missing required flag", "flag", "user-id", "envVar", "USER_ID")
 		os.Exit(1)
 	}
@@ -484,7 +472,7 @@ func TestGenerateMain_StringFlagWithQuotesInDefault(t *testing.T) {
 			{Name: "Greeting", TypeName: "string", HelpText: "A greeting message", DefaultValue: `hello "world"`},
 		},
 	}
-	actualCode, err := codegen.GenerateMain(cmdMeta, "", true)
+	actualCode, err := GenerateMain(cmdMeta, "", true) // Changed codegen.GenerateMain to GenerateMain
 	if err != nil {
 		t.Fatalf("GenerateMain failed: %v", err)
 	}
@@ -503,20 +491,17 @@ func TestGenerateMain_WithHelpText(t *testing.T) {
 			OptionsArgIsPointer:        true,
 		},
 		Options: []*metadata.OptionMetadata{
-			{Name: "Input", TypeName: "string", HelpText: "Input file"}, // No default
+			{Name: "Input", TypeName: "string", HelpText: "Input file"},
 		},
 	}
 	helpText := "This is my custom help message.\nUsage: mytool -input <file>"
 
-	actualCode, err := codegen.GenerateMain(cmdMeta, helpText, true)
+	actualCode, err := GenerateMain(cmdMeta, helpText, true) // Changed codegen.GenerateMain to GenerateMain
 	if err != nil {
 		t.Fatalf("GenerateMain with help text failed: %v", err)
 	}
 
 	assertCodeContains(t, actualCode, "var options = &ToolOptions{}")
-	// Since helpText contains a newline, formatHelpText will use a raw string literal.
-	// The content of the raw string literal will be helpText itself.
-	// normalizeForContains used by assertCodeContains will replace the newline in the raw string with a space.
 	expectedHelpTextSnippet := `
 	flag.Usage = func() {
 		fmt.Fprintln(os.Stderr, ` + "`" + helpText + "`" + `)
@@ -527,7 +512,7 @@ func TestGenerateMain_WithHelpText(t *testing.T) {
 	oldManualHelpLogic := `for _, arg := range os.Args[1:] { if arg == "-h" || arg == "--help" {`
 	assertCodeNotContains(t, actualCode, oldManualHelpLogic)
 
-	assertCodeContains(t, actualCode, `flag.StringVar(&options.Input, "input", "", "Input file")`) // No default comment
+	assertCodeContains(t, actualCode, `flag.StringVar(&options.Input, "input", "", "Input file")`)
 	assertCodeContains(t, actualCode, "err = mytool.RunMyTool(options)")
 }
 
@@ -536,13 +521,13 @@ func TestGenerateMain_WithEmptyHelpText(t *testing.T) {
 		RunFunc: &metadata.RunFuncInfo{
 			Name:                       "AnotherTool",
 			PackageName:                "othertool",
-			OptionsArgTypeNameStripped: "NoOptions", // Still need a type name if options could exist
+			OptionsArgTypeNameStripped: "NoOptions",
 			OptionsArgIsPointer:        true,
 		},
-		Options: []*metadata.OptionMetadata{}, // No options
+		Options: []*metadata.OptionMetadata{},
 	}
 
-	actualCode, err := codegen.GenerateMain(cmdMeta, "", true)
+	actualCode, err := GenerateMain(cmdMeta, "", true) // Changed codegen.GenerateMain to GenerateMain
 	if err != nil {
 		t.Fatalf("GenerateMain with empty help text failed: %v", err)
 	}
@@ -554,11 +539,10 @@ func TestGenerateMain_WithEmptyHelpText(t *testing.T) {
 	assertCodeNotContains(t, actualCode, unexpectedHelpLogic)
 
 	unexpectedFlagUsageAssignment := `flag.Usage = func()`
-	assertCodeNotContains(t, actualCode, unexpectedFlagUsageAssignment) // Should not be set if helpText is empty
+	assertCodeNotContains(t, actualCode, unexpectedFlagUsageAssignment)
 
 	assertCodeContains(t, actualCode, "func main() {")
 	assertCodeContains(t, actualCode, "err = othertool.AnotherTool()")
-	// os.Exit(0) is not part of the template for empty help
 }
 
 func TestGenerateMain_HelpTextNewlineFormatting(t *testing.T) {
@@ -569,56 +553,28 @@ func TestGenerateMain_HelpTextNewlineFormatting(t *testing.T) {
 			OptionsArgTypeNameStripped: "ToolOptions",
 			OptionsArgIsPointer:        true,
 		},
-		Options: []*metadata.OptionMetadata{}, // No options needed for this test
+		Options: []*metadata.OptionMetadata{},
 	}
 
 	t.Run("WithNewlines", func(t *testing.T) {
 		helpTextWithNewlines := "This is line one.\nThis is line two."
-		// expectedSnippet := "fmt.Fprintln(os.Stderr, `This is line one.\nThis is line two.`)" // Note: raw string literal means \n is literal here
 
-		actualCode, err := codegen.GenerateMain(baseCmdMeta, helpTextWithNewlines, true)
+		actualCode, err := GenerateMain(baseCmdMeta, helpTextWithNewlines, true) // Changed codegen.GenerateMain to GenerateMain
 		if err != nil {
 			t.Fatalf("GenerateMain with help text failed: %v", err)
 		}
 
-		// We need a more precise check than assertCodeContains for the literal format.
-		// Let's normalize the actual code and then check for the exact snippet.
-		// The existing normalizeCode formats and then normalizeForContains (which strips newlines from the code itself).
-		// For this specific test, we want to ensure the raw string literal `...` is used.
-
-		// Construct the expected Usage func string carefully
-		// The template is:
-		// flag.Usage = func() {
-		// 	fmt.Fprintln(os.Stderr, {{FormatHelpText .HelpText}})
-		// 	flag.PrintDefaults()
-		// }
-		// So we expect:
-		// flag.Usage = func() {
-		// fmt.Fprintln(os.Stderr, `This is line one.
-		// This is line two.`)
-		// flag.PrintDefaults()
-		// }
-
-		// Let's use a regex or a more direct string check after gofmt.
 		formattedActualCode, err := format.Source([]byte(actualCode))
 		if err != nil {
 			t.Fatalf("Failed to format actual generated code: %v\nOriginal code:\n%s", err, actualCode)
 		}
 
-		// The raw string in Go will preserve the \n literally if that's what FormatHelpText produces.
-		// If FormatHelpText is supposed to convert \n to actual newlines inside the raw string,
-		// then expected string should be:
-		// expectedUsageFunc := "fmt.Fprintln(os.Stderr, `This is line one.\nThis is line two.`)"
-		// The plan is for FormatHelpText to return a string that IS the Go source code for the literal.
-		// So for "foo\nbar", FormatHelpText should return "`foo\\nbar`" if we want it to be a raw string containing literal \n.
-		// Or, if we want the raw string to contain an actual newline character, FormatHelpText should return "`foo\nbar`".
-		// The plan says: "it will return the string formatted as a Go raw string literal (e.g., `string content`)".
-		// This means the content should be as-is. So "foo\nbar" becomes `foo\nbar`.
-
+		// This test expects formatHelpText to produce a raw string literal for multi-line strings.
+		// The old formatHelpText did: return "`" + text + "`"
+		// The new one does too, if no backticks are present: return "`" + processedText + "`"
+		// "This is line one.\nThis is line two." (after \\n processing) becomes `This is line one.\nThis is line two.`
 		expectedUsageFunc := "fmt.Fprintln(os.Stderr, `This is line one.\nThis is line two.`)"
 
-		// normalizeForContains removes newlines and collapses spaces, which is too aggressive here.
-		// We'll check for the presence of the exact string.
 		if !strings.Contains(string(formattedActualCode), expectedUsageFunc) {
 			t.Errorf("Expected generated code to contain exact snippet for multiline help text with raw string literal.\nExpected snippet:\n%s\n\nFormatted actual code:\n%s", expectedUsageFunc, string(formattedActualCode))
 		}
@@ -626,12 +582,13 @@ func TestGenerateMain_HelpTextNewlineFormatting(t *testing.T) {
 
 	t.Run("WithoutNewlines", func(t *testing.T) {
 		helpTextWithoutNewlines := "This is a single line."
-		// If no newline, it should use printf "%q" style.
-		// So, for "This is a single line.", fmt.Sprintf("%q", text) would yield "\"This is a single line.\""
+		// Old formatHelpText: return fmt.Sprintf("%q", text)
+		// New formatHelpText (no newlines, no backticks): return fmt.Sprintf("%q", processedText)
+		// So, "This is a single line." becomes "\"This is a single line.\""
 		expectedFormattedText := fmt.Sprintf("%q", helpTextWithoutNewlines)
 		expectedSnippet := fmt.Sprintf("fmt.Fprintln(os.Stderr, %s)", expectedFormattedText)
 
-		actualCode, err := codegen.GenerateMain(baseCmdMeta, helpTextWithoutNewlines, true)
+		actualCode, err := GenerateMain(baseCmdMeta, helpTextWithoutNewlines, true) // Changed codegen.GenerateMain to GenerateMain
 		if err != nil {
 			t.Fatalf("GenerateMain with help text failed: %v", err)
 		}
@@ -645,4 +602,81 @@ func TestGenerateMain_HelpTextNewlineFormatting(t *testing.T) {
 			t.Errorf("Expected generated code to contain exact snippet for single line help text with quoted string literal.\nExpected snippet:\n%s\n\nFormatted actual code:\n%s", expectedSnippet, string(formattedActualCode))
 		}
 	})
+}
+
+
+// New Test Function for formatHelpText
+func TestFormatHelpText(t *testing.T) {
+	tests := []struct {
+		name  string
+		input string
+		want  string
+	}{
+		{
+			name:  "escaped newlines",
+			input: "Hello\\nWorld",
+			want:  "`Hello\nWorld`",
+		},
+		{
+			name:  "single quote to backtick no newline",
+			input: "Use 'make' command",
+			want:  "\"Use `make` command\"",
+		},
+		{
+			name:  "escaped newlines and single quotes to backticks",
+			input: "First line\\nThis is 'code'\\nLast line.",
+			want:  "`First line\nThis is ` + \"`\" + `code` + \"`\" + `\nLast line.`",
+		},
+		{
+			name:  "only escaped newlines",
+			input: "Line1\\nLine2\\nLine3",
+			want:  "`Line1\nLine2\nLine3`",
+		},
+		{
+			name:  "only single quotes to backticks",
+			input: "A 'simple' backtick.",
+			want:  "\"A `simple` backtick.\"",
+		},
+		{
+			name:  "plain string no newline no backtick",
+			input: "Just a plain string.",
+			want:  "\"Just a plain string.\"",
+		},
+		{
+			name:  "pre-existing newline and single quote to backtick",
+			input: "Pre-existing newline\nAnd pre-existing 'backtick'.",
+			// After initial processing: "Pre-existing newline\nAnd pre-existing `backtick`."
+			// Contains newline and backtick, so:
+			want:  "`Pre-existing newline\nAnd pre-existing ` + \"`\" + `backtick` + \"`\" + `.`",
+		},
+		{
+			name:  "empty string",
+			input: "",
+			want:  "\"\"",
+		},
+		{
+			name:  "only escaped newline",
+			input: "\\n", // becomes "\n"
+			want:  "`\n`",
+		},
+		{
+			name:  "only single quote",
+			input: "'", // becomes "`"
+			want:  "\"`\"",
+		},
+		{
+			name:  "multiple backticks and newlines",
+			input: "A\\nB'C'D\\nE'F'G", // becomes "A\nB`C`D\nE`F`G"
+			want:  "`A\nB` + \"`\" + `C` + \"`\" + `D\nE` + \"`\" + `F` + \"`\" + `G`",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := formatHelpText(tt.input); got != tt.want {
+				// Using fmt.Sprintf for got and want to make invisible characters visible
+				t.Errorf("formatHelpText(%q) = %s, want %s", tt.input, fmt.Sprintf("%q", got), fmt.Sprintf("%q", tt.want))
+			}
+		})
+	}
 }
