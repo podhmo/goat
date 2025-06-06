@@ -7,6 +7,7 @@ import (
 	"go/token"
 	"io"
 	"os"
+	"path/filepath" // Added for filepath.Join
 	"strings"
 	"testing"
 
@@ -14,10 +15,48 @@ import (
 	"github.com/podhmo/goat/internal/metadata"
 )
 
+// setupTestAppWithGoMod creates a temporary directory with a go.mod file,
+// an embedded markers package, and a test Go application file.
+// It returns the path to the test Go file.
+func setupTestAppWithGoMod(t *testing.T, appFileContent string) string {
+	t.Helper()
+	tmpDir := t.TempDir()
+	moduleName := "testcmdmodule"
+
+	// Write go.mod
+	goModContent := []byte("module " + moduleName + "\n\ngo 1.18\n")
+	if err := os.WriteFile(filepath.Join(tmpDir, "go.mod"), goModContent, 0644); err != nil {
+		t.Fatalf("Failed to write go.mod in temp dir %s: %v", tmpDir, err)
+	}
+
+	// Create internal goat package (for markers)
+	markersDir := filepath.Join(tmpDir, "internal", "goat") // Changed to "goat"
+	if err := os.MkdirAll(markersDir, 0755); err != nil {
+		t.Fatalf("Failed to create markers dir %s: %v", markersDir, err)
+	}
+	const minimalMarkersGoContent = `package goat // Changed to "goat"
+
+// Default sets a default value for a field.
+func Default[T any](defaultValue T, enumConstraint ...[]T) T {
+	return defaultValue
+}
+`
+	if err := os.WriteFile(filepath.Join(markersDir, "markers.go"), []byte(minimalMarkersGoContent), 0644); err != nil {
+		t.Fatalf("Failed to write minimal markers.go: %v", err)
+	}
+
+	// Write the main app Go file
+	tmpGoFile := filepath.Join(tmpDir, "testapp.go") // Assuming app is at module root
+	if err := os.WriteFile(tmpGoFile, []byte(appFileContent), 0644); err != nil {
+		t.Fatalf("Failed to write temp Go file %s: %v", tmpGoFile, err)
+	}
+	return tmpGoFile
+}
+
 const testGoFileContent = `
 package main
 
-import "github.com/podhmo/goat"
+import goat "testcmdmodule/internal/goat" // Updated import to internal/goat
 
 // Options for testapp.
 // This is a test application.
@@ -49,11 +88,11 @@ func Run(opts Options) error {
 func main() { /* Will be replaced */ }
 `
 
-const expectedHelpOutput = `main - Run the test application.
+const expectedHelpOutput = `testcmdmodule - Run the test application.
          It does something.
 
 Usage:
-  main [flags]
+  testcmdmodule [flags]
 
 Flags:
   --name            string   Name of the user. (default: "anonymous")
@@ -124,11 +163,7 @@ func runMainWithArgs(t *testing.T, args ...string) string {
 }
 
 func TestHelpGenerateHelpOutput(t *testing.T) {
-	tmpDir := t.TempDir()
-	tmpFile := tmpDir + "/testapp.go"
-	if err := os.WriteFile(tmpFile, []byte(testGoFileContent), 0644); err != nil {
-		t.Fatalf("Failed to write temp file: %v", err)
-	}
+	tmpFile := setupTestAppWithGoMod(t, testGoFileContent)
 
 	opts := &Options{
 		RunFuncName:            "Run",
@@ -147,7 +182,7 @@ func TestHelpGenerateHelpOutput(t *testing.T) {
 	// and ensure it matches the exact output of help.GenerateHelp.
 	// The original test might have had slightly different spacing or details.
 	// This is effectively re-baselining based on current help.GenerateHelp output.
-	if !strings.Contains(got, "main - Run the test application.") {
+	if !strings.Contains(got, "testcmdmodule - Run the test application.") { // Updated to testcmdmodule
 		t.Errorf("Generated help output does not contain command description.\nGot:\n%s", got)
 	}
 	if !strings.Contains(got, "--name            string   Name of the user. (default: \"anonymous\")") {
@@ -190,11 +225,7 @@ func TestInitSubcommand(t *testing.T) {
 }
 
 func TestHelpMessageSubcommand(t *testing.T) {
-	tmpDir := t.TempDir()
-	tmpFile := tmpDir + "/testapp.go"
-	if err := os.WriteFile(tmpFile, []byte(testGoFileContent), 0644); err != nil {
-		t.Fatalf("Failed to write temp file: %v", err)
-	}
+	tmpFile := setupTestAppWithGoMod(t, testGoFileContent)
 
 	// Ensure flags come before positional arguments for robust parsing
 	args := []string{"help-message", "-run", "Run", "-initializer", "NewOptions", tmpFile}
@@ -226,11 +257,7 @@ func TestHelpMessageSubcommand(t *testing.T) {
 }
 
 func TestScanSubcommand(t *testing.T) {
-	tmpDir := t.TempDir()
-	tmpFile := tmpDir + "/testapp.go"
-	if err := os.WriteFile(tmpFile, []byte(testGoFileContent), 0644); err != nil {
-		t.Fatalf("Failed to write temp file: %v", err)
-	}
+	tmpFile := setupTestAppWithGoMod(t, testGoFileContent)
 
 	// Ensure flags come before positional arguments for robust parsing
 	args := []string{"scan", "-run", "Run", "-initializer", "NewOptions", tmpFile}
@@ -241,8 +268,8 @@ func TestScanSubcommand(t *testing.T) {
 		t.Fatalf("Failed to unmarshal JSON output: %v\nOutput was:\n%s", err, out)
 	}
 
-	if metadataOutput.Name != "main" {
-		t.Errorf("Expected metadata Name %q, got %q", "main", metadataOutput.Name)
+	if metadataOutput.Name != "testcmdmodule" { // Use "testcmdmodule" directly
+		t.Errorf("Expected metadata Name %q, got %q", "testcmdmodule", metadataOutput.Name)
 	}
 	if metadataOutput.Description != "Run the test application.\nIt does something." {
 		t.Errorf("Expected metadata Description %q, got %q", "Run the test application.\nIt does something.", metadataOutput.Description)
@@ -290,12 +317,12 @@ func TestScanSubcommand(t *testing.T) {
 }
 
 func TestEmitSubcommand(t *testing.T) {
-	tmpDir := t.TempDir()
-	tmpFile := tmpDir + "/testapp.go"
+	tmpFile := setupTestAppWithGoMod(t, testGoFileContent)
 
-	initialContent := []byte(testGoFileContent)
-	if err := os.WriteFile(tmpFile, initialContent, 0644); err != nil {
-		t.Fatalf("Failed to write temp file: %v", err)
+	// Read the initial content that setupTestAppWithGoMod wrote
+	initialContent, err := os.ReadFile(tmpFile)
+	if err != nil {
+		t.Fatalf("Failed to read initial temp file content: %v", err)
 	}
 
 	// Make a copy of the initial content for comparison

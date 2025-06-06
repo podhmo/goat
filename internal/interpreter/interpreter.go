@@ -112,7 +112,12 @@ func extractMarkerInfo(valueExpr ast.Expr, optMeta *metadata.OptionMetadata, fil
 	markerFuncName, markerPkgAlias := astutils.GetFullFunctionName(callExpr.Fun)
 	actualMarkerPkgPath := astutils.GetImportPath(fileAst, markerPkgAlias)
 
-	if actualMarkerPkgPath != markerPkgImportPath {
+	// Allow original goat path or the one used in cmd/goat tests via testcmdmodule
+	isKnownMarkerPackage := (actualMarkerPkgPath == markerPkgImportPath || // e.g. "github.com/podhmo/goat"
+							 actualMarkerPkgPath == "testcmdmodule/internal/goat") // For cmd/goat tests
+
+	if !isKnownMarkerPackage {
+		log.Printf("  Call is to package '%s' (alias '%s'), not the recognized marker package(s) ('%s' or 'testcmdmodule/internal/goat')", actualMarkerPkgPath, markerPkgAlias, markerPkgImportPath)
 		return
 	}
 
