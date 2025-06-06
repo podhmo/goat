@@ -117,114 +117,200 @@ Flags:
 
 	var options = &Options{}
 
-	var defaultName string = "World"
+	// 1. Create Options with default values.
 
-	if val, ok := os.LookupEnv("SIMPLE_NAME"); ok {
-		defaultName = val
-	}
-
-	flag.StringVar(&options.Name, "name", defaultName, "Name of the person to greet. This is a mandatory field." /* Original Default: World, Env: SIMPLE_NAME */)
+	options.Name = "World"
 
 	options.Age = new(int)
 
-	flag.IntVar(options.Age, "age", 0, "Age of the person. This is an optional field.")
+	options.LogLevel = "info"
 
-	var defaultLogLevel string = "info"
+	options.OutputDir = "output"
+
+	options.Mode = ""
+
+	options.SuperVerbose = false
+
+	// 2. Override with environment variable values.
+
+	if val, ok := os.LookupEnv("SIMPLE_NAME"); ok {
+
+		options.Name = val
+
+	}
+
+	if val, ok := os.LookupEnv("SIMPLE_AGE"); ok {
+
+		if options.Age == nil {
+			options.Age = new(int)
+		}
+		if v, err := strconv.Atoi(val); err == nil {
+			*options.Age = v
+		} else {
+			slog.Warn("Could not parse environment variable as *int for option", "envVar", "SIMPLE_AGE", "option", "Age", "value", val, "error", err)
+		}
+
+	}
 
 	if val, ok := os.LookupEnv("SIMPLE_LOG_LEVEL"); ok {
-		defaultLogLevel = val
+
+		options.LogLevel = val
+
 	}
 
-	flag.StringVar(&options.LogLevel, "log-level", defaultLogLevel, `LogLevel for the application output.
-It can be one of: debug, info, warning, error.` /* Original Default: info, Env: SIMPLE_LOG_LEVEL */)
+	if val, ok := os.LookupEnv("SIMPLE_FEATURES"); ok {
 
-	var defaultOutputDir string = "output"
-
-	flag.StringVar(&options.OutputDir, "output-dir", defaultOutputDir, `OutputDir for any generated files or reports.
-Defaults to "output" if not specified by the user.` /* Original Default: output, Env:  */)
-
-	var defaultMode string = ""
+	}
 
 	if val, ok := os.LookupEnv("SIMPLE_MODE"); ok {
-		defaultMode = val
+
+		options.Mode = val
+
 	}
-
-	flag.StringVar(&options.Mode, "mode", defaultMode, "Mode of operation for the tool, affecting its behavior." /* Env: SIMPLE_MODE */)
-
-	var defaultSuperVerbose bool = false
 
 	if val, ok := os.LookupEnv("SIMPLE_SUPER_VERBOSE"); ok {
+
 		if v, err := strconv.ParseBool(val); err == nil {
-			defaultSuperVerbose = v
+			options.SuperVerbose = v
 		} else {
-			slog.Warn("Could not parse environment variable as bool for default value", "envVar", "SIMPLE_SUPER_VERBOSE", "value", val, "error", err)
+			slog.Warn("Could not parse environment variable as bool for option", "envVar", "SIMPLE_SUPER_VERBOSE", "option", "SuperVerbose", "value", val, "error", err)
 		}
+
 	}
 
-	flag.BoolVar(&options.SuperVerbose, "super-verbose", defaultSuperVerbose, "Enable extra verbose output." /* Env: SIMPLE_SUPER_VERBOSE */)
+	// 3. Set flags.
 
+	flag.StringVar(&options.Name, "name", options.Name, "Name of the person to greet. This is a mandatory field." /* Original Default: World, Env: SIMPLE_NAME */)
+
+	var defaultAgeValForFlag int
+	if options.Age != nil {
+		defaultAgeValForFlag = *options.Age
+	}
+	if options.Age == nil {
+		options.Age = new(int)
+	}
+	flag.IntVar(options.Age, "age", defaultAgeValForFlag, "Age of the person. This is an optional field." /* Env: SIMPLE_AGE */)
+
+	flag.StringVar(&options.LogLevel, "log-level", options.LogLevel, `LogLevel for the application output.
+It can be one of: debug, info, warning, error.` /* Original Default: info, Env: SIMPLE_LOG_LEVEL */)
+
+	flag.StringVar(&options.OutputDir, "output-dir", options.OutputDir, `OutputDir for any generated files or reports.
+Defaults to "output" if not specified by the user.` /* Original Default: output, Env:  */)
+
+	flag.StringVar(&options.Mode, "mode", options.Mode, "Mode of operation for the tool, affecting its behavior." /* Env: SIMPLE_MODE */)
+
+	flag.BoolVar(&options.SuperVerbose, "super-verbose", options.SuperVerbose, "Enable extra verbose output." /* Env: SIMPLE_SUPER_VERBOSE */)
+
+	// 4. Parse.
 	flag.Parse()
 	flag.Visit(func(f *flag.Flag) { isFlagExplicitlySet[f.Name] = true })
 
-	if !isFlagExplicitlySet["age"] {
-		if val, ok := os.LookupEnv("SIMPLE_AGE"); ok {
+	// Handle special case for required bools defaulting to true with 'no-<flag>'
 
-			if v, err := strconv.Atoi(val); err == nil {
-				*options.Age = v
-			} else {
-				slog.Warn("Could not parse environment variable as *int", "envVar", "SIMPLE_AGE", "value", val, "error", err)
-			}
+	// 5. Perform required checks (excluding booleans).
 
-		}
+	// A string is required. It must not be its original default if the flag wasn't set and env var wasn't set.
+	// If default was empty: must not be empty.
+	// If default was non-empty: must not be that specific non-empty value.
+	initialDefaultName := "World"
+	envNameWasSet := false
+
+	if _, ok := os.LookupEnv("SIMPLE_NAME"); ok {
+		envNameWasSet = true
 	}
 
-	if options.Name == "" {
-		slog.Error("Missing required flag", "flag", "name", "envVar", "SIMPLE_NAME")
+	if options.Name == initialDefaultName && !isFlagExplicitlySet["name"] && !envNameWasSet {
+		slog.Error("Missing required flag or environment variable not set", "flag", "name", "envVar", "SIMPLE_NAME", "option", "Name")
 		os.Exit(1)
 	}
 
-	if options.LogLevel == "" {
-		slog.Error("Missing required flag", "flag", "log-level", "envVar", "SIMPLE_LOG_LEVEL")
+	// A string is required. It must not be its original default if the flag wasn't set and env var wasn't set.
+	// If default was empty: must not be empty.
+	// If default was non-empty: must not be that specific non-empty value.
+	initialDefaultLogLevel := "info"
+	envLogLevelWasSet := false
+
+	if _, ok := os.LookupEnv("SIMPLE_LOG_LEVEL"); ok {
+		envLogLevelWasSet = true
+	}
+
+	if options.LogLevel == initialDefaultLogLevel && !isFlagExplicitlySet["log-level"] && !envLogLevelWasSet {
+		slog.Error("Missing required flag or environment variable not set", "flag", "log-level", "envVar", "SIMPLE_LOG_LEVEL", "option", "LogLevel")
 		os.Exit(1)
 	}
 
 	isValidChoice_LogLevel := false
 	allowedChoices_LogLevel := []string{"debug", "info", "warning", "error"}
 	currentValue_LogLevelStr := fmt.Sprintf("%v", options.LogLevel)
-	for _, choice := range allowedChoices_LogLevel {
-		if currentValue_LogLevelStr == choice {
-			isValidChoice_LogLevel = true
-			break
+
+	if !isValidChoice_LogLevel && (options.LogLevel != nil || true) { // only validate if not nil or is a non-pointer or is required
+		for _, choice := range allowedChoices_LogLevel {
+			if currentValue_LogLevelStr == choice {
+				isValidChoice_LogLevel = true
+				break
+			}
 		}
+	} else if isValidChoice_LogLevel { // it was already set to true (e.g. optional pointer is nil)
+		// do nothing
+	} else { // not isValidChoice and (options.Name is nil AND it's an optional pointer)
+		isValidChoice_LogLevel = true // Optional pointer enum that is nil is valid
 	}
+
 	if !isValidChoice_LogLevel {
 		slog.Error("Invalid value for flag", "flag", "log-level", "value", options.LogLevel, "allowedChoices", strings.Join(allowedChoices_LogLevel, ", "))
 		os.Exit(1)
 	}
 
-	if options.OutputDir == "" {
-		slog.Error("Missing required flag", "flag", "output-dir")
+	// A string is required. It must not be its original default if the flag wasn't set and env var wasn't set.
+	// If default was empty: must not be empty.
+	// If default was non-empty: must not be that specific non-empty value.
+	initialDefaultOutputDir := "output"
+	envOutputDirWasSet := false
+
+	if options.OutputDir == initialDefaultOutputDir && !isFlagExplicitlySet["output-dir"] && !envOutputDirWasSet {
+		slog.Error("Missing required flag or environment variable not set", "flag", "output-dir", "option", "OutputDir")
 		os.Exit(1)
 	}
 
-	if options.Mode == "" {
-		slog.Error("Missing required flag", "flag", "mode", "envVar", "SIMPLE_MODE")
+	// A string is required. It must not be its original default if the flag wasn't set and env var wasn't set.
+	// If default was empty: must not be empty.
+	// If default was non-empty: must not be that specific non-empty value.
+	initialDefaultMode := ""
+	envModeWasSet := false
+
+	if _, ok := os.LookupEnv("SIMPLE_MODE"); ok {
+		envModeWasSet = true
+	}
+
+	if options.Mode == initialDefaultMode && !isFlagExplicitlySet["mode"] && !envModeWasSet {
+		slog.Error("Missing required flag or environment variable not set", "flag", "mode", "envVar", "SIMPLE_MODE", "option", "Mode")
 		os.Exit(1)
 	}
 
 	isValidChoice_Mode := false
 	allowedChoices_Mode := []string{"standard", "turbo", "eco"}
 	currentValue_ModeStr := fmt.Sprintf("%v", options.Mode)
-	for _, choice := range allowedChoices_Mode {
-		if currentValue_ModeStr == choice {
-			isValidChoice_Mode = true
-			break
+
+	if !isValidChoice_Mode && (options.Mode != nil || true) { // only validate if not nil or is a non-pointer or is required
+		for _, choice := range allowedChoices_Mode {
+			if currentValue_ModeStr == choice {
+				isValidChoice_Mode = true
+				break
+			}
 		}
+	} else if isValidChoice_Mode { // it was already set to true (e.g. optional pointer is nil)
+		// do nothing
+	} else { // not isValidChoice and (options.Name is nil AND it's an optional pointer)
+		isValidChoice_Mode = true // Optional pointer enum that is nil is valid
 	}
+
 	if !isValidChoice_Mode {
 		slog.Error("Invalid value for flag", "flag", "mode", "value", options.Mode, "allowedChoices", strings.Join(allowedChoices_Mode, ", "))
 		os.Exit(1)
 	}
+
+	// End of range .Options for required checks
+	// End of if .HasOptions
 
 	err := run(*options)
 
