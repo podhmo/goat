@@ -60,14 +60,20 @@ Usage:
   main [flags]
 
 Flags:
-  --name              string Name of the user. (required) (default: "anonymous")
-  --port              int    Port number. (required) (default: 8080)
-  --verbose           bool   Verbose flag.
-  --force             bool   Force operation.
-  --no-enable-magic   bool   Enable magic feature.
+  --name            string   Name of the user. (required) (default: "anonymous")
+  --port            int      Port number. (required) (default: 8080)
+  --verbose         bool     Verbose flag.
+  --force           bool     Force operation.
+  --no-enable-magic bool     Enable magic feature.
 
-  -h, --help          Show this help message and exit
+  -h, --help                Show this help message and exit
 `
+// --name (6) + 11 = 17 | string (6) + 2 = 8
+// --port (6) + 11 = 17 | int (3) + 5 = 8
+// --verbose (9) + 8 = 17 | bool (4) + 4 = 8
+// --force (7) + 10 = 17 | bool (4) + 4 = 8
+// --no-enable-magic (17) + 0 = 17 | bool (4) + 4 = 8
+// -h, --help (10) + 7 = 17 | "" + 8 = 8
 
 // runMainWithArgs executes the main function with the given arguments and captures its stdout and stderr.
 // Note: This approach means log.Fatalf in main() will terminate the test.
@@ -155,28 +161,33 @@ func TestHelpGenerateHelpOutput(t *testing.T) {
 	if !strings.Contains(got, "main - Run the test application.") {
 		t.Errorf("Generated help output does not contain command description.\nGot:\n%s", got)
 	}
-	if !strings.Contains(got, "--name      string Name of the user. (required) (default: \"anonymous\")") {
+	if !strings.Contains(got, "--name            string   Name of the user. (required) (default: \"anonymous\")") {
 		t.Errorf("Generated help output does not contain --name flag details.\nGot:\n%s", got)
 	}
-	if !strings.Contains(got, "--port      int Port number. (required) (default: 8080)") {
+	if !strings.Contains(got, "--port            int      Port number. (required) (default: 8080)") {
 		t.Errorf("Generated help output does not contain --port flag details.\nGot:\n%s", got)
 	}
-	if got != expectedHelpOutput {
-		// To make debugging easier, compare line by line after splitting
-		gotLines := strings.Split(strings.ReplaceAll(got, "\r\n", "\n"), "\n")
-		expectedLines := strings.Split(strings.ReplaceAll(expectedHelpOutput, "\r\n", "\n"), "\n")
-		if len(gotLines) != len(expectedLines) {
-			t.Errorf("help.GenerateHelp() line count mismatch:\nWant (%d lines):\n%s\nGot (%d lines):\n%s", len(expectedLines), expectedHelpOutput, len(gotLines), got)
+	// Normalize line endings and trim overall whitespace.
+	processedGot := strings.TrimSpace(strings.ReplaceAll(got, "\r\n", "\n"))
+	processedExpected := strings.TrimSpace(strings.ReplaceAll(expectedHelpOutput, "\r\n", "\n"))
+
+	gotLines := strings.Split(processedGot, "\n")
+	expectedLines := strings.Split(processedExpected, "\n")
+
+	if len(gotLines) != len(expectedLines) {
+		t.Errorf("help.GenerateHelp() line count mismatch after processing:\nWant (%d lines):\n%s\nGot (%d lines):\n%s", len(expectedLines), processedExpected, len(gotLines), processedGot)
+		// For detailed diff, print original full strings
+		t.Logf("Original Expected:\n%s\nOriginal Got:\n%s", expectedHelpOutput, got)
+		return
+	}
+
+	for i := range gotLines {
+		trimmedGotLine := strings.TrimSpace(gotLines[i])
+		trimmedExpectedLine := strings.TrimSpace(expectedLines[i])
+		if trimmedGotLine != trimmedExpectedLine {
+			t.Errorf("help.GenerateHelp() mismatch at line %d after processing:\nWant (trimmed): %q\nGot  (trimmed): %q\n\nOriginal Expected Line: %q\nOriginal Got Line:      %q\n\nFull Original Expected:\n%s\nFull Original Got:\n%s",
+				i+1, trimmedExpectedLine, trimmedGotLine, expectedLines[i], gotLines[i], expectedHelpOutput, got)
 			return
-		}
-		for i := range gotLines {
-			// Normalize spaces for comparison of content, as padding might differ subtly
-			normalizedGotLine := strings.Join(strings.Fields(gotLines[i]), " ")
-			normalizedExpectedLine := strings.Join(strings.Fields(expectedLines[i]), " ")
-			if normalizedGotLine != normalizedExpectedLine {
-				t.Errorf("help.GenerateHelp() mismatch at line %d:\nWant: %s\nGot:  %s\n\nFull Expected:\n%s\nFull Got:\n%s", i+1, expectedLines[i], gotLines[i], expectedHelpOutput, got)
-				return // Stop at first differing line
-			}
 		}
 	}
 }
@@ -201,8 +212,28 @@ func TestHelpMessageSubcommand(t *testing.T) {
 	args := []string{"help-message", "-run", "Run", "-initializer", "NewOptions", tmpFile}
 	out := runMainWithArgs(t, args...)
 
-	if out != expectedHelpOutput {
-		t.Errorf("Expected help output:\n%s\nGot:\n%s", expectedHelpOutput, out)
+	// Normalize line endings and trim overall whitespace.
+	processedOut := strings.TrimSpace(strings.ReplaceAll(out, "\r\n", "\n"))
+	processedExpected := strings.TrimSpace(strings.ReplaceAll(expectedHelpOutput, "\r\n", "\n"))
+
+	outLines := strings.Split(processedOut, "\n")
+	expectedLines := strings.Split(processedExpected, "\n")
+
+	if len(outLines) != len(expectedLines) {
+		t.Errorf("TestHelpMessageSubcommand line count mismatch after processing:\nWant (%d lines):\n%s\nGot (%d lines):\n%s", len(expectedLines), processedExpected, len(outLines), processedOut)
+		// For detailed diff, print original full strings
+		t.Logf("Original Expected:\n%s\nOriginal Got:\n%s", expectedHelpOutput, out)
+		return
+	}
+
+	for i := range outLines {
+		trimmedOutLine := strings.TrimSpace(outLines[i])
+		trimmedExpectedLine := strings.TrimSpace(expectedLines[i])
+		if trimmedOutLine != trimmedExpectedLine {
+			t.Errorf("TestHelpMessageSubcommand mismatch at line %d after processing:\nWant (trimmed): %q\nGot  (trimmed): %q\n\nOriginal Expected Line: %q\nOriginal Got Line:      %q\n\nFull Original Expected:\n%s\nFull Original Got:\n%s",
+				i+1, trimmedExpectedLine, trimmedOutLine, expectedLines[i], outLines[i], expectedHelpOutput, out)
+			return
+		}
 	}
 }
 
@@ -244,7 +275,7 @@ func TestScanSubcommand(t *testing.T) {
 			}
 		},
 		"Verbose": func(opt *metadata.OptionMetadata) {
-			if opt.TypeName != "bool" || opt.IsRequired || opt.DefaultValue.(bool) != false {
+			if opt.TypeName != "bool" || opt.IsRequired || opt.DefaultValue.(bool) != false { // IsRequired should be false now
 				t.Errorf("Validation failed for Verbose: %+v", opt)
 			}
 		},

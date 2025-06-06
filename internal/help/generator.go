@@ -52,18 +52,38 @@ func generateHelp(w io.Writer, cmdMeta *metadata.CommandMetadata) {
 			displayName = "no-" + opt.CliName
 		}
 
-		helpText := strings.ReplaceAll(opt.HelpText, "\n", "\n"+strings.Repeat(" ", maxNameLen+15))
-		fmt.Fprintf(w, "  --%-*s %s %s", maxNameLen, displayName, typeIndicator, helpText)
+		// Indentation for multi-line help text: "  " + maxNameLen + " " + 8 (type width) + " "
+		helpTextIndent := strings.Repeat(" ", 2+maxNameLen+1+8+1)
+		helpText := strings.ReplaceAll(opt.HelpText, "\n", "\n"+helpTextIndent)
+		fmt.Fprintf(w, "  --%-*s %-8s %s", maxNameLen, displayName, typeIndicator, helpText)
 		if opt.IsRequired && !(opt.TypeName == "bool" || opt.TypeName == "*bool") {
 			fmt.Fprint(w, " (required)")
 		}
-		if opt.DefaultValue != nil && opt.DefaultValue != "" {
+
+		// Default value printing logic
+		shouldPrintDefault := opt.DefaultValue != nil && opt.DefaultValue != "" // Initial state
+		if strings.HasSuffix(opt.TypeName, "bool") { // Covers "bool" and "*bool"
+			isDefaultTrue := opt.DefaultValueAsBool() // Correctly handles nil, non-bool, *bool
+			if !isDefaultTrue {
+				// If default is false (or nil for *bool), don't print default.
+				shouldPrintDefault = false
+			} else { // Default is true
+				if opt.IsRequired {
+					// If required and default is true, it's displayed as --no-flag, so don't print default.
+					shouldPrintDefault = false
+				}
+				// Else (not required and default is true), shouldPrintDefault remains true to print (default: true)
+			}
+		}
+
+		if shouldPrintDefault {
 			if s, ok := opt.DefaultValue.(string); ok {
 				fmt.Fprintf(w, " (default: %q)", s)
 			} else {
 				fmt.Fprintf(w, " (default: %v)", opt.DefaultValue)
 			}
 		}
+
 		if opt.EnvVar != "" {
 			fmt.Fprintf(w, " (env: %s)", opt.EnvVar)
 		}
@@ -84,5 +104,5 @@ func generateHelp(w io.Writer, cmdMeta *metadata.CommandMetadata) {
 	fmt.Fprintln(w, "")
 	helpName := "h, --help"
 	helpText := "Show this help message and exit"
-	fmt.Fprintf(w, "  -%-*s %s\n", maxNameLen, helpName, helpText)
+	fmt.Fprintf(w, "  -%-*s %-8s %s\n", maxNameLen, helpName, "", helpText) // Added empty type indicator for alignment
 }

@@ -148,7 +148,7 @@ func AnalyzeOptions(fset *token.FileSet, files []*ast.File, optionsTypeName stri
 			CliName:    stringutils.ToKebabCase(fieldName),
 			TypeName:   astutils.ExprToTypeName(field.Type),
 			IsPointer:  astutils.IsPointerType(field.Type),
-			IsRequired: !astutils.IsPointerType(field.Type), // Basic assumption: non-pointer is required
+			IsRequired: false, // Default to false, will be set by tag
 		}
 
 		if field.Doc != nil {
@@ -166,7 +166,13 @@ func AnalyzeOptions(fset *token.FileSet, files []*ast.File, optionsTypeName stri
 			if envVar, ok := tag.Lookup("env"); ok {
 				opt.EnvVar = envVar
 			}
-			// TODO: Add support for other tags like 'file', 'default', 'enum' if defined directly in tags
+			if goatTag, ok := tag.Lookup("goat"); ok {
+				if strings.Contains(goatTag, "required") {
+					opt.IsRequired = true
+				}
+				// TODO: Potentially parse other goat-specific options here if any, e.g., "file", "enum"
+			}
+			// TODO: Add support for other non-goat tags if needed, or consolidate all tag parsing.
 		}
 
 		extractedOptions = append(extractedOptions, opt)
