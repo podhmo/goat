@@ -22,139 +22,185 @@ func main() {
 
 	{{if .HasOptions}}
 	var options = &{{.RunFunc.OptionsArgTypeNameStripped}}{}
+
+	// 1. Create Options with default values.
 	{{range .Options}}
 	{{if eq .TypeName "string"}}
-	var default{{.Name}} string = {{if .DefaultValue}}{{printf "%q" .DefaultValue}}{{else}}""{{end}}
-	{{if .EnvVar}}
-	if val, ok := os.LookupEnv("{{.EnvVar}}"); ok {
-		default{{.Name}} = val
-	}
-	{{end}}
-	flag.StringVar(&options.{{.Name}}, "{{ KebabCase .Name }}", default{{.Name}}, {{FormatHelpText .HelpText}} {{- if ne .DefaultValue nil -}}/* Original Default: {{.DefaultValue}}, Env: {{.EnvVar}} */{{- else if .EnvVar}}/* Env: {{.EnvVar}} */{{- end -}})
+	options.{{.Name}} = {{if .DefaultValue}}{{printf "%q" .DefaultValue}}{{else}}""{{end}}
 	{{else if eq .TypeName "int"}}
-	var default{{.Name}} int = {{if .DefaultValue}}{{.DefaultValue}}{{else}}0{{end}}
-	{{if .EnvVar}}
-	if val, ok := os.LookupEnv("{{.EnvVar}}"); ok {
-		if v, err := strconv.Atoi(val); err == nil {
-			default{{.Name}} = v
-		} else {
-			slog.Warn("Could not parse environment variable as int for default value", "envVar", "{{.EnvVar}}", "value", val, "error", err)
-		}
-	}
-	{{end}}
-	flag.IntVar(&options.{{.Name}}, "{{ KebabCase .Name }}", default{{.Name}}, {{FormatHelpText .HelpText}} {{- if ne .DefaultValue nil -}}/* Original Default: {{.DefaultValue}}, Env: {{.EnvVar}} */{{- else if .EnvVar}}/* Env: {{.EnvVar}} */{{- end -}})
+	options.{{.Name}} = {{if .DefaultValue}}{{.DefaultValue}}{{else}}0{{end}}
 	{{else if eq .TypeName "bool"}}
-	var default{{.Name}} bool = {{if .DefaultValue}}{{.DefaultValue}}{{else}}false{{end}}
-	{{if .EnvVar}}
-	if val, ok := os.LookupEnv("{{.EnvVar}}"); ok {
-		if v, err := strconv.ParseBool(val); err == nil {
-			default{{.Name}} = v
-		} else {
-			slog.Warn("Could not parse environment variable as bool for default value", "envVar", "{{.EnvVar}}", "value", val, "error", err)
-		}
-	}
-	{{end}}
-	{{if and .IsRequired (eq (.DefaultValue | printf "%v") "true") }}
-	options.{{.Name}} = default{{.Name}}
-	var {{.Name}}_NoFlagIsPresent bool
-	flag.BoolVar(&{{.Name}}_NoFlagIsPresent, "no-{{ KebabCase .Name }}", false, {{FormatHelpText .HelpText}})
-	{{else}}
-	flag.BoolVar(&options.{{.Name}}, "{{ KebabCase .Name }}", default{{.Name}}, {{FormatHelpText .HelpText}} {{- if ne .DefaultValue nil -}}/* Original Default: {{.DefaultValue}}, Env: {{.EnvVar}} */{{- else if .EnvVar}}/* Env: {{.EnvVar}} */{{- end -}})
-	{{end}}
+	options.{{.Name}} = {{if .DefaultValue}}{{.DefaultValue}}{{else}}false{{end}}
 	{{else if eq .TypeName "*string"}}
 	options.{{.Name}} = new(string)
 	{{if .DefaultValue}}*options.{{.Name}} = {{printf "%q" .DefaultValue}}{{end}}
-	flag.StringVar(options.{{.Name}}, "{{ KebabCase .Name }}", {{if .DefaultValue}}{{printf "%q" .DefaultValue}}{{else}}""{{end}}, {{FormatHelpText .HelpText}}   {{- if ne .DefaultValue nil -}}/* Default: {{.DefaultValue}} */{{- end -}})
 	{{else if eq .TypeName "*int"}}
 	options.{{.Name}} = new(int)
 	{{if .DefaultValue}}*options.{{.Name}} = {{.DefaultValue}}{{end}}
-	flag.IntVar(options.{{.Name}}, "{{ KebabCase .Name }}", {{if .DefaultValue}}{{.DefaultValue}}{{else}}0{{end}}, {{FormatHelpText .HelpText}}{{- if ne .DefaultValue nil -}}/* Default: {{.DefaultValue}} */{{- end -}})
 	{{else if eq .TypeName "*bool"}}
 	options.{{.Name}} = new(bool)
 	{{if .DefaultValue}}*options.{{.Name}} = {{.DefaultValue}}{{end}}
-	flag.BoolVar(options.{{.Name}}, "{{ KebabCase .Name }}", {{if ne .DefaultValue nil}}{{.DefaultValue}}{{else}}false{{end}}, {{FormatHelpText .HelpText}}{{- if ne .DefaultValue nil -}}/* Default: {{.DefaultValue}} */{{- end -}})
-	{{end}}
 	{{end}}
 	{{end}}
 
+	// 2. Override with environment variable values.
+	{{range .Options}}
+	{{if .EnvVar}}
+	if val, ok := os.LookupEnv("{{.EnvVar}}"); ok {
+		{{if eq .TypeName "string"}}
+		options.{{.Name}} = val
+		{{else if eq .TypeName "int"}}
+		if v, err := strconv.Atoi(val); err == nil {
+			options.{{.Name}} = v
+		} else {
+			slog.Warn("Could not parse environment variable as int for option", "envVar", "{{.EnvVar}}", "option", "{{.Name}}", "value", val, "error", err)
+		}
+		{{else if eq .TypeName "bool"}}
+		if v, err := strconv.ParseBool(val); err == nil {
+			options.{{.Name}} = v
+		} else {
+			slog.Warn("Could not parse environment variable as bool for option", "envVar", "{{.EnvVar}}", "option", "{{.Name}}", "value", val, "error", err)
+		}
+		{{else if eq .TypeName "*string"}}
+		if options.{{.Name}} == nil { options.{{.Name}} = new(string) }
+		*options.{{.Name}} = val
+		{{else if eq .TypeName "*int"}}
+		if options.{{.Name}} == nil { options.{{.Name}} = new(int) }
+		if v, err := strconv.Atoi(val); err == nil {
+			*options.{{.Name}} = v
+		} else {
+			slog.Warn("Could not parse environment variable as *int for option", "envVar", "{{.EnvVar}}", "option", "{{.Name}}", "value", val, "error", err)
+		}
+		{{else if eq .TypeName "*bool"}}
+		if options.{{.Name}} == nil { options.{{.Name}} = new(bool) }
+		if v, err := strconv.ParseBool(val); err == nil {
+			*options.{{.Name}} = v
+		} else {
+			slog.Warn("Could not parse environment variable as *bool for option", "envVar", "{{.EnvVar}}", "option", "{{.Name}}", "value", val, "error", err)
+		}
+		{{end}}
+	}
+	{{end}}
+	{{end}}
+
+	// 3. Set flags.
+	{{range .Options}}
+	{{if eq .TypeName "string"}}
+	flag.StringVar(&options.{{.Name}}, "{{ KebabCase .Name }}", options.{{.Name}}, {{FormatHelpText .HelpText}} {{- if ne .DefaultValue nil -}}/* Original Default: {{.DefaultValue}}, Env: {{.EnvVar}} */{{- else if .EnvVar}}/* Env: {{.EnvVar}} */{{- end -}})
+	{{else if eq .TypeName "int"}}
+	flag.IntVar(&options.{{.Name}}, "{{ KebabCase .Name }}", options.{{.Name}}, {{FormatHelpText .HelpText}} {{- if ne .DefaultValue nil -}}/* Original Default: {{.DefaultValue}}, Env: {{.EnvVar}} */{{- else if .EnvVar}}/* Env: {{.EnvVar}} */{{- end -}})
+	{{else if eq .TypeName "bool"}}
+	{{if and .IsRequired (eq (.DefaultValue | printf "%v") "true") }}
+	// For required bools defaulting to true, we need a 'no-<flag>' to set it to false.
+	// The options.{{.Name}} is already true (either by default or env var).
+	var {{.Name}}_NoFlagIsPresent bool
+	flag.BoolVar(&{{.Name}}_NoFlagIsPresent, "no-{{ KebabCase .Name }}", false, "Set {{ KebabCase .Name }} to false")
+	{{else}}
+	flag.BoolVar(&options.{{.Name}}, "{{ KebabCase .Name }}", options.{{.Name}}, {{FormatHelpText .HelpText}} {{- if ne .DefaultValue nil -}}/* Original Default: {{.DefaultValue}}, Env: {{.EnvVar}} */{{- else if .EnvVar}}/* Env: {{.EnvVar}} */{{- end -}})
+	{{end}}
+	{{else if eq .TypeName "*string"}}
+	// For optional pointers, the initial value is nil. If an env var was set, it's non-nil.
+	// If still nil, make it non-nil so flag.StringVar can write to it if the flag is provided.
+	// The default value for the flag itself will be the current *options.{{.Name}} (if set by env) or ""
+	var default{{.Name}}ValForFlag string
+	if options.{{.Name}} != nil { default{{.Name}}ValForFlag = *options.{{.Name}} }
+	if options.{{.Name}} == nil { options.{{.Name}} = new(string) } // Ensure flag has a place to write
+	flag.StringVar(options.{{.Name}}, "{{ KebabCase .Name }}", default{{.Name}}ValForFlag, {{FormatHelpText .HelpText}}   {{- if ne .DefaultValue nil -}}/* Original Default: {{.DefaultValue}}, Env: {{.EnvVar}} */{{- else if .EnvVar}}/* Env: {{.EnvVar}} */{{- end -}})
+	{{else if eq .TypeName "*int"}}
+	var default{{.Name}}ValForFlag int
+	if options.{{.Name}} != nil { default{{.Name}}ValForFlag = *options.{{.Name}} }
+	if options.{{.Name}} == nil { options.{{.Name}} = new(int) }
+	flag.IntVar(options.{{.Name}}, "{{ KebabCase .Name }}", default{{.Name}}ValForFlag, {{FormatHelpText .HelpText}}{{- if ne .DefaultValue nil -}}/* Original Default: {{.DefaultValue}}, Env: {{.EnvVar}} */{{- else if .EnvVar}}/* Env: {{.EnvVar}} */{{- end -}})
+	{{else if eq .TypeName "*bool"}}
+	var default{{.Name}}ValForFlag bool
+	if options.{{.Name}} != nil { default{{.Name}}ValForFlag = *options.{{.Name}} }
+	if options.{{.Name}} == nil { options.{{.Name}} = new(bool) }
+	flag.BoolVar(options.{{.Name}}, "{{ KebabCase .Name }}", default{{.Name}}ValForFlag, {{FormatHelpText .HelpText}}{{- if ne .DefaultValue nil -}}/* Original Default: {{.DefaultValue}}, Env: {{.EnvVar}} */{{- else if .EnvVar}}/* Env: {{.EnvVar}} */{{- end -}})
+	{{end}}
+	{{end}}
+
+	// 4. Parse.
 	flag.Parse()
 	flag.Visit(func(f *flag.Flag) { isFlagExplicitlySet[f.Name] = true })
 
-	{{if .HasOptions}}
+	// Handle special case for required bools defaulting to true with 'no-<flag>'
 	{{range .Options}}
 	{{if eq .TypeName "bool"}}
 	{{if and .IsRequired (eq (.DefaultValue | printf "%v") "true") }}
-	if {{.Name}}_NoFlagIsPresent {
+	if {{.Name}}_NoFlagIsPresent { // This var is from step 3
 		options.{{.Name}} = false
 	}
 	{{end}}
 	{{end}}
 	{{end}}
 
-	{{range .Options}}
-	{{if or (eq .TypeName "*string") (eq .TypeName "*int") (eq .TypeName "*bool")}}
-	{{if .EnvVar}}
-	if !isFlagExplicitlySet["{{ KebabCase .Name }}"] {
-		if val, ok := os.LookupEnv("{{.EnvVar}}"); ok {
-			{{if eq .TypeName "*string"}}
-			*options.{{.Name}} = val
-			{{else if eq .TypeName "*int"}}
-			if v, err := strconv.Atoi(val); err == nil {
-				*options.{{.Name}} = v
-			} else {
-				slog.Warn("Could not parse environment variable as *int", "envVar", "{{.EnvVar}}", "value", val, "error", err)
-			}
-			{{else if eq .TypeName "*bool"}}
-			if v, err := strconv.ParseBool(val); err == nil {
-				*options.{{.Name}} = v
-			} else {
-				slog.Warn("Could not parse environment variable as *bool", "envVar", "{{.EnvVar}}", "value", val, "error", err)
-			}
-			{{end}}
-		}
-	}
-	{{end}}
-	{{end}}
-	{{end}}
-
+	// 5. Perform required checks (excluding booleans).
 	{{range .Options}}
 	{{if .IsRequired}}
 	{{if eq .TypeName "string"}}
-	var env{{.Name}}IsSet bool
+	// A string is required. It must not be its original default if the flag wasn't set and env var wasn't set.
+	// If default was empty: must not be empty.
+	// If default was non-empty: must not be that specific non-empty value.
+	initialDefault{{.Name}} := {{if .DefaultValue}}{{printf "%q" .DefaultValue}}{{else}}""{{end}}
+	env{{.Name}}WasSet := false
 	{{if .EnvVar}}
-	if _, ok := os.LookupEnv("{{.EnvVar}}"); ok {
-		env{{.Name}}IsSet = true
-	}
+	if _, ok := os.LookupEnv("{{.EnvVar}}"); ok { env{{.Name}}WasSet = true }
 	{{end}}
-	if options.{{.Name}} == {{if .DefaultValue}}{{printf "%q" .DefaultValue}}{{else}}""{{end}} &&
-	   !isFlagExplicitlySet["{{KebabCase .Name}}"] &&
-	   !env{{.Name}}IsSet {
-		slog.Error("Missing required flag", "flag", "{{KebabCase .Name}}"{{if .EnvVar}}, "envVar", "{{.EnvVar}}"{{end}})
+	if options.{{.Name}} == initialDefault{{.Name}} && !isFlagExplicitlySet["{{KebabCase .Name}}"] && !env{{.Name}}WasSet {
+		slog.Error("Missing required flag or environment variable not set", "flag", "{{KebabCase .Name}}"{{if .EnvVar}}, "envVar", "{{.EnvVar}}"{{end}}, "option", "{{.Name}}")
 		os.Exit(1)
 	}
 	{{else if eq .TypeName "int"}}
-	var env{{.Name}}IsSet bool
+	initialDefault{{.Name}} := {{if .DefaultValue}}{{.DefaultValue}}{{else}}0{{end}}
+	env{{.Name}}WasSet := false
 	{{if .EnvVar}}
-	if _, ok := os.LookupEnv("{{.EnvVar}}"); ok {
-		env{{.Name}}IsSet = true
-	}
+	if _, ok := os.LookupEnv("{{.EnvVar}}"); ok { env{{.Name}}WasSet = true }
 	{{end}}
-	if options.{{.Name}} == {{if .DefaultValue}}{{.DefaultValue}}{{else}}0{{end}} &&
-	   !isFlagExplicitlySet["{{KebabCase .Name}}"] &&
-	   !env{{.Name}}IsSet {
-		slog.Error("Missing required flag", "flag", "{{KebabCase .Name}}"{{if .EnvVar}}, "envVar", "{{.EnvVar}}"{{end}})
+	if options.{{.Name}} == initialDefault{{.Name}} && !isFlagExplicitlySet["{{KebabCase .Name}}"] && !env{{.Name}}WasSet {
+		slog.Error("Missing required flag or environment variable not set", "flag", "{{KebabCase .Name}}"{{if .EnvVar}}, "envVar", "{{.EnvVar}}"{{end}}, "option", "{{.Name}}")
 		os.Exit(1)
 	}
 	{{else if eq .TypeName "*string"}}
-	if options.{{.Name}} == nil || *options.{{.Name}} == "" {
-		slog.Error("Missing required flag or empty value for", "flag", "{{KebabCase .Name}}"{{if .EnvVar}}, "envVar", "{{.EnvVar}}"{{end}})
+	// A *string is required. It must have been set by flag or env var.
+	// If it was set by env var, options.{{.Name}} is not nil.
+	// If it was set by flag, options.{{.Name}} is not nil.
+	// The only way it's nil is if it had no default, no env var, and no flag.
+	// Or, if it was set to "" by flag or env var.
+	env{{.Name}}WasSet := false
+	{{if .EnvVar}}
+	if _, ok := os.LookupEnv("{{.EnvVar}}"); ok { env{{.Name}}WasSet = true }
+	{{end}}
+	if !isFlagExplicitlySet["{{KebabCase .Name}}"] && !env{{.Name}}WasSet { // if neither flag nor env was set
+		{{if .DefaultValue}} // if there was an original default, it's fine, it's already set
+		{{else}} // if no original default, and neither flag nor env, then it's an error if it's still nil (it would be) or empty string
+		if options.{{.Name}} == nil || *options.{{.Name}} == "" {
+			slog.Error("Missing required flag or environment variable, and no default provided", "flag", "{{KebabCase .Name}}"{{if .EnvVar}}, "envVar", "{{.EnvVar}}"{{end}}, "option", "{{.Name}}")
+			os.Exit(1)
+		}
+		{{end}}
+	} else if options.{{.Name}} == nil || *options.{{.Name}} == "" { // if flag or env was set, but resulted in empty/nil
+		slog.Error("Required flag was set to an empty value", "flag", "{{KebabCase .Name}}"{{if .EnvVar}}, "envVar", "{{.EnvVar}}"{{end}}, "option", "{{.Name}}")
 		os.Exit(1)
 	}
-	{{else if or (eq .TypeName "*int") (eq .TypeName "*bool")}}
-	if options.{{.Name}} == nil {
-		slog.Error("Missing required flag", "flag", "{{KebabCase .Name}}"{{if .EnvVar}}, "envVar", "{{.EnvVar}}"{{end}})
+	{{else if eq .TypeName "*int"}}
+	// A *int is required. It must have been set by flag or env var if no original default.
+	env{{.Name}}WasSet := false
+	{{if .EnvVar}}
+	if _, ok := os.LookupEnv("{{.EnvVar}}"); ok { env{{.Name}}WasSet = true }
+	{{end}}
+	if !isFlagExplicitlySet["{{KebabCase .Name}}"] && !env{{.Name}}WasSet { // if neither flag nor env was set
+		{{if .DefaultValue}} // if there was an original default, it's fine
+		{{else}} // if no original default, and neither flag nor env, then it's an error if it's still nil (it would be)
+		if options.{{.Name}} == nil {
+			slog.Error("Missing required flag or environment variable, and no default provided", "flag", "{{KebabCase .Name}}"{{if .EnvVar}}, "envVar", "{{.EnvVar}}"{{end}}, "option", "{{.Name}}")
+			os.Exit(1)
+		}
+		{{end}}
+	} else if options.{{.Name}} == nil { // if flag or env was set, but resulted in nil (e.g. *int flag not provided, but was optional so it's nil)
+		slog.Error("Required flag was not provided or set to nil", "flag", "{{KebabCase .Name}}"{{if .EnvVar}}, "envVar", "{{.EnvVar}}"{{end}}, "option", "{{.Name}}")
 		os.Exit(1)
 	}
+	// Not checking *bool here as per requirements
 	{{end}}
 	{{end}}
 
@@ -162,19 +208,40 @@ func main() {
 	isValidChoice_{{.Name}} := false
 	allowedChoices_{{.Name}} := []string{ {{range $i, $e := .EnumValues}}{{if $i}}, {{end}}{{printf "%q" $e}}{{end}} }
 	currentValue_{{.Name}}Str := fmt.Sprintf("%v", options.{{.Name}})
-	for _, choice := range allowedChoices_{{.Name}} {
-		if currentValue_{{.Name}}Str == choice {
-			isValidChoice_{{.Name}} = true
-			break
-		}
+	{{if or (eq .TypeName "*string") (eq .TypeName "*int") (eq .TypeName "*bool")}} // Handle pointer types for enum
+	if options.{{.Name}} != nil {
+		currentValue_{{.Name}}Str = fmt.Sprintf("%v", *options.{{.Name}})
+	} else if {{.IsRequired}} { // if required and nil, it's an error (already caught for *string, *int)
+		// For *bool that is required and an enum, this is an edge case.
+		// If it's nil here, it means it wasn't set by default, env, or flag.
+		slog.Error("Required enum flag is nil", "flag", "{{ KebabCase .Name }}", "option", "{{.Name}}")
+		os.Exit(1)
+	} else { // Optional pointer enum that is nil, skip validation
+		isValidChoice_{{.Name}} = true // Treat as valid if nil and not required
 	}
+	{{end}}
+
+	if !isValidChoice_{{.Name}} && (options.{{.Name}} != nil || {{or (eq .TypeName "string") (eq .TypeName "int") (eq .TypeName "bool") .IsRequired}}) { // only validate if not nil or is a non-pointer or is required
+		for _, choice := range allowedChoices_{{.Name}} {
+			if currentValue_{{.Name}}Str == choice {
+				isValidChoice_{{.Name}} = true
+				break
+			}
+		}
+	} else if isValidChoice_{{.Name}} { // it was already set to true (e.g. optional pointer is nil)
+		// do nothing
+	} else { // not isValidChoice and (options.Name is nil AND it's an optional pointer)
+		isValidChoice_{{.Name}} = true // Optional pointer enum that is nil is valid
+	}
+
+
 	if !isValidChoice_{{.Name}} {
 		slog.Error("Invalid value for flag", "flag", "{{ KebabCase .Name }}", "value", options.{{.Name}}, "allowedChoices", strings.Join(allowedChoices_{{.Name}}, ", "))
 		os.Exit(1)
 	}
 	{{end}}
-	{{end}}
-	{{end}}
+	{{end}} // End of range .Options for required checks
+	{{end}} // End of if .HasOptions
 
 	{{if .HasOptions}}
 	err := {{.RunFunc.Name}}( {{if .RunFunc.OptionsArgIsPointer}} options {{else}} *options {{end}} )
