@@ -70,8 +70,7 @@ func GenerateMain(cmdMeta *metadata.CommandMetadata, helpText string, generateFu
 func main() {
 	{{if .HelpText}}
 	flag.Usage = func() {
-		fmt.Fprintln(os.Stderr, {{FormatHelpText .HelpText}})
-		flag.PrintDefaults()
+		fmt.Fprint(os.Stderr, {{FormatHelpText .HelpText}})
 	}
 	{{end}}
 
