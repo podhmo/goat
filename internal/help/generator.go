@@ -56,7 +56,7 @@ func generateHelp(w io.Writer, cmdMeta *metadata.CommandMetadata) {
 		helpTextIndent := strings.Repeat(" ", 2+maxNameLen+1+8+1)
 		helpText := strings.ReplaceAll(opt.HelpText, "\n", "\n"+helpTextIndent)
 		fmt.Fprintf(w, "  --%-*s %-8s %s", maxNameLen, displayName, typeIndicator, helpText)
-		if opt.IsRequired && !(opt.TypeName == "bool" || opt.TypeName == "*bool") {
+		if opt.IsRequired && (opt.DefaultValue == nil || opt.DefaultValue == "") && !(opt.TypeName == "bool" || opt.TypeName == "*bool") {
 			fmt.Fprint(w, " (required)")
 		}
 
