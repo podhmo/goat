@@ -15,12 +15,7 @@ type options struct {
 	ConfigFile string // Path to the configuration file
 }
 
-func main() { /* generated code will replace this */
-	var options = &options{}
-
-	flag.BoolVar(&options.Version, "Version", false, "Print version information")
-	flag.BoolVar(&options.Help, "Help", false, "Show help message")
-	flag.StringVar(&options.ConfigFile, "ConfigFile", "", "Path to the configuration file")
+func main() {
 
 	flag.Usage = func() {
 		fmt.Fprint(os.Stderr, `main - 
@@ -29,22 +24,32 @@ Usage:
   main [flags]
 
 Flags:
-  --version     bool Print version information (required)
-  --help        bool Show help message (required)
-  --config-file string Path to the configuration file (required)
+  --version     bool     Print version information
+  --help        bool     Show help message
+  --config-file string   Path to the configuration file (required)
 
-  -h, --help   Show this help message and exit
+  -h, --help            Show this help message and exit
 `)
 	}
+
+	var options = &options{}
+
+	flag.BoolVar(&options.Version, "version", false, "Print version information")
+
+	flag.BoolVar(&options.Help, "help", false, "Show help message")
+
+	flag.StringVar(&options.ConfigFile, "config-file", "", "Path to the configuration file")
 
 	flag.Parse()
 
 	if options.ConfigFile == "" {
-		slog.Error("Missing required flag", "flag", "ConfigFile")
+		slog.Error("Missing required flag", "flag", "config-file")
 		os.Exit(1)
 	}
 
-	if err := run(*options); err != nil {
+	err := run(*options)
+
+	if err != nil {
 		slog.Error("Runtime error", "error", err)
 		os.Exit(1)
 	}
