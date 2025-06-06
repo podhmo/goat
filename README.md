@@ -23,6 +23,7 @@ The main subcommands are:
 *   **Enum validation:** Supports enum-like restricted values via `goat.Enum()` marker function.
 *   **Environment variable loading:** Reads option values from environment variables specified in struct tags (e.g., `env:"MY_VAR"`).
 *   **Required flags:** Non-pointer fields in the `Options` struct are treated as required.
+*   **Custom Option Types:** Supports fields implementing `encoding.TextUnmarshaler` and `encoding.TextMarshaler` for custom parsing logic and default value representation (via `flag.TextVar`).
 *   **AST-based:** Operates directly on the Go Abstract Syntax Tree, avoiding reflection at runtime for the generated CLI.
 *   **`go generate` integration:** Designed to be invoked via `//go:generate goat emit ...` comments for the `emit` subcommand.
 

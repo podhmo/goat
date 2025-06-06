@@ -60,6 +60,125 @@ func assertCodeContains(t *testing.T, actualGeneratedCode, expectedSnippet strin
 	}
 }
 
+func TestGenerateMain_WithTextVarOptions(t *testing.T) {
+	// Common RunFuncInfo for these tests
+	runFuncInfo := &metadata.RunFuncInfo{
+		Name:                       "RunTextVarTest",
+		PackageName:                "main", // Assuming generated code is in main package
+		OptionsArgTypeNameStripped: "TextVarCmdOptions",
+		OptionsArgIsPointer:        true,
+	}
+
+	// Case 1: Value type MyTextValue (IsTextUnmarshaler=true, IsTextMarshaler=true)
+	optMetaValue := &metadata.OptionMetadata{
+		Name:              "FieldA",
+		CliName:           "field-a", // KebabCase will be applied by template if not set, but good to be explicit
+		TypeName:          "textvar_pkg.MyTextValue",
+		IsPointer:         false,
+		IsTextUnmarshaler: true,
+		IsTextMarshaler:   true,
+		HelpText:          "Help for FieldA",
+		EnvVar:            "FIELD_A_ENV",
+	}
+
+	// Case 2: Pointer type *MyPtrTextValue (IsTextUnmarshaler=true, IsTextMarshaler=true)
+	optMetaPtr := &metadata.OptionMetadata{
+		Name:              "FieldB",
+		CliName:           "field-b",
+		TypeName:          "*textvar_pkg.MyPtrTextValue", // TypeName includes the star
+		IsPointer:         true,
+		IsTextUnmarshaler: true,
+		IsTextMarshaler:   true,
+		HelpText:          "Help for FieldB",
+		EnvVar:            "FIELD_B_ENV",
+	}
+
+	// Case 3: Only Unmarshaler (IsTextUnmarshaler=true, IsTextMarshaler=false)
+	// The current template for flag.TextVar requires both. This option should NOT use flag.TextVar.
+	// It should also not use the IsTextUnmarshaler block for env vars if that requires IsTextMarshaler too.
+	// For now, the template for EnvVar only checks .IsTextUnmarshaler.
+	optMetaOnlyUnmarshaler := &metadata.OptionMetadata{
+		Name:              "FieldF",
+		CliName:           "field-f",
+		TypeName:          "textvar_pkg.MyOnlyUnmarshaler",
+		IsPointer:         false,
+		IsTextUnmarshaler: true,
+		IsTextMarshaler:   false, // Explicitly false
+		HelpText:          "Help for FieldF - only unmarshaler",
+		EnvVar:            "FIELD_F_ENV",
+	}
+
+
+	cmdMeta := &metadata.CommandMetadata{
+		RunFunc: runFuncInfo,
+		Options: []*metadata.OptionMetadata{optMetaValue, optMetaPtr, optMetaOnlyUnmarshaler},
+	}
+
+	actualCode, err := GenerateMain(cmdMeta, "Test TextVar functionality", true)
+	if err != nil {
+		t.Fatalf("GenerateMain for TextVar options failed: %v", err)
+	}
+
+	// Assertions for Case 1 (Value type: textvar_pkg.MyTextValue)
+	expectedFlag_Case1 := `flag.TextVar(&options.FieldA, "field-a", options.FieldA, "Help for FieldA" /* Env: FIELD_A_ENV */)`
+	assertCodeContains(t, actualCode, expectedFlag_Case1)
+
+	expectedEnv_Case1 := `
+	if val, ok := os.LookupEnv("FIELD_A_ENV"); ok {
+		if options.FieldA.IsTextUnmarshaler { //This is a slight misuse of the field, it should be a direct call
+			err := (&options.FieldA).UnmarshalText([]byte(val))
+			if err != nil {
+				slog.Warn("Could not parse environment variable for TextUnmarshaler option; using default or previously set value.", "envVar", "FIELD_A_ENV", "option", "field-a", "value", val, "error", err)
+			}
+        } else if eq options.FieldA.TypeName "string" {
+            // ... this structure is based on the template logic, the IsTextUnmarshaler should be a top-level if
+        }
+	}`
+	// The above expectedEnv_Case1 is a bit complex due to how the template is structured.
+	// Let's simplify and check for the core UnmarshalText call.
+	simplifiedEnv_Case1_UnmarshalCall := `err := (&options.FieldA).UnmarshalText([]byte(val))`
+	assertCodeContains(t, actualCode, simplifiedEnv_Case1_UnmarshalCall)
+	assertCodeContains(t, actualCode, `slog.Warn("Could not parse environment variable for TextUnmarshaler option; using default or previously set value.", "envVar", "FIELD_A_ENV", "option", "field-a"`)
+
+
+	// Assertions for Case 2 (Pointer type: *textvar_pkg.MyPtrTextValue)
+	// Note: CliName for FieldB will be "field-b" due to KebabCase in template if not specified in metadata's CliName
+	expectedFlag_Case2_Init := `if options.FieldB == nil { options.FieldB = new(textvar_pkg.MyPtrTextValue) }`
+	assertCodeContains(t, actualCode, expectedFlag_Case2_Init)
+	expectedFlag_Case2_Call := `flag.TextVar(options.FieldB, "field-b", options.FieldB, "Help for FieldB" /* Env: FIELD_B_ENV */)`
+	assertCodeContains(t, actualCode, expectedFlag_Case2_Call)
+
+	expectedEnv_Case2_Init := `
+		if options.FieldB == nil {
+			options.FieldB = new(textvar_pkg.MyPtrTextValue)
+		}`
+	assertCodeContains(t, actualCode, expectedEnv_Case2_Init)
+	expectedEnv_Case2_Call := `err := options.FieldB.UnmarshalText([]byte(val))`
+	assertCodeContains(t, actualCode, expectedEnv_Case2_Call)
+	assertCodeContains(t, actualCode, `slog.Warn("Could not parse environment variable for TextUnmarshaler option; using default or previously set value.", "envVar", "FIELD_B_ENV", "option", "field-b"`)
+
+	// Assertions for Case 3 (Only Unmarshaler: textvar_pkg.MyOnlyUnmarshaler)
+	// Should NOT use flag.TextVar because IsTextMarshaler is false.
+	// It might fall back to another flag type if we had more general fallback, or be skipped for flags.
+	// For now, let's assume it doesn't generate a flag.TextVar.
+	unexpectedFlag_Case3 := `flag.TextVar(&options.FieldF, "field-f"`
+	assertCodeNotContains(t, actualCode, unexpectedFlag_Case3)
+	unexpectedFlag_Case3_Ptr := `flag.TextVar(options.FieldF, "field-f"`
+    assertCodeNotContains(t, actualCode, unexpectedFlag_Case3_Ptr)
+
+
+	// Env var handling for FieldF (OnlyUnmarshaler) should still work as it only checks IsTextUnmarshaler
+	expectedEnv_Case3_Call := `err := (&options.FieldF).UnmarshalText([]byte(val))`
+	assertCodeContains(t, actualCode, expectedEnv_Case3_Call)
+	assertCodeContains(t, actualCode, `slog.Warn("Could not parse environment variable for TextUnmarshaler option; using default or previously set value.", "envVar", "FIELD_F_ENV", "option", "field-f"`)
+
+	// General check for TrimStar usage in initialization for pointer types (already covered by Case 2 init check)
+	// Example: new(textvar_pkg.MyPtrTextValue) - TypeName for *MyPtrTextValue is "*textvar_pkg.MyPtrTextValue"
+	// TrimStar removes the leading "*" for the `new` call.
+	// So, `new({{.TypeName | TrimStar}})` becomes `new(textvar_pkg.MyPtrTextValue)`
+	assertCodeContains(t, actualCode, "new(textvar_pkg.MyPtrTextValue)") // From FieldB
+}
+
 func assertCodeNotContains(t *testing.T, actualGeneratedCode, unexpectedSnippet string) {
 	t.Helper()
 	normalizedActual := normalizeCode(t, actualGeneratedCode)

@@ -35,6 +35,8 @@ type OptionMetadata struct {
 	EnvVar       string // Environment variable name to read from (from `env` tag)
 	DefaultValue any    // Default value (from goat.Default or struct tag)
 	EnumValues   []any  // Allowed enum values (from goat.Enum or struct tag)
+	IsTextUnmarshaler bool   // True if the field's type implements encoding.TextUnmarshaler
+	IsTextMarshaler bool   // True if the field's type implements encoding.TextMarshaler
 
 	// File-specific options
 	FileMustExist   bool `json:"fileMustExist,omitempty"`

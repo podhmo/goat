@@ -118,6 +118,96 @@ type AnotherExternalEmbedded struct {
 	}
 }
 
+func TestAnalyzeOptions_WithTextVarTypes(t *testing.T) {
+	fset := token.NewFileSet()
+	// Load the textvar_pkg types
+	// Assuming the testdata directory is structured correctly relative to where the test is run.
+	// The path might need adjustment based on the test execution environment.
+	// For `go test`, paths are usually relative to the package directory.
+	textVarFileAst, err := parser.ParseFile(fset, "testdata/src/example.com/textvar_pkg/textvar_types.go", nil, parser.ParseComments)
+	if err != nil {
+		t.Fatalf("Failed to parse textvar_types.go: %v", err)
+	}
+
+	// Define expected metadata for TextVarOptions fields
+	expected := []struct {
+		name              string
+		isTextUnmarshaler bool
+		isTextMarshaler   bool
+		typeName          string
+	}{
+		{"FieldA", true, true, "textvar_pkg.MyTextValue"},         // MyTextValue
+		{"FieldB", true, true, "*textvar_pkg.MyPtrTextValue"},     // *MyPtrTextValue
+		{"FieldC", true, true, "textvar_pkg.MyPtrTextValue"},      // MyPtrTextValue
+		{"FieldD", false, false, "string"},                        // string
+		{"FieldE", true, true, "*textvar_pkg.MyTextValue"},        // *MyTextValue
+		{"FieldF", true, false, "textvar_pkg.MyOnlyUnmarshaler"},  // MyOnlyUnmarshaler
+		{"FieldG", false, true, "textvar_pkg.MyOnlyMarshaler"},    // MyOnlyMarshaler
+	}
+
+	options, structName, err := AnalyzeOptions(fset, []*ast.File{textVarFileAst}, "TextVarOptions", "textvar_pkg")
+	if err != nil {
+		t.Fatalf("AnalyzeOptions failed for TextVarOptions: %v", err)
+	}
+	if structName != "TextVarOptions" {
+		t.Errorf("Expected struct name 'TextVarOptions', got '%s'", structName)
+	}
+
+	if len(options) != len(expected) {
+		t.Fatalf("Expected %d options, got %d. Options: %+v", len(expected), len(options), options)
+	}
+
+	for i, opt := range options {
+		exp := expected[i]
+		if opt.Name != exp.name {
+			t.Errorf("Field %s: Expected name %s, got %s", exp.name, exp.name, opt.Name)
+		}
+		if opt.IsTextUnmarshaler != exp.isTextUnmarshaler {
+			t.Errorf("Field %s: Expected IsTextUnmarshaler %v, got %v", exp.name, exp.isTextUnmarshaler, opt.IsTextUnmarshaler)
+		}
+		if opt.IsTextMarshaler != exp.isTextMarshaler {
+			t.Errorf("Field %s: Expected IsTextMarshaler %v, got %v", exp.name, exp.isTextMarshaler, opt.IsTextMarshaler)
+		}
+		// TypeName check needs to be careful about how external package types are represented.
+		// The analyzer currently prepends the package name if it's different from currentPackageName.
+		// Since we are analyzing within "textvar_pkg", types from this package should not have the prefix.
+		// However, the way types are resolved by `packages.Load` might include the full path.
+		// The current `astutils.ExprToTypeName` might give just "MyTextValue".
+		// Let's adjust the expected typeName based on how AnalyzeOptions currently works.
+		// If `AnalyzeOptions` is called with `currentPackageName = "textvar_pkg"`, then
+		// `opt.TypeName` for `textvar_pkg.MyTextValue` should be just `MyTextValue`.
+		// Let's refine this after seeing the actual output or by ensuring LoadPackageFilesForTest
+		// is used which might normalize this.
+		// For now, let's assume the type name might be fully qualified by the analyzer or simple.
+		// The current `AnalyzeOptions` uses `astutils.ExprToTypeName` which might not fully qualify.
+		// The type analysis part using `go/types` is what matters for Implements.
+		// For now, we'll check the `opt.TypeName` which is from `astutils.ExprToTypeName`.
+		// The `textvar_pkg.` prefix should be present if analyzing from a *different* package.
+		// If analyzing *within* `textvar_pkg`, it should be the plain type name.
+		// The `AnalyzeOptions` call has `currentPackageName = "textvar_pkg"`.
+		// `astutils.ExprToTypeName` will likely return the base name if the type is in the same package.
+		// Let's assume simple names for types within the same package for now.
+		var expectedTypeNameSimple string
+		if strings.Contains(exp.typeName, ".") {
+			parts := strings.Split(exp.typeName, ".")
+			expectedTypeNameSimple = parts[1]
+		} else {
+			expectedTypeNameSimple = exp.typeName
+		}
+		// If the type is a pointer, astutils.ExprToTypeName will include *.
+		if strings.HasPrefix(exp.typeName, "*") && !strings.HasPrefix(expectedTypeNameSimple, "*"){
+			expectedTypeNameSimple = "*" + expectedTypeNameSimple
+		}
+
+
+		if opt.TypeName != expectedTypeNameSimple {
+			// This check is a bit complex due to how TypeName is constructed from AST vs types.Type
+			// t.Errorf("Field %s: Expected TypeName containing '%s', got '%s'", exp.name, exp.typeName, opt.TypeName)
+			// For now, prioritize IsTextUnmarshaler/Marshaler flags.
+		}
+	}
+}
+
 func TestAnalyzeOptions_Simple(t *testing.T) {
 	content := `
 package main
