@@ -200,9 +200,9 @@ func main() {
 
 	var err error
 	{{if .HasOptions}}
-	err = {{.RunFunc.PackageName}}.{{.RunFunc.Name}}( {{if .RunFunc.OptionsArgIsPointer}} options {{else}} *options {{end}} )
+	err = {{.RunFunc.Name}}( {{if .RunFunc.OptionsArgIsPointer}} options {{else}} *options {{end}} )
 	{{else}}
-	err = {{.RunFunc.PackageName}}.{{.RunFunc.Name}}()
+	err = {{.RunFunc.Name}}()
 	{{end}}
 	if err != nil {
 		slog.Error("Runtime error", "error", err)
