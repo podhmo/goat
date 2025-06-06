@@ -101,14 +101,14 @@ Usage:
   main [flags]
 
 Flags:
-  --name          string   Name of the person to greet. This is a mandatory field. (required) (default: "World") (env: SIMPLE_NAME)
+  --name          string   Name of the person to greet. This is a mandatory field. (default: "World") (env: SIMPLE_NAME)
   --age           int      Age of the person. This is an optional field. (env: SIMPLE_AGE)
   --log-level     string   LogLevel for the application output.
-                         It can be one of: debug, info, warning, error. (required) (default: "info") (env: SIMPLE_LOG_LEVEL) (allowed: "debug", "info", "warning", "error")
+                         It can be one of: debug, info, warning, error. (default: "info") (env: SIMPLE_LOG_LEVEL) (allowed: "debug", "info", "warning", "error")
   --features      strings  Features to enable, provided as a comma-separated list.
                          Example: --features feat1,feat2 (required) (env: SIMPLE_FEATURES)
   --output-dir    string   OutputDir for any generated files or reports.
-                         Defaults to "output" if not specified by the user. (required) (default: "output")
+                         Defaults to "output" if not specified by the user. (default: "output")
   --mode          string   Mode of operation for the tool, affecting its behavior. (required) (env: SIMPLE_MODE) (allowed: "standard", "turbo", "eco")
   --super-verbose bool     Enable extra verbose output. (env: SIMPLE_SUPER_VERBOSE)
 

@@ -56,8 +56,8 @@ Usage:
   main [flags]
 
 Flags:
-  --name            string   Name of the user. (required) (default: "anonymous")
-  --port            int      Port number. (required) (default: 8080)
+  --name            string   Name of the user. (default: "anonymous")
+  --port            int      Port number. (default: 8080)
   --verbose         bool     Verbose flag.
   --no-enable-magic bool     Enable magic feature.
 
@@ -150,10 +150,10 @@ func TestHelpGenerateHelpOutput(t *testing.T) {
 	if !strings.Contains(got, "main - Run the test application.") {
 		t.Errorf("Generated help output does not contain command description.\nGot:\n%s", got)
 	}
-	if !strings.Contains(got, "--name            string   Name of the user. (required) (default: \"anonymous\")") {
+	if !strings.Contains(got, "--name            string   Name of the user. (default: \"anonymous\")") {
 		t.Errorf("Generated help output does not contain --name flag details.\nGot:\n%s", got)
 	}
-	if !strings.Contains(got, "--port            int      Port number. (required) (default: 8080)") {
+	if !strings.Contains(got, "--port            int      Port number. (default: 8080)") {
 		t.Errorf("Generated help output does not contain --port flag details.\nGot:\n%s", got)
 	}
 	// Normalize line endings and trim overall whitespace.

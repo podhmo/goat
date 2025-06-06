@@ -72,28 +72,42 @@ func TestGenerateHelp_Basic(t *testing.T) {
 				IsRequired:   true,
 				DefaultValue: false,
 			},
+			{ // New option to test the core change
+				Name:         "Region",
+				CliName:      "region",
+				TypeName:     "string",
+				HelpText:     "AWS region.",
+				IsRequired:   true,
+				DefaultValue: "us-east-1",
+			},
 		},
 	}
 
 	helpMsg := GenerateHelp(cmdMeta)
 
-	// Set expected to be the actual output to re-baseline the test.
-	// This ensures the test passes and acts as a change detector for GenerateHelp's output.
-	expected := helpMsg
+	expected := `mytool - A super useful tool.
+         Does amazing things.
 
-	// Normalize line endings for consistent comparison, though GenerateHelp should produce consistent \n.
-	// It's good practice if expected could come from other sources in different scenarios.
+Usage:
+  mytool [flags]
+
+Flags:
+  --username            string   The username for login. (required) (env: APP_USER)
+  --port                int      Port number to listen on. (default: 8080)
+  --mode                string   Operation mode. (default: "dev") (allowed: "dev", "prod", "test")
+  --verbose             bool     Enable verbose output.
+  --force-push          bool     Force push changes.
+  --no-enable-auto-sync bool     Enable automatic synchronization.
+  --strict-validation   bool     Enable strict validation.
+  --region              string   AWS region. (default: "us-east-1")
+
+  -h, --help                    Show this help message and exit
+`
 	helpMsg = strings.ReplaceAll(helpMsg, "\r\n", "\n")
 	expected = strings.ReplaceAll(expected, "\r\n", "\n")
 
-	// Convert spaces to @ for robust whitespace comparison and clear diffs.
-	helpMsgAt := strings.ReplaceAll(helpMsg, " ", "@")
-	expectedAt := strings.ReplaceAll(expected, " ", "@")
-
-	if helpMsgAt != expectedAt {
-		// This block should ideally not be reached if expected is set to helpMsg.
-		// If it is, it might indicate inconsistencies from ReplaceAll or other subtle issues.
-		t.Errorf("help message mismatch (spaces shown as @)\n--- expected (derived from actual output) ---\n%s\n--- got ---\n%s", expectedAt, helpMsgAt)
+	if helpMsg != expected {
+		t.Errorf("help message mismatch:\n---EXPECTED---\n%s\n\n---ACTUAL---\n%s", expected, helpMsg)
 	}
 }
 
