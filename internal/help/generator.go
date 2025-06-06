@@ -25,9 +25,14 @@ func generateHelp(w io.Writer, cmdMeta *metadata.CommandMetadata) {
 	fmt.Fprintln(w, "Flags:")
 
 	// Find max length of option names for alignment (include -h, --help)
-	maxNameLen := len("h, --help")
+	maxNameLen := len("h, --help") // Length of "h, --help"
 	for _, opt := range cmdMeta.Options {
-		if l := len(opt.CliName); l > maxNameLen {
+		currentCliName := opt.CliName
+		// Check if the flag is a boolean, required, and defaults to true
+		if opt.TypeName == "bool" && opt.IsRequired && opt.DefaultValueAsBool() {
+			currentCliName = "no-" + opt.CliName
+		}
+		if l := len(currentCliName); l > maxNameLen {
 			maxNameLen = l
 		}
 	}
@@ -41,9 +46,15 @@ func generateHelp(w io.Writer, cmdMeta *metadata.CommandMetadata) {
 			typeIndicator += "s"
 		}
 
+		displayName := opt.CliName
+		// Check if the flag is a boolean, required, and defaults to true for display
+		if opt.TypeName == "bool" && opt.IsRequired && opt.DefaultValueAsBool() {
+			displayName = "no-" + opt.CliName
+		}
+
 		helpText := strings.ReplaceAll(opt.HelpText, "\n", "\n"+strings.Repeat(" ", maxNameLen+15))
-		fmt.Fprintf(w, "  --%-*s %s %s", maxNameLen, opt.CliName, typeIndicator, helpText)
-		if opt.IsRequired {
+		fmt.Fprintf(w, "  --%-*s %s %s", maxNameLen, displayName, typeIndicator, helpText)
+		if opt.IsRequired && !(opt.TypeName == "bool" || opt.TypeName == "*bool") {
 			fmt.Fprint(w, " (required)")
 		}
 		if opt.DefaultValue != nil && opt.DefaultValue != "" {

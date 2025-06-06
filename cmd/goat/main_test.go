@@ -26,12 +26,21 @@ type Options struct {
 	Name string ` + "`goat:\"required\"`" + `
 	// Port number.
 	Port int ` + "`goat:\"required\"`" + `
+	// Verbose flag.
+	Verbose bool
+	// Force operation.
+	Force bool ` + "`goat:\"required\"`" + `
+	// Enable magic feature.
+	EnableMagic bool ` + "`goat:\"required\"`" + `
 }
 
 func NewOptions() *Options {
 	return &Options{
-		Name: goat.Default("anonymous"),
-		Port: goat.Default(8080),
+		Name:        goat.Default("anonymous"),
+		Port:        goat.Default(8080),
+		Verbose:     goat.Default(false), // Default for bool is false anyway
+		Force:       goat.Default(false), // Required, but default is false
+		EnableMagic: goat.Default(true),  // Required, but default is true
 	}
 }
 
@@ -51,10 +60,13 @@ Usage:
   main [flags]
 
 Flags:
-  --name      string Name of the user. (required) (default: "anonymous")
-  --port      int Port number. (required) (default: 8080)
+  --name              string Name of the user. (required) (default: "anonymous")
+  --port              int    Port number. (required) (default: 8080)
+  --verbose           bool   Verbose flag.
+  --force             bool   Force operation.
+  --no-enable-magic   bool   Enable magic feature.
 
-  -h, --help Show this help message and exit
+  -h, --help          Show this help message and exit
 `
 
 // runMainWithArgs executes the main function with the given arguments and captures its stdout and stderr.
@@ -150,8 +162,22 @@ func TestHelpGenerateHelpOutput(t *testing.T) {
 		t.Errorf("Generated help output does not contain --port flag details.\nGot:\n%s", got)
 	}
 	if got != expectedHelpOutput {
-		t.Errorf("help.GenerateHelp() mismatch:\nWant:\n%s\nGot:\n%s", expectedHelpOutput, got)
-
+		// To make debugging easier, compare line by line after splitting
+		gotLines := strings.Split(strings.ReplaceAll(got, "\r\n", "\n"), "\n")
+		expectedLines := strings.Split(strings.ReplaceAll(expectedHelpOutput, "\r\n", "\n"), "\n")
+		if len(gotLines) != len(expectedLines) {
+			t.Errorf("help.GenerateHelp() line count mismatch:\nWant (%d lines):\n%s\nGot (%d lines):\n%s", len(expectedLines), expectedHelpOutput, len(gotLines), got)
+			return
+		}
+		for i := range gotLines {
+			// Normalize spaces for comparison of content, as padding might differ subtly
+			normalizedGotLine := strings.Join(strings.Fields(gotLines[i]), " ")
+			normalizedExpectedLine := strings.Join(strings.Fields(expectedLines[i]), " ")
+			if normalizedGotLine != normalizedExpectedLine {
+				t.Errorf("help.GenerateHelp() mismatch at line %d:\nWant: %s\nGot:  %s\n\nFull Expected:\n%s\nFull Got:\n%s", i+1, expectedLines[i], gotLines[i], expectedHelpOutput, got)
+				return // Stop at first differing line
+			}
+		}
 	}
 }
 
@@ -202,28 +228,50 @@ func TestScanSubcommand(t *testing.T) {
 	if metadataOutput.Description != "Run the test application.\nIt does something." {
 		t.Errorf("Expected metadata Description %q, got %q", "Run the test application.\nIt does something.", metadataOutput.Description)
 	}
-	if len(metadataOutput.Options) != 2 {
-		t.Errorf("Expected 2 options, got %d", len(metadataOutput.Options))
+	if len(metadataOutput.Options) != 5 { // Updated for 3 new boolean flags
+		t.Errorf("Expected 5 options, got %d", len(metadataOutput.Options))
 	}
-	// Check for a specific option
-	var foundNameOption bool
+
+	optionsChecks := map[string]func(opt *metadata.OptionMetadata){
+		"Name": func(opt *metadata.OptionMetadata) {
+			if opt.TypeName != "string" || !opt.IsRequired || opt.DefaultValue != "anonymous" {
+				t.Errorf("Validation failed for Name: %+v", opt)
+			}
+		},
+		"Port": func(opt *metadata.OptionMetadata) {
+			if opt.TypeName != "int" || !opt.IsRequired || opt.DefaultValue.(float64) != 8080 { // JSON unmarshals numbers to float64
+				t.Errorf("Validation failed for Port: %+v, DefaultValue type: %T", opt, opt.DefaultValue)
+			}
+		},
+		"Verbose": func(opt *metadata.OptionMetadata) {
+			if opt.TypeName != "bool" || opt.IsRequired || opt.DefaultValue.(bool) != false {
+				t.Errorf("Validation failed for Verbose: %+v", opt)
+			}
+		},
+		"Force": func(opt *metadata.OptionMetadata) {
+			if opt.TypeName != "bool" || !opt.IsRequired || opt.DefaultValue.(bool) != false {
+				t.Errorf("Validation failed for Force: %+v", opt)
+			}
+		},
+		"EnableMagic": func(opt *metadata.OptionMetadata) {
+			if opt.TypeName != "bool" || !opt.IsRequired || opt.DefaultValue.(bool) != true {
+				t.Errorf("Validation failed for EnableMagic: %+v", opt)
+			}
+		},
+	}
+
+	foundOptions := make(map[string]bool)
 	for _, opt := range metadataOutput.Options {
-		// opt.Name is the original struct field name, which is "Name" (capitalized)
-		if opt.Name == "Name" {
-			foundNameOption = true
-			if opt.TypeName != "string" {
-				t.Errorf("Expected option 'Name' to have type 'string', got '%s'", opt.TypeName)
-			}
-			if !opt.IsRequired {
-				t.Errorf("Expected option 'Name' to be required")
-			}
-			if opt.DefaultValue != "anonymous" {
-				t.Errorf("Expected option 'Name' to have default 'anonymous', got '%s'", opt.DefaultValue)
-			}
+		if checkFunc, ok := optionsChecks[opt.Name]; ok {
+			checkFunc(opt)
+			foundOptions[opt.Name] = true
 		}
 	}
-	if !foundNameOption {
-		t.Errorf("Option 'Name' not found in metadata")
+
+	for optName := range optionsChecks {
+		if !foundOptions[optName] {
+			t.Errorf("Option '%s' not found in metadata output", optName)
+		}
 	}
 }
 

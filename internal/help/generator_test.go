@@ -47,6 +47,31 @@ func TestGenerateHelp_Basic(t *testing.T) {
 				IsPointer:  true,
 				IsRequired: false,
 			},
+			{
+				Name:         "ForcePush",
+				CliName:      "force-push",
+				TypeName:     "bool",
+				HelpText:     "Force push changes.",
+				IsRequired:   true,
+				DefaultValue: false,
+			},
+			{
+				Name:         "EnableAutoSync",
+				CliName:      "enable-auto-sync",
+				TypeName:     "bool",
+				HelpText:     "Enable automatic synchronization.",
+				IsRequired:   true,
+				DefaultValue: true, // This will become --no-enable-auto-sync
+			},
+			{
+				Name:         "StrictValidation",
+				CliName:      "strict-validation",
+				TypeName:     "*bool",
+				HelpText:     "Enable strict validation.",
+				IsPointer:    true,
+				IsRequired:   true,
+				DefaultValue: false,
+			},
 		},
 	}
 
@@ -59,12 +84,42 @@ Usage:
   mytool [flags]
 
 Flags:
-  --username  string The username for login. (required) (env: APP_USER)
-  --port      int Port number to listen on. (default: 8080)
-  --mode      string Operation mode. (default: "dev") (allowed: "dev", "prod", "test")
-  --verbose   bool Enable verbose output.
+  --username            string The username for login. (required) (env: APP_USER)
+  --port                int Port number to listen on. (default: 8080)
+  --mode                string Operation mode. (default: "dev") (allowed: "dev", "prod", "test")
+  --verbose             bool Enable verbose output.
+  --force-push          bool Force push changes.
+  --no-enable-auto-sync bool Enable automatic synchronization.
+  --strict-validation   bool Enable strict validation.
 
   -h, --help Show this help message and exit
+`
+	// Adjust spacing for alignment based on the longest flag name "no-enable-auto-sync" (20) vs "username" (8)
+	// Original max was username (8). New max is no-enable-auto-sync (20).
+	// The help generator should handle this alignment automatically.
+	// We need to ensure the expected string matches the auto-alignment.
+
+	// Re-aligning the expected string manually for the test comparison:
+	// Max flag name length is now `no-enable-auto-sync` (20 chars)
+	// Help flag `h, --help` (10 chars)
+	// All flag lines need to be padded to this new max length.
+
+	expected = `mytool - A super useful tool.
+         Does amazing things.
+
+Usage:
+  mytool [flags]
+
+Flags:
+  --username            string The username for login. (required) (env: APP_USER)
+  --port                int    Port number to listen on. (default: 8080)
+  --mode                string Operation mode. (default: "dev") (allowed: "dev", "prod", "test")
+  --verbose             bool   Enable verbose output.
+  --force-push          bool   Force push changes.
+  --no-enable-auto-sync bool   Enable automatic synchronization.
+  --strict-validation   bool   Enable strict validation.
+
+  -h, --help            Show this help message and exit
 `
 
 	helpMsg = strings.ReplaceAll(helpMsg, "\r\n", "\n")

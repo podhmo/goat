@@ -373,6 +373,81 @@ func TestGenerateMain_EnvVarForBoolWithTrueDefault(t *testing.T) {
 	assertCodeContains(t, actualCode, "err := ProcessWithFeature(options)") // TODO: featureproc.ProcessWithFeature(options)
 }
 
+func TestGenerateMain_RequiredBool_DefaultFalse(t *testing.T) {
+	cmdMeta := &metadata.CommandMetadata{
+		RunFunc: &metadata.RunFuncInfo{
+			Name:                       "ProcessData",
+			PackageName:                "dataproc",
+			OptionsArgTypeNameStripped: "DataOptions",
+			OptionsArgIsPointer:        true,
+		},
+		Options: []*metadata.OptionMetadata{
+			{Name: "ForceOverwrite", TypeName: "bool", HelpText: "Force overwrite of existing files", IsRequired: true, DefaultValue: false},
+		},
+	}
+
+	actualCode, err := GenerateMain(cmdMeta, "", true)
+	if err != nil {
+		t.Fatalf("GenerateMain failed: %v", err)
+	}
+
+	assertCodeContains(t, actualCode, "var options = &DataOptions{}")
+	// Standard bool flag, defaults to false. IsRequired=true means it must be explicitly set if not for env var.
+	// The current codegen doesn't add a specific exit block for a required bool that's false and not provided,
+	// unlike string/int. This test focuses on the flag definition.
+	expectedFlagParsing := `flag.BoolVar(&options.ForceOverwrite, "force-overwrite", false, "Force overwrite of existing files" /* Default: false */)`
+	assertCodeContains(t, actualCode, expectedFlagParsing)
+
+	// There should NOT be the special "no-" prefix logic for this case.
+	assertCodeNotContains(t, actualCode, "var ForceOverwrite_NoFlagIsPresent bool")
+	assertCodeNotContains(t, actualCode, "options.ForceOverwrite = true") // Should not default to true in post-parse
+}
+
+func TestGenerateMain_RequiredBool_DefaultTrue(t *testing.T) {
+	cmdMeta := &metadata.CommandMetadata{
+		RunFunc: &metadata.RunFuncInfo{
+			Name:                       "RunTask",
+			PackageName:                "taskrunner",
+			OptionsArgTypeNameStripped: "TaskConfig",
+			OptionsArgIsPointer:        true,
+		},
+		Options: []*metadata.OptionMetadata{
+			{Name: "EnableSync", TypeName: "bool", HelpText: "Enable synchronization", IsRequired: true, DefaultValue: true},
+		},
+	}
+
+	actualCode, err := GenerateMain(cmdMeta, "", true)
+	if err != nil {
+		t.Fatalf("GenerateMain failed: %v", err)
+	}
+
+	assertCodeContains(t, actualCode, "var options = &TaskConfig{}")
+
+	// Flag should be --no-enable-sync and use a temporary variable
+	expectedFlagDefinition := `
+	var EnableSync_NoFlagIsPresent bool
+	flag.BoolVar(&EnableSync_NoFlagIsPresent, "no-enable-sync", false, "Enable synchronization")
+`
+	assertCodeContains(t, actualCode, expectedFlagDefinition)
+
+	// Post-parse logic to set the option based on the temporary variable
+	expectedPostParseLogic := `
+	options.EnableSync = true
+	if EnableSync_NoFlagIsPresent {
+		options.EnableSync = false
+	}
+`
+	assertCodeContains(t, actualCode, expectedPostParseLogic)
+
+	// Should NOT use the direct flag name or default to false in flag.BoolVar
+	assertCodeNotContains(t, actualCode, `flag.BoolVar(&options.EnableSync, "enable-sync"`)
+	assertCodeNotContains(t, actualCode, `flag.BoolVar(&options.EnableSync, "no-enable-sync"`) // temporary var is used
+
+	// Should NOT generate a "Missing required flag" check for this type of boolean flag
+	assertCodeNotContains(t, actualCode, `slog.Error("Missing required flag", "flag", "no-enable-sync")`)
+	assertCodeNotContains(t, actualCode, `slog.Error("Missing required flag", "flag", "enable-sync")`)
+}
+
 func TestGenerateMain_ErrorHandling(t *testing.T) {
 	cmdMeta := &metadata.CommandMetadata{
 		RunFunc: &metadata.RunFuncInfo{
