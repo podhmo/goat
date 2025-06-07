@@ -63,47 +63,49 @@ func main() {
 			if options.{{.Name}} == nil {
 				options.{{.Name}} = new({{.TypeName | TrimStar}})
 			}
-			errUnmarshal := options.{{.Name}}.UnmarshalText([]byte(val))
-			if errUnmarshal != nil {
-				slog.Warn("Could not parse environment variable for TextUnmarshaler option; using default or previously set value.", "envVar", "{{.EnvVar}}", "option", "{{.CliName}}", "value", val, "error", errUnmarshal)
+			err := options.{{.Name}}.UnmarshalText([]byte(val))
+			if err != nil {
+				slog.Warn("Could not parse environment variable for TextUnmarshaler option; using default or previously set value.", "envVar", "{{.EnvVar}}", "option", "{{.CliName}}", "value", val, "error", err)
 			}
 			{{else}}
-			errUnmarshal := (&options.{{.Name}}).UnmarshalText([]byte(val))
-			if errUnmarshal != nil {
-				slog.Warn("Could not parse environment variable for TextUnmarshaler option; using default or previously set value.", "envVar", "{{.EnvVar}}", "option", "{{.CliName}}", "value", val, "error", errUnmarshal)
+			err := (&options.{{.Name}}).UnmarshalText([]byte(val))
+			if err != nil {
+				slog.Warn("Could not parse environment variable for TextUnmarshaler option; using default or previously set value.", "envVar", "{{.EnvVar}}", "option", "{{.CliName}}", "value", val, "error", err)
 			}
 			{{end}}
 		{{else if eq .TypeName "string"}}
 		options.{{.Name}} = val
 		{{else if eq .TypeName "int"}}
-		if v, errConv := strconv.Atoi(val); errConv == nil {
+		if v, err := strconv.Atoi(val); err == nil {
 			options.{{.Name}} = v
 		} else {
-			slog.Warn("Could not parse environment variable as int for option", "envVar", "{{.EnvVar}}", "option", "{{.Name}}", "value", val, "error", errConv)
+			slog.Warn("Could not parse environment variable as int for option", "envVar", "{{.EnvVar}}", "option", "{{.Name}}", "value", val, "error", err)
 		}
 		{{else if eq .TypeName "bool"}}
-		if v, errConv := strconv.ParseBool(val); errConv == nil {
+		if v, err := strconv.ParseBool(val); err == nil {
 			options.{{.Name}} = v
 		} else {
-			slog.Warn("Could not parse environment variable as bool for option", "envVar", "{{.EnvVar}}", "option", "{{.Name}}", "value", val, "error", errConv)
+			slog.Warn("Could not parse environment variable as bool for option", "envVar", "{{.EnvVar}}", "option", "{{.Name}}", "value", val, "error", err)
 		}
 		{{else if eq .TypeName "*string"}}
 		if options.{{.Name}} == nil { options.{{.Name}} = new(string) }
 		*options.{{.Name}} = val
 		{{else if eq .TypeName "*int"}}
 		if options.{{.Name}} == nil { options.{{.Name}} = new(int) }
-		if v, errConv := strconv.Atoi(val); errConv == nil {
+		if v, err := strconv.Atoi(val); err == nil {
 			*options.{{.Name}} = v
 		} else {
-			slog.Warn("Could not parse environment variable as *int for option", "envVar", "{{.EnvVar}}", "option", "{{.Name}}", "value", val, "error", errConv)
+			slog.Warn("Could not parse environment variable as *int for option", "envVar", "{{.EnvVar}}", "option", "{{.Name}}", "value", val, "error", err)
 		}
 		{{else if eq .TypeName "*bool"}}
 		if options.{{.Name}} == nil { options.{{.Name}} = new(bool) }
-		if v, errConv := strconv.ParseBool(val); errConv == nil {
+		if v, err := strconv.ParseBool(val); err == nil {
 			*options.{{.Name}} = v
 		} else {
-			slog.Warn("Could not parse environment variable as *bool for option", "envVar", "{{.EnvVar}}", "option", "{{.Name}}", "value", val, "error", errConv)
+			slog.Warn("Could not parse environment variable as *bool for option", "envVar", "{{.EnvVar}}", "option", "{{.Name}}", "value", val, "error", err)
 		}
+		{{else if eq .TypeName "[]string"}}
+		options.{{.Name}} = strings.Split(val, ",")
 		{{end}}
 	}
 	{{end}}
@@ -263,10 +265,10 @@ func main() {
 	var err error
 	{{if .RunFunc.OptionsArgTypeNameStripped}}
 	// Run function expects an options argument
-	err = {{if ne .RunFunc.PackageName "main"}}{{.RunFunc.PackageName}}.{{end}}{{.RunFunc.Name}}( {{if .RunFunc.OptionsArgIsPointer}} options {{else}} *options {{end}} )
+	err = {{.RunFunc.Name}}( {{if .RunFunc.OptionsArgIsPointer}} options {{else}} *options {{end}} )
 	{{else}}
 	// Run function does not expect an options argument
-	err = {{if ne .RunFunc.PackageName "main"}}{{.RunFunc.PackageName}}.{{end}}{{.RunFunc.Name}}()
+	err = {{.RunFunc.Name}}()
 	{{end}}
 
 	if err != nil {
@@ -290,37 +292,29 @@ func formatHelpText(text string) string {
 	hasBackticks := strings.Contains(processedText, "`")
 
 	if hasNewlines && hasBackticks {
-		// Case 1: String contains both newlines and backticks.
-		// Must be represented as a concatenation of raw string literals and quoted backticks.
-		// Example: "line1\n`code`\nline3" becomes "`line1\n` + "`" + `code` + "`" + `\nline3`"
 		var sb strings.Builder
-		sb.WriteString("`") // Start the first raw string segment
+		sb.WriteString("`")
 		last := 0
 		for i, r := range processedText {
 			if r == '`' {
-				sb.WriteString(processedText[last:i]) // Write content before the backtick
-				sb.WriteString("`")                   // Close current raw string segment
-				sb.WriteString(" + \"`\" + ")         // Concatenate a quoted backtick
-				sb.WriteString("`")                   // Start a new raw string segment
+				sb.WriteString(processedText[last:i])
+				sb.WriteString("`")
+				sb.WriteString(" + \"`\" + ")
+				sb.WriteString("`")
 				last = i + 1
 			}
 		}
-		sb.WriteString(processedText[last:]) // Write the remaining content after the last backtick
-		sb.WriteString("`")                  // Close the final raw string segment
+		sb.WriteString(processedText[last:])
+		sb.WriteString("`")
 		return sb.String()
 
 	} else if hasNewlines {
-		// Case 2: String contains newlines but no backticks.
-		// Safe to use a single raw string literal.
 		return "`" + processedText + "`"
 	} else {
-		// Case 3: String contains no newlines. It might contain backticks, or it might not.
-		// `fmt.Sprintf("%q", ...)` handles this correctly.
-		// It will produce a standard quoted string, escaping backticks (e.g., as `)
-		// and other necessary characters.
 		return fmt.Sprintf("%q", processedText)
 	}
 }
+
 
 // GenerateMain creates the Go code string for the new main() function
 // based on the extracted command metadata.
@@ -367,8 +361,8 @@ func GenerateMain(cmdMeta *metadata.CommandMetadata, helpText string, generateFu
 		sb.WriteString("package main\n\n")
 		sb.WriteString("import (\n")
 
-		// Standard imports
-		imports := []string{
+		// Standard imports ONLY
+		stdImports := []string{
 			"flag",
 			"fmt",
 			"log/slog",
@@ -378,30 +372,10 @@ func GenerateMain(cmdMeta *metadata.CommandMetadata, helpText string, generateFu
 			"strings",
 		}
 
-		// Add user's package import if necessary
-		userPkgImportPath := ""
-		if cmdMeta.RunFunc != nil && cmdMeta.RunFunc.PackageName != "" && cmdMeta.RunFunc.PackageName != "main" {
-			if cmdMeta.Name != "" { // cmdMeta.Name is the targetPackageID
-				userPkgImportPath = cmdMeta.Name
-			}
-		}
-
-		if userPkgImportPath != "" {
-			alreadyPresent := false
-			for _, imp := range imports {
-				if imp == userPkgImportPath {
-					alreadyPresent = true
-					break
-				}
-			}
-			if !alreadyPresent {
-				imports = append(imports, userPkgImportPath)
-			}
-		}
-
-		for _, importPath := range imports {
+		for _, importPath := range stdImports {
 			sb.WriteString(fmt.Sprintf("\t%q\n", importPath))
 		}
+		// Removed all logic for userPkgImportPath
 		sb.WriteString(")\n\n")
 		sb.WriteString(generatedCode.String())
 		return sb.String(), nil

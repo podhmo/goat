@@ -9,7 +9,8 @@ import (
 	"os"
 )
 
-type options struct {
+// Options defines the command line options.
+type Options struct {
 	Version    bool   // Print version information
 	Help       bool   // Show help message
 	ConfigFile string // Path to the configuration file
@@ -19,10 +20,10 @@ func main() {
 	isFlagExplicitlySet := make(map[string]bool)
 
 	flag.Usage = func() {
-		fmt.Fprint(os.Stderr, `main - 
+		fmt.Fprint(os.Stderr, `m/hello - run is the actual command logic.
 
 Usage:
-  main [flags]
+  m/hello [flags]
 
 Flags:
   --version     bool     Print version information
@@ -33,9 +34,13 @@ Flags:
 `)
 	}
 
-	var options = &options{}
+	var options *Options
 
-	// 1. Create Options with default values.
+	// 1. Create Options with default values (no initializer function provided).
+	options = new(Options) // options is now a valid pointer to a zeroed struct
+
+	// The following block populates the fields of the options struct.
+	// This logic is only executed if no InitializerFunc is provided.
 
 	options.Version = false
 
@@ -43,7 +48,13 @@ Flags:
 
 	options.ConfigFile = ""
 
+	// End of range .Options (for non-initializer case)
+	// End of if/else .RunFunc.InitializerFunc for options assignment
+
 	// 2. Override with environment variable values.
+	// This section assumes 'options' is already initialized.
+
+	// End of range .Options for env vars
 
 	// 3. Set flags.
 
@@ -53,6 +64,8 @@ Flags:
 
 	flag.StringVar(&options.ConfigFile, "config-file", options.ConfigFile, "Path to the configuration file")
 
+	// End of range .Options for flags
+
 	// 4. Parse.
 	flag.Parse()
 	flag.Visit(func(f *flag.Flag) { isFlagExplicitlySet[f.Name] = true })
@@ -61,9 +74,6 @@ Flags:
 
 	// 5. Perform required checks (excluding booleans).
 
-	// A string is required. It must not be its original default if the flag wasn't set and env var wasn't set.
-	// If default was empty: must not be empty.
-	// If default was non-empty: must not be that specific non-empty value.
 	initialDefaultConfigFile := ""
 	envConfigFileWasSet := false
 
@@ -73,9 +83,12 @@ Flags:
 	}
 
 	// End of range .Options for required checks
-	// End of if .HasOptions
+	// End of if .RunFunc.OptionsArgTypeNameStripped (options handling block)
 
-	err := run(*options)
+	var err error
+
+	// Run function expects an options argument
+	err = run(*options)
 
 	if err != nil {
 		slog.Error("Runtime error", "error", err)
@@ -83,6 +96,7 @@ Flags:
 	}
 }
 
-func run(options options) error {
-	return json.NewEncoder(os.Stdout).Encode(options)
+// run is the actual command logic.
+func run(opts Options) error { // Parameter type changed to Options, name to opts
+	return json.NewEncoder(os.Stdout).Encode(opts)
 }
