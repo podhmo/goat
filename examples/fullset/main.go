@@ -13,6 +13,11 @@ import (
 	"github.com/podhmo/goat"
 )
 
+// stringPtr is a helper function to get a pointer to a string.
+func stringPtr(s string) *string {
+	return &s
+}
+
 //go:generate goat emit -run FullsetRun -initializer NewFullsetOptions main.go
 
 // Options defines the command line options for this simple example tool.
@@ -64,18 +69,24 @@ func NewFullsetOptions() *Options {
 		Name:      goat.Default("World"),
 		LogLevel:  goat.Default("info", goat.Enum([]string{"debug", "info", "warning", "error"})),
 		OutputDir: goat.Default("output"),
-		Mode:      goat.Enum([]string{"standard", "turbo", "eco"}),
+		Mode:      goat.Default("standard", goat.Enum([]string{"standard", "turbo", "eco"})),
 		// Age is optional (pointer) and has no default here. It remains *int.
 		// Features is []string, handled by flag package. Env var should work.
 		// SuperVerbose is a bool, defaults to false (zero value for bool).
 
 		// New fields from first subtask, adapted for current subtask
 		// OptionalToggle is *bool and should not have goat.Default()
+		// TODO: The goat tool fails to parse the following line for ConfigFile.
+		// TODO: It reports an error: "in call to goat.Default, type string of goat.File(...) does not match []T (cannot infer T)".
+		// TODO: This suggests an issue with how goat's parser handles goat.File when nested in goat.Default, potentially misinterpreting goat.File's return type.
 		ConfigFile: goat.Default("config.json", goat.File("config.json", goat.MustExist())),
+		// TODO: The goat tool fails to parse the following line for Pattern.
+		// TODO: It reports an error: "in call to goat.Default, type string of goat.File(...) does not match []T (cannot infer T)".
+		// TODO: This suggests an issue with how goat's parser handles goat.File when nested in goat.Default, potentially misinterpreting goat.File's return type.
 		Pattern:    goat.Default("*.go", goat.File("*.go", goat.GlobPattern())),
 		EnableFeatureX: goat.Default(true),
 		HostIP:     goat.Default(net.ParseIP("127.0.0.1")),
-		ExistingFieldToMakeOptional: goat.Default("was set by default"),
+		ExistingFieldToMakeOptional: goat.Default(stringPtr("was set by default")),
 	}
 }
 
@@ -336,7 +347,7 @@ Defaults to "output" if not specified by the user.` /* Original Default: output,
 	// End of range .Options for required checks
 	// End of if .HasOptions
 
-	err := run(*options)
+	err := FullsetRun(*options)
 
 	if err != nil {
 		slog.Error("Runtime error", "error", err)
