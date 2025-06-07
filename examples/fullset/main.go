@@ -8,11 +8,12 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"net"
 
-	g "github.com/podhmo/goat"
+	"github.com/podhmo/goat"
 )
 
-//go:generate goat emit -run run -initializer newOptions main.go
+//go:generate goat emit -run FullsetRun -initializer NewFullsetOptions main.go
 
 // Options defines the command line options for this simple example tool.
 // This tool demonstrates the basic capabilities of goat for CLI generation.
@@ -40,26 +41,48 @@ type Options struct {
 
 	// Enable extra verbose output.
 	SuperVerbose bool `env:"SIMPLE_SUPER_VERBOSE"`
+
+	// An optional boolean flag with no default, should be nil if not set.
+	OptionalToggle *bool
+	// Path to a configuration file. Must exist. (env:"FULLSET_CONFIG_FILE")
+	ConfigFile string `env:"FULLSET_CONFIG_FILE"`
+	// A glob pattern for input files. (env:"FULLSET_PATTERN")
+	Pattern string `env:"FULLSET_PATTERN"`
+	// Enable Feature X by default. Use --no-enable-feature-x to disable. (env:"FULLSET_FEATURE_X")
+	EnableFeatureX bool `env:"FULLSET_FEATURE_X"`
+	// The host IP address for the service. (env:"FULLSET_HOST_IP")
+	HostIP net.IP `env:"FULLSET_HOST_IP"`
+	// Example of an existing field made optional. (env:"FULLSET_OPTIONAL_EXISTING")
+	ExistingFieldToMakeOptional *string `env:"FULLSET_OPTIONAL_EXISTING"`
 }
 
-// newOptions initializes SimpleOptions with default values and enum constraints.
+// NewFullsetOptions initializes Options with default values and enum constraints.
 // This function will be "interpreted" by the goat tool.
-func newOptions() *Options {
+func NewFullsetOptions() *Options {
 	return &Options{
-		Name:      g.Default("World"),
-		LogLevel:  g.Default("info", g.Enum([]string{"debug", "info", "warning", "error"})),
-		OutputDir: g.Default("output"),
-		Mode:      g.Enum([]string{"standard", "turbo", "eco"}),
-		// Age is optional (pointer) and has no default here.
-		// Features is a slice, will be handled by flag package (e.g. multiple --features flag or comma sep)
-		// SuperVerbose is a bool, defaults to false (zero value for bool)
+		// Existing fields from original
+		Name:      goat.Default("World"),
+		LogLevel:  goat.Default("info", goat.Enum([]string{"debug", "info", "warning", "error"})),
+		OutputDir: goat.Default("output"),
+		Mode:      goat.Enum([]string{"standard", "turbo", "eco"}),
+		// Age is optional (pointer) and has no default here. It remains *int.
+		// Features is []string, handled by flag package. Env var should work.
+		// SuperVerbose is a bool, defaults to false (zero value for bool).
+
+		// New fields from first subtask, adapted for current subtask
+		// OptionalToggle is *bool and should not have goat.Default()
+		ConfigFile: goat.Default("config.json", goat.File("config.json", goat.MustExist())),
+		Pattern:    goat.Default("*.go", goat.File("*.go", goat.GlobPattern())),
+		EnableFeatureX: goat.Default(true),
+		HostIP:     goat.Default(net.ParseIP("127.0.0.1")),
+		ExistingFieldToMakeOptional: goat.Default("was set by default"),
 	}
 }
 
-// run is the core logic for this simple CLI tool.
+// FullsetRun is the core logic for this CLI tool.
 // It receives the parsed and validated options.
 // This function's doc comment is used as the main help text for the command.
-func run(opts Options) error {
+func FullsetRun(opts Options) error {
 	fmt.Printf("Hello, %s!\n", opts.Name)
 
 	if opts.Age != nil {
@@ -80,6 +103,22 @@ func run(opts Options) error {
 
 	if opts.SuperVerbose {
 		fmt.Println("Super verbose mode is ON!")
+	}
+
+	// Print new fields from first subtask
+	if opts.OptionalToggle != nil {
+		fmt.Printf("OptionalToggle: %t\n", *opts.OptionalToggle)
+	} else {
+		fmt.Println("OptionalToggle: not set")
+	}
+	fmt.Printf("ConfigFile: %s\n", opts.ConfigFile)
+	fmt.Printf("Pattern: %s\n", opts.Pattern)
+	fmt.Printf("EnableFeatureX: %t\n", opts.EnableFeatureX)
+	fmt.Printf("Host IP: %s\n", opts.HostIP)
+	if opts.ExistingFieldToMakeOptional != nil {
+		fmt.Printf("ExistingFieldToMakeOptional: %s\n", *opts.ExistingFieldToMakeOptional)
+	} else {
+		fmt.Println("ExistingFieldToMakeOptional: not set")
 	}
 
 	if opts.Name == "ErrorTrigger" {
