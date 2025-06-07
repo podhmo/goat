@@ -4,7 +4,9 @@ import (
 	"fmt"
 	"go/ast"
 	"go/token"
-	"log"
+	"log/slog"
+	"os"
+	"strings"
 
 	"github.com/podhmo/goat/internal/metadata"
 	"github.com/podhmo/goat/internal/utils/astutils"
@@ -19,24 +21,30 @@ func InterpretInitializer(
 	initializerFuncName string,
 	options []*metadata.OptionMetadata,
 	markerPkgImportPath string, // e.g., "github.com/podhmo/goat"
+	baseIndent int,
 ) error {
+	slog.Debug(strings.Repeat("\t", baseIndent)+"InterpretInitializer: start", "optionsStructName", optionsStructName, "initializerName", initializerFuncName)
 	var initializerFunc *ast.FuncDecl
 	ast.Inspect(fileAst, func(n ast.Node) bool {
 		if fn, ok := n.(*ast.FuncDecl); ok && fn.Name.Name == initializerFuncName {
 			initializerFunc = fn
+			slog.Debug(strings.Repeat("\t", baseIndent+1)+"Found initializer function", "name", initializerFuncName)
 			return false
 		}
 		return true
 	})
 
 	if initializerFunc == nil {
+		slog.Debug(strings.Repeat("\t", baseIndent) + "InterpretInitializer: end")
 		return fmt.Errorf("initializer function '%s' not found", initializerFuncName)
 	}
 
 	if initializerFunc.Body == nil {
+		slog.Debug(strings.Repeat("\t", baseIndent) + "InterpretInitializer: end")
 		return fmt.Errorf("initializer function '%s' has no body", initializerFuncName)
 	}
 
+	slog.Debug(strings.Repeat("\t", baseIndent+1)+"Mapping options", "numOptions", len(options))
 	optionsMap := make(map[string]*metadata.OptionMetadata)
 	for _, opt := range options {
 		optionsMap[opt.Name] = opt
@@ -51,11 +59,12 @@ func InterpretInitializer(
 	// opts.Field = goat.Default(...)
 	// return opts
 
-	log.Printf("Interpreting initializer: %s", initializerFuncName)
-
+	slog.Debug(strings.Repeat("\t", baseIndent+1)+"Interpreting initializer body", "name", initializerFuncName)
 	ast.Inspect(initializerFunc.Body, func(n ast.Node) bool {
+		slog.Debug(strings.Repeat("\t", baseIndent+2)+"Inspecting node", "type", fmt.Sprintf("%T", n))
 		switch stmtNode := n.(type) {
 		case *ast.AssignStmt: // e.g. options.Field = goat.Default(...) or var x = goat.Default(...)
+			slog.Debug(strings.Repeat("\t", baseIndent+3)+"Assignment statement found")
 			// We need to trace assignments to see if they end up in an OptionMetadata field
 			// This example focuses on direct assignments to struct fields.
 			// E.g., `opt.MyField = goat.Default("value")`
@@ -64,13 +73,14 @@ func InterpretInitializer(
 					// Assuming selExpr.X is the options struct variable, selExpr.Sel is the field name
 					fieldName := selExpr.Sel.Name
 					if optMeta, exists := optionsMap[fieldName]; exists {
-						log.Printf("Found assignment to options field: %s", fieldName)
-						extractMarkerInfo(stmtNode.Rhs[0], optMeta, fileAst, markerPkgImportPath)
+						slog.Debug(strings.Repeat("\t", baseIndent+4)+"Found assignment to options field", "fieldName", fieldName)
+						extractMarkerInfo(stmtNode.Rhs[0], optMeta, fileAst, markerPkgImportPath, baseIndent+5)
 					}
 				}
 			}
 
 		case *ast.ReturnStmt: // e.g. return &Options{ Field: goat.Default(...) }
+			slog.Debug(strings.Repeat("\t", baseIndent+3)+"Return statement found")
 			if len(stmtNode.Results) == 1 {
 				actualExpr := stmtNode.Results[0]
 				if unaryExpr, ok := actualExpr.(*ast.UnaryExpr); ok && unaryExpr.Op == token.AND {
@@ -78,16 +88,17 @@ func InterpretInitializer(
 				}
 
 				if compLit, ok := actualExpr.(*ast.CompositeLit); ok {
+					slog.Debug(strings.Repeat("\t", baseIndent+4)+"Return composite literal found")
 					// Check if this composite literal is for our Options struct
 					// This requires resolving compLit.Type to optionsStructName, which can be complex.
 					// For a simpler start, assume if it's a struct literal in NewOptions, it's the one.
-					log.Printf("Found return composite literal in %s", initializerFuncName)
 					for _, elt := range compLit.Elts {
 						if kvExpr, ok := elt.(*ast.KeyValueExpr); ok {
 							if keyIdent, ok := kvExpr.Key.(*ast.Ident); ok {
 								fieldName := keyIdent.Name
 								if optMeta, exists := optionsMap[fieldName]; exists {
-									extractMarkerInfo(kvExpr.Value, optMeta, fileAst, markerPkgImportPath)
+									slog.Debug(strings.Repeat("\t", baseIndent+5)+"Found key-value for options field in composite literal", "fieldName", fieldName)
+									extractMarkerInfo(kvExpr.Value, optMeta, fileAst, markerPkgImportPath, baseIndent+6)
 								}
 							}
 						}
@@ -97,87 +108,97 @@ func InterpretInitializer(
 		}
 		return true
 	})
-
+	slog.Debug(strings.Repeat("\t", baseIndent) + "InterpretInitializer: end")
 	return nil
 }
 
 // extractMarkerInfo extracts default value and enum choices from a marker function call.
-func extractMarkerInfo(valueExpr ast.Expr, optMeta *metadata.OptionMetadata, fileAst *ast.File, markerPkgImportPath string) {
+func extractMarkerInfo(valueExpr ast.Expr, optMeta *metadata.OptionMetadata, fileAst *ast.File, markerPkgImportPath string, baseIndent int) {
+	slog.Debug(strings.Repeat("\t", baseIndent)+"extractMarkerInfo: start", "optMetaName", optMeta.Name)
 	callExpr, ok := valueExpr.(*ast.CallExpr)
 	if !ok {
-		// Value is not a function call, could be a direct literal (TODO: handle direct literals as defaults)
+		slog.Debug(strings.Repeat("\t", baseIndent+1)+"Value is not a call expression", "type", fmt.Sprintf("%T", valueExpr))
+		slog.Debug(strings.Repeat("\t", baseIndent) + "extractMarkerInfo: end")
 		return
 	}
 
 	markerFuncName, markerPkgAlias := astutils.GetFullFunctionName(callExpr.Fun)
 	actualMarkerPkgPath := astutils.GetImportPath(fileAst, markerPkgAlias)
+	slog.Debug(strings.Repeat("\t", baseIndent+1)+"Extracted call info", "markerFuncName", markerFuncName, "markerPkgAlias", markerPkgAlias, "actualMarkerPkgPath", actualMarkerPkgPath)
 
 	// Allow original goat path or the one used in cmd/goat tests via testcmdmodule
 	isKnownMarkerPackage := (actualMarkerPkgPath == markerPkgImportPath || // e.g. "github.com/podhmo/goat"
 							 actualMarkerPkgPath == "testcmdmodule/internal/goat") // For cmd/goat tests
 
 	if !isKnownMarkerPackage {
-		log.Printf("  Call is to package '%s' (alias '%s'), not the recognized marker package(s) ('%s' or 'testcmdmodule/internal/goat')", actualMarkerPkgPath, markerPkgAlias, markerPkgImportPath)
+		slog.Debug(strings.Repeat("\t", baseIndent+1)+"Call is to a non-marker package", "actualMarkerPkgPath", actualMarkerPkgPath, "expectedMarkerPkgPath", markerPkgImportPath)
+		slog.Debug(strings.Repeat("\t", baseIndent) + "extractMarkerInfo: end")
 		return
 	}
 
+	slog.Debug(strings.Repeat("\t", baseIndent+1)+"Processing marker function", "markerFuncName", markerFuncName)
 	switch markerFuncName {
 	case "Default":
-		log.Printf("Interpreting goat.Default for field %s", optMeta.Name)
+		slog.Debug(strings.Repeat("\t", baseIndent+2)+"Interpreting goat.Default for field", "field", optMeta.Name)
 		if len(callExpr.Args) > 0 {
 			optMeta.DefaultValue = astutils.EvaluateArg(callExpr.Args[0])
-			log.Printf("  Default value: %v", optMeta.DefaultValue)
+			slog.Debug(strings.Repeat("\t", baseIndent+3)+"Default value extracted", "defaultValue", optMeta.DefaultValue)
 
 			// Subsequent args could be an Enum call for enumConstraint
 			if len(callExpr.Args) > 1 {
+				slog.Debug(strings.Repeat("\t", baseIndent+3) + "Additional args found, checking for Enum constraint")
 				// Assume second arg is the enumConstraint, which might be a goat.Enum() call
 				// or a slice literal.
 				enumArg := callExpr.Args[1]
 				if enumCallExpr, ok := enumArg.(*ast.CallExpr); ok {
 					enumFuncName, enumPkgAlias := astutils.GetFullFunctionName(enumCallExpr.Fun)
 					actualEnumPkgPath := astutils.GetImportPath(fileAst, enumPkgAlias)
+					slog.Debug(strings.Repeat("\t", baseIndent+4)+"Enum argument is a call expression", "enumFuncName", enumFuncName, "actualEnumPkgPath", actualEnumPkgPath)
 					if actualEnumPkgPath == markerPkgImportPath && enumFuncName == "Enum" {
 						if len(enumCallExpr.Args) == 1 {
 							optMeta.EnumValues = astutils.EvaluateSliceArg(enumCallExpr.Args[0])
-							log.Printf("  Enum values from goat.Enum: %v", optMeta.EnumValues)
+							slog.Debug(strings.Repeat("\t", baseIndent+5)+"Enum values from goat.Enum extracted", "enumValues", optMeta.EnumValues)
 						}
 					}
 				} else if _, ok := enumArg.(*ast.CompositeLit); ok { // Direct slice literal
 					optMeta.EnumValues = astutils.EvaluateSliceArg(enumArg)
-					log.Printf("  Enum values from slice literal: %v", optMeta.EnumValues)
+					slog.Debug(strings.Repeat("\t", baseIndent+4)+"Enum values from slice literal extracted", "enumValues", optMeta.EnumValues)
 				}
 			}
 		}
 	case "Enum":
-		log.Printf("Interpreting goat.Enum for field %s", optMeta.Name)
+		slog.Debug(strings.Repeat("\t", baseIndent+2)+"Interpreting goat.Enum for field", "field", optMeta.Name)
 		if len(callExpr.Args) == 1 {
 			optMeta.EnumValues = astutils.EvaluateSliceArg(callExpr.Args[0])
-			log.Printf("  Enum values: %v", optMeta.EnumValues)
+			slog.Debug(strings.Repeat("\t", baseIndent+3)+"Enum values extracted", "enumValues", optMeta.EnumValues)
 		}
 	case "File":
-		log.Printf("Interpreting goat.File for field %s", optMeta.Name)
+		slog.Debug(strings.Repeat("\t", baseIndent+2)+"Interpreting goat.File for field", "field", optMeta.Name)
 		if len(callExpr.Args) > 0 {
 			optMeta.DefaultValue = astutils.EvaluateArg(callExpr.Args[0])
-			log.Printf("  Default path: %v", optMeta.DefaultValue)
+			slog.Debug(strings.Repeat("\t", baseIndent+3)+"Default path extracted", "defaultPath", optMeta.DefaultValue)
 			optMeta.TypeName = "string" // File paths are strings
 
 			// Subsequent args are FileOption calls (e.g., goat.MustExist(), goat.GlobPattern())
 			if len(callExpr.Args) > 1 {
-				for _, arg := range callExpr.Args[1:] {
+				slog.Debug(strings.Repeat("\t", baseIndent+3) + "Additional args found, checking for FileOption calls")
+				for i, arg := range callExpr.Args[1:] {
+					slog.Debug(strings.Repeat("\t", baseIndent+4)+"Processing FileOption argument", "index", i)
 					if optionCallExpr, ok := arg.(*ast.CallExpr); ok {
 						optionFuncName, optionFuncPkgAlias := astutils.GetFullFunctionName(optionCallExpr.Fun)
 						actualOptionFuncPkgPath := astutils.GetImportPath(fileAst, optionFuncPkgAlias)
+						slog.Debug(strings.Repeat("\t", baseIndent+5)+"FileOption argument is a call expression", "optionFuncName", optionFuncName, "actualOptionFuncPkgPath", actualOptionFuncPkgPath)
 
 						if actualOptionFuncPkgPath == markerPkgImportPath { // Ensure it's a goat.Xxx call
 							switch optionFuncName {
 							case "MustExist":
 								optMeta.FileMustExist = true
-								log.Printf("  FileOption: MustExist")
+								slog.Debug(strings.Repeat("\t", baseIndent+6) + "FileOption: MustExist set")
 							case "GlobPattern":
 								optMeta.FileGlobPattern = true
-								log.Printf("  FileOption: GlobPattern")
+								slog.Debug(strings.Repeat("\t", baseIndent+6) + "FileOption: GlobPattern set")
 							default:
-								log.Printf("  Unknown FileOption: %s", optionFuncName)
+								slog.Warn(strings.Repeat("\t", baseIndent+6)+"Unknown FileOption encountered", "optionFuncName", optionFuncName)
 							}
 						}
 					}
@@ -185,7 +206,7 @@ func extractMarkerInfo(valueExpr ast.Expr, optMeta *metadata.OptionMetadata, fil
 			}
 		}
 	default:
-		// Not a recognized marker function from the specified package
-		log.Printf("  Not a goat marker function: %s.%s", markerPkgAlias, markerFuncName)
+		slog.Warn(strings.Repeat("\t", baseIndent+2)+"Not a recognized goat marker function", "markerFuncName", markerFuncName, "markerPkgAlias", markerPkgAlias)
 	}
+	slog.Debug(strings.Repeat("\t", baseIndent) + "extractMarkerInfo: end")
 }

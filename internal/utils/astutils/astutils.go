@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"go/ast"
 	"go/token"
-	"log"
+	"log/slog" // Keep slog
 	"strconv"
 	"strings"
 )
@@ -121,7 +121,7 @@ func EvaluateArg(arg ast.Expr) any {
 				return []rune(s)[0]
 			}
 		}
-		log.Printf("EvaluateArg: unhandled basic literal kind %v for value %s", v.Kind, v.Value)
+		slog.Warn("EvaluateArg: unhandled basic literal kind", "kind", v.Kind, "value", v.Value)
 		return v.Value // return raw token value as string
 	case *ast.Ident:
 		// Could be a predefined constant like `true`, `false`, `nil`
@@ -134,7 +134,7 @@ func EvaluateArg(arg ast.Expr) any {
 			return nil
 		}
 		// TODO: Could try to resolve other idents if we had a symbol table
-		log.Printf("EvaluateArg: unhandled identifier %s", v.Name)
+		slog.Warn("EvaluateArg: unhandled identifier", "name", v.Name)
 	case *ast.UnaryExpr:
 		if v.Op == token.SUB {
 			// Handle negative numbers
@@ -146,14 +146,14 @@ func EvaluateArg(arg ast.Expr) any {
 					return -num
 				// Add other numeric types if needed
 				default:
-					log.Printf("EvaluateArg: unhandled unary minus for type %T", xVal)
+					slog.Warn("EvaluateArg: unhandled unary minus", "type", fmt.Sprintf("%T", xVal))
 				}
 			}
 		}
-		log.Printf("EvaluateArg: unhandled unary operator %s", v.Op)
+		slog.Warn("EvaluateArg: unhandled unary operator", "operator", v.Op.String())
 	// TODO: Add *ast.CompositeLit for simple slice/map literals if needed directly as default
 	default:
-		log.Printf("EvaluateArg: unhandled expression type %T", arg)
+		slog.Warn("EvaluateArg: unhandled expression type", "type", fmt.Sprintf("%T", arg))
 	}
 	return nil
 }
@@ -163,7 +163,7 @@ func EvaluateArg(arg ast.Expr) any {
 func EvaluateSliceArg(arg ast.Expr) []any {
 	compLit, ok := arg.(*ast.CompositeLit)
 	if !ok {
-		log.Printf("EvaluateSliceArg: argument is not a composite literal, got %T", arg)
+		slog.Warn("EvaluateSliceArg: argument is not a composite literal", "type", fmt.Sprintf("%T", arg))
 		return []any{}
 	}
 	results := make([]any, 0, len(compLit.Elts))
@@ -172,7 +172,7 @@ func EvaluateSliceArg(arg ast.Expr) []any {
 		if val != nil {
 			results = append(results, val)
 		} else {
-			log.Printf("EvaluateSliceArg: could not evaluate element %T in slice", elt)
+			slog.Warn("EvaluateSliceArg: could not evaluate element in slice", "elementType", fmt.Sprintf("%T", elt))
 		}
 	}
 	return results

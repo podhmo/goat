@@ -8,11 +8,13 @@ import (
 	"io"
 	"os"
 	"path/filepath" // Added for filepath.Join
+	"log/slog"      // Added for slog capture
 	"strings"
 	"testing"
 
 	"github.com/podhmo/goat/internal/help"
 	"github.com/podhmo/goat/internal/metadata"
+	"github.com/stretchr/testify/assert" // Added for assertions
 )
 
 // setupTestAppWithGoMod creates a temporary directory with a go.mod file,
@@ -163,6 +165,14 @@ func runMainWithArgs(t *testing.T, args ...string) string {
 }
 
 func TestHelpGenerateHelpOutput(t *testing.T) {
+	t.Setenv("DEBUG", "1")
+	var logBuf bytes.Buffer
+	handler := slog.NewTextHandler(&logBuf, &slog.HandlerOptions{Level: slog.LevelDebug})
+	logger := slog.New(handler)
+	originalLogger := slog.Default()
+	slog.SetDefault(logger)
+	defer slog.SetDefault(originalLogger)
+
 	tmpFile := setupTestAppWithGoMod(t, testGoFileContent)
 
 	opts := &Options{
@@ -214,6 +224,16 @@ func TestHelpGenerateHelpOutput(t *testing.T) {
 			return
 		}
 	}
+
+	// Verify slog output
+	logOutput := logBuf.String()
+	// scanMain logs
+	assert.Contains(t, logOutput, "scanMain called")
+	assert.Contains(t, logOutput, "\tLoadFile: start") // From loader.LoadFile
+	assert.Contains(t, logOutput, "\tAnalyze: start")   // From analyzer.Analyze
+	// GenerateHelp logs (called with baseIndent 0 here as it's a direct call in the test)
+	assert.Contains(t, logOutput, "GenerateHelp: start")          // From help.GenerateHelp (baseIndent=0)
+	assert.Contains(t, logOutput, "\tgenerateHelp internal: start") // From internal generateHelp (baseIndent=1)
 }
 
 func TestInitSubcommand(t *testing.T) {
@@ -225,6 +245,14 @@ func TestInitSubcommand(t *testing.T) {
 }
 
 func TestHelpMessageSubcommand(t *testing.T) {
+	t.Setenv("DEBUG", "1")
+	var logBuf bytes.Buffer
+	handler := slog.NewTextHandler(&logBuf, &slog.HandlerOptions{Level: slog.LevelDebug})
+	logger := slog.New(handler)
+	originalLogger := slog.Default()
+	slog.SetDefault(logger)
+	defer slog.SetDefault(originalLogger)
+
 	tmpFile := setupTestAppWithGoMod(t, testGoFileContent)
 
 	// Ensure flags come before positional arguments for robust parsing
@@ -254,9 +282,24 @@ func TestHelpMessageSubcommand(t *testing.T) {
 			return
 		}
 	}
+
+	// Verify slog output
+	logOutput := logBuf.String()
+	assert.Contains(t, logOutput, "scanMain called") // From main.go/scanMain
+	assert.Contains(t, logOutput, "\tLoadFile: start") // From loader.LoadFile called by scanMain
+	assert.Contains(t, logOutput, "\tAnalyze: start")   // From analyzer.Analyze called by scanMain
+	assert.Contains(t, logOutput, "\tGenerateHelp: start") // From help.GenerateHelp
 }
 
 func TestScanSubcommand(t *testing.T) {
+	t.Setenv("DEBUG", "1")
+	var logBuf bytes.Buffer
+	handler := slog.NewTextHandler(&logBuf, &slog.HandlerOptions{Level: slog.LevelDebug})
+	logger := slog.New(handler)
+	originalLogger := slog.Default()
+	slog.SetDefault(logger)
+	defer slog.SetDefault(originalLogger)
+
 	tmpFile := setupTestAppWithGoMod(t, testGoFileContent)
 
 	// Ensure flags come before positional arguments for robust parsing
@@ -314,9 +357,24 @@ func TestScanSubcommand(t *testing.T) {
 			t.Errorf("Option '%s' not found in metadata output", optName)
 		}
 	}
+
+	// Verify slog output
+	logOutput := logBuf.String()
+	assert.Contains(t, logOutput, "scanMain called") // From main.go/scanMain
+	assert.Contains(t, logOutput, "\tLoadFile: start") // From loader.LoadFile called by scanMain
+	assert.Contains(t, logOutput, "\tAnalyze: start")   // From analyzer.Analyze called by scanMain
+	// help.GenerateHelp is not called directly by the scan subcommand in main, so no log for it.
 }
 
 func TestEmitSubcommand(t *testing.T) {
+	t.Setenv("DEBUG", "1")
+	var logBuf bytes.Buffer
+	handler := slog.NewTextHandler(&logBuf, &slog.HandlerOptions{Level: slog.LevelDebug})
+	logger := slog.New(handler)
+	originalLogger := slog.Default()
+	slog.SetDefault(logger)
+	defer slog.SetDefault(originalLogger)
+
 	tmpFile := setupTestAppWithGoMod(t, testGoFileContent)
 
 	// Read the initial content that setupTestAppWithGoMod wrote
@@ -353,4 +411,18 @@ func TestEmitSubcommand(t *testing.T) {
 	if err != nil {
 		t.Errorf("Modified file content could not be parsed as Go: %v\nContent:\n%s", err, string(modifiedContent))
 	}
+
+	// Verify slog output
+	logOutput := logBuf.String()
+	assert.Contains(t, logOutput, "runGoat called") // From main.go/runGoat
+	assert.Contains(t, logOutput, "\tCalling scanMain") // From main.go/runGoat
+	assert.Contains(t, logOutput, "scanMain called") // From main.go/scanMain
+	assert.Contains(t, logOutput, "\tLoadFile: start") // From loader.LoadFile called by scanMain
+	assert.Contains(t, logOutput, "\tAnalyze: start")   // From analyzer.Analyze called by scanMain
+	assert.Contains(t, logOutput, "\tGenerateHelp: start") // From help.GenerateHelp called by runGoat
+	assert.Contains(t, logOutput, "\tGenerateMain: start") // From codegen.GenerateMain called by runGoat
+	assert.Contains(t, logOutput, "\tWriteMain: start")    // From codegen.WriteMain called by runGoat
+
+	// Check for indentation in a deeper call
+	assert.Contains(t, logOutput, "\t\tAnalyzing run function") // From analyzer.Analyze (baseIndent=1 + 1)
 }

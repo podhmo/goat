@@ -1,13 +1,17 @@
 package codegen // Changed from codegen_test
 
 import (
+	"bytes" // Added for log capture
 	"fmt"
 	"go/format"
+	"log/slog" // Added for slog
+	"os"       // Added for Setenv
 	"regexp"
 	"strings"
 	"testing"
 
 	"github.com/podhmo/goat/internal/metadata"
+	"github.com/stretchr/testify/assert" // Added for assertions
 )
 
 var (
@@ -79,7 +83,16 @@ func TestGenerateMain_WithTextVarOptions(t *testing.T) {
 	cmdMeta := &metadata.CommandMetadata{
 		RunFunc: runFuncInfo, Options: []*metadata.OptionMetadata{optMetaValue, optMetaPtr, optMetaOnlyUnmarshaler},
 	}
-	actualCode, err := GenerateMain(cmdMeta, "Test TextVar functionality", true)
+
+	t.Setenv("DEBUG", "1")
+	var logBuf bytes.Buffer
+	handler := slog.NewTextHandler(&logBuf, &slog.HandlerOptions{Level: slog.LevelDebug})
+	logger := slog.New(handler)
+	originalLogger := slog.Default()
+	slog.SetDefault(logger)
+	defer slog.SetDefault(originalLogger)
+
+	actualCode, err := GenerateMain(cmdMeta, "Test TextVar functionality", true, 0)
 	if err != nil {
 		t.Fatalf("GenerateMain for TextVar options failed: %v", err)
 	}
@@ -96,6 +109,13 @@ func TestGenerateMain_WithTextVarOptions(t *testing.T) {
 	assertCodeContains(t, actualCode, `err := (&options.FieldF).UnmarshalText([]byte(val))`)
 	assertCodeContains(t, actualCode, `slog.Warn("Could not parse environment variable for TextUnmarshaler option; using default or previously set value.", "envVar", "FIELD_F_ENV", "option", "field-f"`)
 	assertCodeContains(t, actualCode, "new(textvar_pkg.MyPtrTextValue)")
+
+	logOutput := logBuf.String()
+	assert.Contains(t, logOutput, "GenerateMain: start")
+	assert.Contains(t, logOutput, "\tValidating command metadata for template generation")
+	assert.Contains(t, logOutput, "\tExecuting main function template")
+	assert.Contains(t, logOutput, "\tGenerating full file with package and imports")
+	assert.Contains(t, logOutput, "GenerateMain: end (full file)")
 }
 
 func assertCodeNotContains(t *testing.T, actualGeneratedCode, unexpectedSnippet string) {
@@ -119,7 +139,16 @@ func TestGenerateMain_BasicCase(t *testing.T) {
 		},
 		Options: []*metadata.OptionMetadata{},
 	}
-	actualCode, err := GenerateMain(cmdMeta, "", true)
+
+	t.Setenv("DEBUG", "1")
+	var logBuf bytes.Buffer
+	handler := slog.NewTextHandler(&logBuf, &slog.HandlerOptions{Level: slog.LevelDebug})
+	logger := slog.New(handler)
+	originalLogger := slog.Default()
+	slog.SetDefault(logger)
+	defer slog.SetDefault(originalLogger)
+
+	actualCode, err := GenerateMain(cmdMeta, "", true, 0)
 	if err != nil {
 		t.Fatalf("GenerateMain failed: %v", err)
 	}
@@ -129,6 +158,10 @@ func TestGenerateMain_BasicCase(t *testing.T) {
 	assertCodeContains(t, actualCode, `slog.Error("Runtime error", "error", err)`)
 	assertCodeContains(t, actualCode, `os.Exit(1)`)
 	assertCodeNotContains(t, actualCode, "var options =")
+
+	logOutput := logBuf.String()
+	assert.Contains(t, logOutput, "GenerateMain: start")
+	assert.Contains(t, logOutput, "GenerateMain: end (full file)")
 }
 
 func TestGenerateMain_WithOptions(t *testing.T) {
@@ -146,7 +179,16 @@ func TestGenerateMain_WithOptions(t *testing.T) {
 			{Name: "Verbose", TypeName: "bool", HelpText: "Enable verbose output", DefaultValue: false},
 		},
 	}
-	actualCode, err := GenerateMain(cmdMeta, "", true)
+
+	t.Setenv("DEBUG", "1")
+	var logBuf bytes.Buffer
+	handler := slog.NewTextHandler(&logBuf, &slog.HandlerOptions{Level: slog.LevelDebug})
+	logger := slog.New(handler)
+	originalLogger := slog.Default()
+	slog.SetDefault(logger)
+	defer slog.SetDefault(originalLogger)
+
+	actualCode, err := GenerateMain(cmdMeta, "", true, 0)
 	if err != nil {
 		t.Fatalf("GenerateMain failed: %v", err)
 	}
@@ -165,6 +207,10 @@ func TestGenerateMain_WithOptions(t *testing.T) {
 	assertCodeContains(t, actualCode, "err = RunWithOptions(options)")
 	assertCodeNotContains(t, actualCode, "import . \"anothercmd\"")
 	assertCodeNotContains(t, actualCode, "import \"anothercmd\"")
+
+	logOutput := logBuf.String()
+	assert.Contains(t, logOutput, "GenerateMain: start")
+	assert.Contains(t, logOutput, "GenerateMain: end (full file)")
 }
 
 func TestGenerateMain_NoPackagePrefixWhenMain(t *testing.T) {
@@ -179,7 +225,16 @@ func TestGenerateMain_NoPackagePrefixWhenMain(t *testing.T) {
 			{Name: "Name", TypeName: "string", HelpText: "Name of the user", DefaultValue: "guest"},
 		},
 	}
-	actualCode, err := GenerateMain(cmdMeta, "", true)
+
+	t.Setenv("DEBUG", "1")
+	var logBuf bytes.Buffer
+	handler := slog.NewTextHandler(&logBuf, &slog.HandlerOptions{Level: slog.LevelDebug})
+	logger := slog.New(handler)
+	originalLogger := slog.Default()
+	slog.SetDefault(logger)
+	defer slog.SetDefault(originalLogger)
+
+	actualCode, err := GenerateMain(cmdMeta, "", true, 0)
 	if err != nil {
 		t.Fatalf("GenerateMain failed: %v", err)
 	}
@@ -188,6 +243,10 @@ func TestGenerateMain_NoPackagePrefixWhenMain(t *testing.T) {
 	assertCodeContains(t, actualCode, "err = run(options)")
 	assertCodeNotContains(t, actualCode, "main.run(")
 	assertCodeNotContains(t, actualCode, "main.Run(")
+
+	logOutput := logBuf.String()
+	assert.Contains(t, logOutput, "GenerateMain: start")
+	assert.Contains(t, logOutput, "GenerateMain: end (full file)")
 }
 
 func TestGenerateMain_KebabCaseFlagNames(t *testing.T) {
@@ -204,7 +263,16 @@ func TestGenerateMain_KebabCaseFlagNames(t *testing.T) {
 			{Name: "MaximumRetries", TypeName: "int", HelpText: "Maximum number of retries", DefaultValue: 3},
 		},
 	}
-	actualCode, err := GenerateMain(cmdMeta, "", true)
+
+	t.Setenv("DEBUG", "1")
+	var logBuf bytes.Buffer
+	handler := slog.NewTextHandler(&logBuf, &slog.HandlerOptions{Level: slog.LevelDebug})
+	logger := slog.New(handler)
+	originalLogger := slog.Default()
+	slog.SetDefault(logger)
+	defer slog.SetDefault(originalLogger)
+
+	actualCode, err := GenerateMain(cmdMeta, "", true, 0)
 	if err != nil {
 		t.Fatalf("GenerateMain failed: %v", err)
 	}
@@ -221,6 +289,10 @@ func TestGenerateMain_KebabCaseFlagNames(t *testing.T) {
 `
 	assertCodeContains(t, actualCode, expectedFlagParsing)
 	assertCodeContains(t, actualCode, "err = ProcessData(options)")
+
+	logOutput := logBuf.String()
+	assert.Contains(t, logOutput, "GenerateMain: start")
+	assert.Contains(t, logOutput, "GenerateMain: end (full file)")
 }
 
 func TestGenerateMain_RequiredFlags(t *testing.T) {
@@ -236,7 +308,16 @@ func TestGenerateMain_RequiredFlags(t *testing.T) {
 			{Name: "Retries", TypeName: "int", HelpText: "Number of retries", IsRequired: true, DefaultValue: 0},
 		},
 	}
-	actualCode, err := GenerateMain(cmdMeta, "", true)
+
+	t.Setenv("DEBUG", "1")
+	var logBuf bytes.Buffer
+	handler := slog.NewTextHandler(&logBuf, &slog.HandlerOptions{Level: slog.LevelDebug})
+	logger := slog.New(handler)
+	originalLogger := slog.Default()
+	slog.SetDefault(logger)
+	defer slog.SetDefault(originalLogger)
+
+	actualCode, err := GenerateMain(cmdMeta, "", true, 0)
 	if err != nil {
 		t.Fatalf("GenerateMain failed: %v", err)
 	}
@@ -257,6 +338,10 @@ func TestGenerateMain_RequiredFlags(t *testing.T) {
 	assertCodeContains(t, actualCode, `if options.Retries == initialDefaultRetries && !isFlagExplicitlySet["retries"] && !envRetriesWasSet {`)
 	assertCodeContains(t, actualCode, `slog.Error("Missing required flag or environment variable not set", "flag", "retries", "option", "Retries")`)
 	assertCodeContains(t, actualCode, "err = DoSomething(*options)")
+
+	logOutput := logBuf.String()
+	assert.Contains(t, logOutput, "GenerateMain: start")
+	assert.Contains(t, logOutput, "GenerateMain: end (full file)")
 }
 
 func TestGenerateMain_EnumValidation(t *testing.T) {
@@ -271,7 +356,16 @@ func TestGenerateMain_EnumValidation(t *testing.T) {
 			{Name: "Mode", TypeName: "string", HelpText: "Mode of operation", EnumValues: []any{"auto", "manual", "standby"}, DefaultValue: "auto"},
 		},
 	}
-	actualCode, err := GenerateMain(cmdMeta, "", true)
+
+	t.Setenv("DEBUG", "1")
+	var logBuf bytes.Buffer
+	handler := slog.NewTextHandler(&logBuf, &slog.HandlerOptions{Level: slog.LevelDebug})
+	logger := slog.New(handler)
+	originalLogger := slog.Default()
+	slog.SetDefault(logger)
+	defer slog.SetDefault(originalLogger)
+
+	actualCode, err := GenerateMain(cmdMeta, "", true, 0)
 	if err != nil {
 		t.Fatalf("GenerateMain failed: %v", err)
 	}
@@ -294,6 +388,10 @@ func TestGenerateMain_EnumValidation(t *testing.T) {
 `
 	assertCodeContains(t, actualCode, expectedEnumValidation)
 	assertCodeContains(t, actualCode, "err = SetMode(options)")
+
+	logOutput := logBuf.String()
+	assert.Contains(t, logOutput, "GenerateMain: start")
+	assert.Contains(t, logOutput, "GenerateMain: end (full file)")
 }
 
 func TestGenerateMain_EnvironmentVariables(t *testing.T) {
@@ -310,7 +408,16 @@ func TestGenerateMain_EnvironmentVariables(t *testing.T) {
 			{Name: "EnableFeature", TypeName: "bool", HelpText: "Enable new feature", DefaultValue: false, EnvVar: "ENABLE_MY_FEATURE"},
 		},
 	}
-	actualCode, err := GenerateMain(cmdMeta, "", true)
+
+	t.Setenv("DEBUG", "1")
+	var logBuf bytes.Buffer
+	handler := slog.NewTextHandler(&logBuf, &slog.HandlerOptions{Level: slog.LevelDebug})
+	logger := slog.New(handler)
+	originalLogger := slog.Default()
+	slog.SetDefault(logger)
+	defer slog.SetDefault(originalLogger)
+
+	actualCode, err := GenerateMain(cmdMeta, "", true, 0)
 	if err != nil {
 		t.Fatalf("GenerateMain failed: %v", err)
 	}
@@ -349,6 +456,10 @@ func TestGenerateMain_EnvironmentVariables(t *testing.T) {
 	assertCodeContains(t, actualCode, `flag.IntVar(&options.Timeout, "timeout", options.Timeout, "Timeout in seconds" /* Original Default: 60, Env: TIMEOUT_SECONDS */)`)
 	assertCodeContains(t, actualCode, `flag.BoolVar(&options.EnableFeature, "enable-feature", options.EnableFeature, "Enable new feature" /* Original Default: false, Env: ENABLE_MY_FEATURE */)`)
 	assertCodeContains(t, actualCode, "err = Configure(options)")
+
+	logOutput := logBuf.String()
+	assert.Contains(t, logOutput, "GenerateMain: start")
+	assert.Contains(t, logOutput, "GenerateMain: end (full file)")
 }
 
 func TestGenerateMain_EnvVarForBoolWithTrueDefault(t *testing.T) {
@@ -363,7 +474,16 @@ func TestGenerateMain_EnvVarForBoolWithTrueDefault(t *testing.T) {
 			{Name: "SmartParsing", TypeName: "bool", HelpText: "Enable smart parsing", DefaultValue: true, EnvVar: "SMART_PARSING_ENABLED"},
 		},
 	}
-	actualCode, err := GenerateMain(cmdMeta, "", true)
+
+	t.Setenv("DEBUG", "1")
+	var logBuf bytes.Buffer
+	handler := slog.NewTextHandler(&logBuf, &slog.HandlerOptions{Level: slog.LevelDebug})
+	logger := slog.New(handler)
+	originalLogger := slog.Default()
+	slog.SetDefault(logger)
+	defer slog.SetDefault(originalLogger)
+
+	actualCode, err := GenerateMain(cmdMeta, "", true, 0)
 	if err != nil {
 		t.Fatalf("GenerateMain failed: %v", err)
 	}
@@ -382,6 +502,10 @@ func TestGenerateMain_EnvVarForBoolWithTrueDefault(t *testing.T) {
 	assertCodeContains(t, actualCode, expectedEnvLogic)
 	assertCodeContains(t, actualCode, `flag.BoolVar(&options.SmartParsing, "smart-parsing", options.SmartParsing, "Enable smart parsing" /* Original Default: true, Env: SMART_PARSING_ENABLED */)`)
 	assertCodeContains(t, actualCode, "err = ProcessWithFeature(options)")
+
+	logOutput := logBuf.String()
+	assert.Contains(t, logOutput, "GenerateMain: start")
+	assert.Contains(t, logOutput, "GenerateMain: end (full file)")
 }
 
 func TestGenerateMain_RequiredBool_DefaultFalse(t *testing.T) {
@@ -396,7 +520,16 @@ func TestGenerateMain_RequiredBool_DefaultFalse(t *testing.T) {
 			{Name: "ForceOverwrite", TypeName: "bool", HelpText: "Force overwrite of existing files", IsRequired: true, DefaultValue: false},
 		},
 	}
-	actualCode, err := GenerateMain(cmdMeta, "", true)
+
+	t.Setenv("DEBUG", "1")
+	var logBuf bytes.Buffer
+	handler := slog.NewTextHandler(&logBuf, &slog.HandlerOptions{Level: slog.LevelDebug})
+	logger := slog.New(handler)
+	originalLogger := slog.Default()
+	slog.SetDefault(logger)
+	defer slog.SetDefault(originalLogger)
+
+	actualCode, err := GenerateMain(cmdMeta, "", true, 0)
 	if err != nil {
 		t.Fatalf("GenerateMain failed: %v", err)
 	}
@@ -408,6 +541,10 @@ func TestGenerateMain_RequiredBool_DefaultFalse(t *testing.T) {
 	assertCodeContains(t, actualCode, expectedFlagParsing)
 	assertCodeNotContains(t, actualCode, "var ForceOverwrite_NoFlagIsPresent bool")
 	assertCodeNotContains(t, actualCode, "options.ForceOverwrite = true")
+
+	logOutput := logBuf.String()
+	assert.Contains(t, logOutput, "GenerateMain: start")
+	assert.Contains(t, logOutput, "GenerateMain: end (full file)")
 }
 
 func TestGenerateMain_RequiredBool_DefaultTrue(t *testing.T) {
@@ -422,7 +559,16 @@ func TestGenerateMain_RequiredBool_DefaultTrue(t *testing.T) {
 			{Name: "EnableSync", TypeName: "bool", HelpText: "Enable synchronization", IsRequired: true, DefaultValue: true},
 		},
 	}
-	actualCode, err := GenerateMain(cmdMeta, "", true)
+
+	t.Setenv("DEBUG", "1")
+	var logBuf bytes.Buffer
+	handler := slog.NewTextHandler(&logBuf, &slog.HandlerOptions{Level: slog.LevelDebug})
+	logger := slog.New(handler)
+	originalLogger := slog.Default()
+	slog.SetDefault(logger)
+	defer slog.SetDefault(originalLogger)
+
+	actualCode, err := GenerateMain(cmdMeta, "", true, 0)
 	if err != nil {
 		t.Fatalf("GenerateMain failed: %v", err)
 	}
@@ -446,6 +592,10 @@ func TestGenerateMain_RequiredBool_DefaultTrue(t *testing.T) {
 	assertCodeNotContains(t, actualCode, `flag.BoolVar(&options.EnableSync, "no-enable-sync"`)
 	assertCodeNotContains(t, actualCode, `slog.Error("Missing required flag", "flag", "no-enable-sync")`)
 	assertCodeNotContains(t, actualCode, `slog.Error("Missing required flag", "flag", "enable-sync")`)
+
+	logOutput := logBuf.String()
+	assert.Contains(t, logOutput, "GenerateMain: start")
+	assert.Contains(t, logOutput, "GenerateMain: end (full file)")
 }
 
 func TestGenerateMain_ErrorHandling(t *testing.T) {
@@ -457,7 +607,16 @@ func TestGenerateMain_ErrorHandling(t *testing.T) {
 			OptionsArgIsPointer:        true,
 		},
 	}
-	actualCode, err := GenerateMain(cmdMeta, "", true)
+
+	t.Setenv("DEBUG", "1")
+	var logBuf bytes.Buffer
+	handler := slog.NewTextHandler(&logBuf, &slog.HandlerOptions{Level: slog.LevelDebug})
+	logger := slog.New(handler)
+	originalLogger := slog.Default()
+	slog.SetDefault(logger)
+	defer slog.SetDefault(originalLogger)
+
+	actualCode, err := GenerateMain(cmdMeta, "", true, 0)
 	if err != nil {
 		t.Fatalf("GenerateMain failed: %v", err)
 	}
@@ -468,6 +627,10 @@ func TestGenerateMain_ErrorHandling(t *testing.T) {
 	}
 `
 	assertCodeContains(t, actualCode, expectedErrorHandling)
+
+	logOutput := logBuf.String()
+	assert.Contains(t, logOutput, "GenerateMain: start")
+	assert.Contains(t, logOutput, "GenerateMain: end (full file)")
 }
 
 func TestGenerateMain_Imports(t *testing.T) {
@@ -482,12 +645,25 @@ func TestGenerateMain_Imports(t *testing.T) {
 			{Name: "Name", TypeName: "string", EnvVar: "APP_NAME", HelpText: "app name"},
 		},
 	}
-	actualCodeNoStrconv, err := GenerateMain(cmdMetaNoStrconv, "", true)
+
+	t.Setenv("DEBUG", "1")
+	var logBufNoConv bytes.Buffer
+	handlerNoConv := slog.NewTextHandler(&logBufNoConv, &slog.HandlerOptions{Level: slog.LevelDebug})
+	loggerNoConv := slog.New(handlerNoConv)
+	originalLoggerNoConv := slog.Default()
+	slog.SetDefault(loggerNoConv)
+	defer slog.SetDefault(originalLoggerNoConv)
+
+	actualCodeNoStrconv, err := GenerateMain(cmdMetaNoStrconv, "", true, 0)
 	if err != nil {
 		t.Fatalf("GenerateMain failed: %v", err)
 	}
 	assertCodeContains(t, actualCodeNoStrconv, `flag.StringVar(&options.Name, "name", options.Name, "app name" /* Env: APP_NAME */)`)
 	assertCodeNotContains(t, actualCodeNoStrconv, `strconv.Atoi`)
+
+	logOutputNoConv := logBufNoConv.String()
+	assert.Contains(t, logOutputNoConv, "GenerateMain: start")
+	assert.Contains(t, logOutputNoConv, "GenerateMain: end (full file)")
 
 	cmdMetaWithStrconv := &metadata.CommandMetadata{
 		RunFunc: &metadata.RunFuncInfo{
@@ -500,12 +676,25 @@ func TestGenerateMain_Imports(t *testing.T) {
 			{Name: "Port", TypeName: "int", EnvVar: "APP_PORT", HelpText: "app port"},
 		},
 	}
-	actualCodeWithStrconv, err := GenerateMain(cmdMetaWithStrconv, "", true)
+
+	t.Setenv("DEBUG", "1")
+	var logBufWithConv bytes.Buffer
+	handlerWithConv := slog.NewTextHandler(&logBufWithConv, &slog.HandlerOptions{Level: slog.LevelDebug})
+	loggerWithConv := slog.New(handlerWithConv)
+	originalLoggerWithConv := slog.Default()
+	slog.SetDefault(loggerWithConv)
+	defer slog.SetDefault(originalLoggerWithConv)
+
+	actualCodeWithStrconv, err := GenerateMain(cmdMetaWithStrconv, "", true, 0)
 	if err != nil {
 		t.Fatalf("GenerateMain failed: %v", err)
 	}
 	assertCodeContains(t, actualCodeWithStrconv, `flag.IntVar(&options.Port, "port", options.Port, "app port" /* Env: APP_PORT */)`)
 	assertCodeContains(t, actualCodeWithStrconv, `strconv.Atoi`)
+
+	logOutputWithConv := logBufWithConv.String()
+	assert.Contains(t, logOutputWithConv, "GenerateMain: start")
+	assert.Contains(t, logOutputWithConv, "GenerateMain: end (full file)")
 }
 
 func TestGenerateMain_RequiredIntWithEnvVar(t *testing.T) {
@@ -521,7 +710,15 @@ func TestGenerateMain_RequiredIntWithEnvVar(t *testing.T) {
 		},
 	}
 
-	actualCode, err := GenerateMain(cmdMeta, "", true)
+	t.Setenv("DEBUG", "1")
+	var logBuf bytes.Buffer
+	handler := slog.NewTextHandler(&logBuf, &slog.HandlerOptions{Level: slog.LevelDebug})
+	logger := slog.New(handler)
+	originalLogger := slog.Default()
+	slog.SetDefault(logger)
+	defer slog.SetDefault(originalLogger)
+
+	actualCode, err := GenerateMain(cmdMeta, "", true, 0)
 	if err != nil {
 		t.Fatalf("GenerateMain failed: %v", err)
 	}
@@ -541,6 +738,10 @@ func TestGenerateMain_RequiredIntWithEnvVar(t *testing.T) {
 `
 	assertCodeContains(t, actualCode, expectedRequiredCheck)
 	assertCodeContains(t, actualCode, "err = SubmitData(options)")
+
+	logOutput := logBuf.String()
+	assert.Contains(t, logOutput, "GenerateMain: start")
+	assert.Contains(t, logOutput, "GenerateMain: end (full file)")
 }
 
 func TestGenerateMain_EnvVarPrecendenceStrategy(t *testing.T) {
@@ -562,7 +763,15 @@ func TestGenerateMain_EnvVarPrecendenceStrategy(t *testing.T) {
 		},
 	}
 
-	actualCode, err := GenerateMain(cmdMeta, "Test help text", true)
+	t.Setenv("DEBUG", "1")
+	var logBuf bytes.Buffer
+	handler := slog.NewTextHandler(&logBuf, &slog.HandlerOptions{Level: slog.LevelDebug})
+	logger := slog.New(handler)
+	originalLogger := slog.Default()
+	slog.SetDefault(logger)
+	defer slog.SetDefault(originalLogger)
+
+	actualCode, err := GenerateMain(cmdMeta, "Test help text", true, 0)
 	if err != nil {
 		t.Fatalf("GenerateMain failed: %v", err)
 	}
@@ -637,6 +846,10 @@ func TestGenerateMain_EnvVarPrecendenceStrategy(t *testing.T) {
 	assertCodeContains(t, actualCode, boolPtrFlagLogic)
 	assertCodeNotContains(t, actualCode, `var defaultStringOpt string =`)
 	assertCodeNotContains(t, actualCode, `if !isFlagExplicitlySet["string-ptr-opt"] { if val, ok := os.LookupEnv("ENV_STRING_PTR"); ok {`)
+
+	logOutput := logBuf.String()
+	assert.Contains(t, logOutput, "GenerateMain: start")
+	assert.Contains(t, logOutput, "GenerateMain: end (full file)")
 }
 
 func TestGenerateMain_StringFlagWithQuotesInDefault(t *testing.T) {
@@ -651,7 +864,16 @@ func TestGenerateMain_StringFlagWithQuotesInDefault(t *testing.T) {
 			{Name: "Greeting", TypeName: "string", HelpText: "A greeting message", DefaultValue: `hello "world"`},
 		},
 	}
-	actualCode, err := GenerateMain(cmdMeta, "", true)
+
+	t.Setenv("DEBUG", "1")
+	var logBuf bytes.Buffer
+	handler := slog.NewTextHandler(&logBuf, &slog.HandlerOptions{Level: slog.LevelDebug})
+	logger := slog.New(handler)
+	originalLogger := slog.Default()
+	slog.SetDefault(logger)
+	defer slog.SetDefault(originalLogger)
+
+	actualCode, err := GenerateMain(cmdMeta, "", true, 0)
 	if err != nil {
 		t.Fatalf("GenerateMain failed: %v", err)
 	}
@@ -660,6 +882,10 @@ func TestGenerateMain_StringFlagWithQuotesInDefault(t *testing.T) {
 	assertCodeContains(t, actualCode, `options.Greeting = "hello \"world\""`)
 	expectedFlagParsing := `flag.StringVar(&options.Greeting, "greeting", options.Greeting, "A greeting message" /* Original Default: hello "world", Env: */)`
 	assertCodeContains(t, actualCode, expectedFlagParsing)
+
+	logOutput := logBuf.String()
+	assert.Contains(t, logOutput, "GenerateMain: start")
+	assert.Contains(t, logOutput, "GenerateMain: end (full file)")
 }
 
 func TestGenerateMain_WithHelpText(t *testing.T) {
@@ -676,7 +902,15 @@ func TestGenerateMain_WithHelpText(t *testing.T) {
 	}
 	helpText := "This is my custom help message.\nUsage: mytool -input <file>"
 
-	actualCode, err := GenerateMain(cmdMeta, helpText, true)
+	t.Setenv("DEBUG", "1")
+	var logBuf bytes.Buffer
+	handler := slog.NewTextHandler(&logBuf, &slog.HandlerOptions{Level: slog.LevelDebug})
+	logger := slog.New(handler)
+	originalLogger := slog.Default()
+	slog.SetDefault(logger)
+	defer slog.SetDefault(originalLogger)
+
+	actualCode, err := GenerateMain(cmdMeta, helpText, true, 0)
 	if err != nil {
 		t.Fatalf("GenerateMain with help text failed: %v", err)
 	}
@@ -691,6 +925,10 @@ func TestGenerateMain_WithHelpText(t *testing.T) {
 	assertCodeNotContains(t, actualCode, oldManualHelpLogic)
 	assertCodeContains(t, actualCode, `flag.StringVar(&options.Input, "input", options.Input, "Input file")`)
 	assertCodeContains(t, actualCode, "err = RunMyTool(options)")
+
+	logOutput := logBuf.String()
+	assert.Contains(t, logOutput, "GenerateMain: start")
+	assert.Contains(t, logOutput, "GenerateMain: end (full file)")
 }
 
 func TestGenerateMain_WithEmptyHelpText(t *testing.T) {
@@ -704,7 +942,15 @@ func TestGenerateMain_WithEmptyHelpText(t *testing.T) {
 		Options: []*metadata.OptionMetadata{},
 	}
 
-	actualCode, err := GenerateMain(cmdMeta, "", true)
+	t.Setenv("DEBUG", "1")
+	var logBuf bytes.Buffer
+	handler := slog.NewTextHandler(&logBuf, &slog.HandlerOptions{Level: slog.LevelDebug})
+	logger := slog.New(handler)
+	originalLogger := slog.Default()
+	slog.SetDefault(logger)
+	defer slog.SetDefault(originalLogger)
+
+	actualCode, err := GenerateMain(cmdMeta, "", true, 0)
 	if err != nil {
 		t.Fatalf("GenerateMain with empty help text failed: %v", err)
 	}
@@ -717,6 +963,10 @@ func TestGenerateMain_WithEmptyHelpText(t *testing.T) {
 	assertCodeNotContains(t, actualCode, unexpectedFlagUsageAssignment)
 	assertCodeContains(t, actualCode, "func main() {")
 	assertCodeContains(t, actualCode, "err = AnotherTool()")
+
+	logOutput := logBuf.String()
+	assert.Contains(t, logOutput, "GenerateMain: start")
+	assert.Contains(t, logOutput, "GenerateMain: end (full file)")
 }
 
 func TestGenerateMain_HelpTextNewlineFormatting(t *testing.T) {
@@ -732,7 +982,16 @@ func TestGenerateMain_HelpTextNewlineFormatting(t *testing.T) {
 
 	t.Run("WithNewlines", func(t *testing.T) {
 		helpTextWithNewlines := "This is line one.\nThis is line two."
-		actualCode, err := GenerateMain(baseCmdMeta, helpTextWithNewlines, true)
+
+		t.Setenv("DEBUG", "1")
+		var logBuf bytes.Buffer
+		handler := slog.NewTextHandler(&logBuf, &slog.HandlerOptions{Level: slog.LevelDebug})
+		logger := slog.New(handler)
+		originalLogger := slog.Default()
+		slog.SetDefault(logger)
+		defer slog.SetDefault(originalLogger)
+
+		actualCode, err := GenerateMain(baseCmdMeta, helpTextWithNewlines, true, 0)
 		if err != nil {
 			t.Fatalf("GenerateMain with help text failed: %v", err)
 		}
@@ -744,13 +1003,26 @@ func TestGenerateMain_HelpTextNewlineFormatting(t *testing.T) {
 		if !strings.Contains(string(formattedActualCode), expectedUsageFunc) {
 			t.Errorf("Expected generated code to contain exact snippet for multiline help text with raw string literal.\nExpected snippet:\n%s\n\nFormatted actual code:\n%s", expectedUsageFunc, string(formattedActualCode))
 		}
+
+		logOutput := logBuf.String()
+		assert.Contains(t, logOutput, "GenerateMain: start")
+		assert.Contains(t, logOutput, "GenerateMain: end (full file)")
 	})
 
 	t.Run("WithoutNewlines", func(t *testing.T) {
 		helpTextWithoutNewlines := "This is a single line."
 		expectedFormattedText := fmt.Sprintf("%q", helpTextWithoutNewlines)
 		expectedSnippet := fmt.Sprintf("fmt.Fprint(os.Stderr, %s)", expectedFormattedText)
-		actualCode, err := GenerateMain(baseCmdMeta, helpTextWithoutNewlines, true)
+
+		t.Setenv("DEBUG", "1")
+		var logBuf bytes.Buffer
+		handler := slog.NewTextHandler(&logBuf, &slog.HandlerOptions{Level: slog.LevelDebug})
+		logger := slog.New(handler)
+		originalLogger := slog.Default()
+		slog.SetDefault(logger)
+		defer slog.SetDefault(originalLogger)
+
+		actualCode, err := GenerateMain(baseCmdMeta, helpTextWithoutNewlines, true, 0)
 		if err != nil {
 			t.Fatalf("GenerateMain with help text failed: %v", err)
 		}
@@ -761,6 +1033,10 @@ func TestGenerateMain_HelpTextNewlineFormatting(t *testing.T) {
 		if !strings.Contains(string(formattedActualCode), expectedSnippet) {
 			t.Errorf("Expected generated code to contain exact snippet for single line help text with quoted string literal.\nExpected snippet:\n%s\n\nFormatted actual code:\n%s", expectedSnippet, string(formattedActualCode))
 		}
+
+		logOutput := logBuf.String()
+		assert.Contains(t, logOutput, "GenerateMain: start")
+		assert.Contains(t, logOutput, "GenerateMain: end (full file)")
 	})
 }
 
@@ -778,7 +1054,16 @@ func TestGenerateMain_WithInitializer(t *testing.T) {
 	}
 
 	helpText := "Test command with initializer"
-	actualCode, err := GenerateMain(cmdMeta, helpText, true)
+
+	t.Setenv("DEBUG", "1")
+	var logBuf bytes.Buffer
+	handler := slog.NewTextHandler(&logBuf, &slog.HandlerOptions{Level: slog.LevelDebug})
+	logger := slog.New(handler)
+	originalLogger := slog.Default()
+	slog.SetDefault(logger)
+	defer slog.SetDefault(originalLogger)
+
+	actualCode, err := GenerateMain(cmdMeta, helpText, true, 0)
 	if err != nil {
 		t.Fatalf("GenerateMain with initializer failed: %v\nGenerated code:\n%s", err, actualCode)
 	}
@@ -788,6 +1073,10 @@ func TestGenerateMain_WithInitializer(t *testing.T) {
 	assertCodeNotContains(t, actualCode, "options = new(MyOptions)")
 	assertCodeNotContains(t, actualCode, "var options = &MyOptions{}")
 	assertCodeContains(t, actualCode, "err = Run(options)")
+
+	logOutput := logBuf.String()
+	assert.Contains(t, logOutput, "GenerateMain: start")
+	assert.Contains(t, logOutput, "GenerateMain: end (full file)")
 }
 
 func TestGenerateMain_WithoutInitializer_Fallback(t *testing.T) {
@@ -807,7 +1096,16 @@ func TestGenerateMain_WithoutInitializer_Fallback(t *testing.T) {
 	}
 
 	helpText := "Test command without initializer"
-	actualCode, err := GenerateMain(cmdMeta, helpText, true)
+
+	t.Setenv("DEBUG", "1")
+	var logBuf bytes.Buffer
+	handler := slog.NewTextHandler(&logBuf, &slog.HandlerOptions{Level: slog.LevelDebug})
+	logger := slog.New(handler)
+	originalLogger := slog.Default()
+	slog.SetDefault(logger)
+	defer slog.SetDefault(originalLogger)
+
+	actualCode, err := GenerateMain(cmdMeta, helpText, true, 0)
 	if err != nil {
 		t.Fatalf("GenerateMain without initializer failed: %v\nGenerated code:\n%s", err, actualCode)
 	}
@@ -820,6 +1118,10 @@ func TestGenerateMain_WithoutInitializer_Fallback(t *testing.T) {
 	assertCodeContains(t, actualCode, `flag.StringVar(&options.Mode, "mode", options.Mode, "Operation mode" /* Original Default: test, Env: */)`)
 	assertCodeContains(t, actualCode, `flag.IntVar(&options.Count, "count", options.Count, "A number" /* Original Default: 42, Env: */)`)
 	assertCodeContains(t, actualCode, "err = Run(options)")
+
+	logOutput := logBuf.String()
+	assert.Contains(t, logOutput, "GenerateMain: start")
+	assert.Contains(t, logOutput, "GenerateMain: end (full file)")
 }
 
 func TestGenerateMain_InitializerInMainPackage(t *testing.T) {
@@ -836,7 +1138,16 @@ func TestGenerateMain_InitializerInMainPackage(t *testing.T) {
 	}
 
 	helpText := "Test command with initializer in main package"
-	actualCode, err := GenerateMain(cmdMeta, helpText, true)
+
+	t.Setenv("DEBUG", "1")
+	var logBuf bytes.Buffer
+	handler := slog.NewTextHandler(&logBuf, &slog.HandlerOptions{Level: slog.LevelDebug})
+	logger := slog.New(handler)
+	originalLogger := slog.Default()
+	slog.SetDefault(logger)
+	defer slog.SetDefault(originalLogger)
+
+	actualCode, err := GenerateMain(cmdMeta, helpText, true, 0)
 	if err != nil {
 		t.Fatalf("GenerateMain with initializer in main package failed: %v\nGenerated code:\n%s", err, actualCode)
 	}
@@ -845,6 +1156,10 @@ func TestGenerateMain_InitializerInMainPackage(t *testing.T) {
 	assertCodeNotContains(t, actualCode, "options = new(MyOptions)")
 	assertCodeNotContains(t, actualCode, "var options = &MyOptions{}")
 	assertCodeContains(t, actualCode, "err = Run(options)")
+
+	logOutput := logBuf.String()
+	assert.Contains(t, logOutput, "GenerateMain: start")
+	assert.Contains(t, logOutput, "GenerateMain: end (full file)")
 }
 
 

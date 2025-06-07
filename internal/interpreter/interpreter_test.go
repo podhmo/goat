@@ -3,12 +3,16 @@ package interpreter
 import (
 	"go/ast"
 	"go/parser"
+	"bytes" // Added for log capture
 	"go/token"
+	"log/slog" // Added for slog
+	"os"       // Added for Setenv
 	"reflect"
 	"strings"
 	"testing"
 
 	"github.com/podhmo/goat/internal/metadata"
+	"github.com/stretchr/testify/assert" // Added for assertions
 )
 
 func parseTestFileForInterpreter(t *testing.T, content string) *ast.File {
@@ -25,6 +29,14 @@ func parseTestFileForInterpreter(t *testing.T, content string) *ast.File {
 const goatPkgImportPath = "github.com/podhmo/goat"
 
 func TestInterpretInitializer_SimpleDefaults(t *testing.T) {
+	t.Setenv("DEBUG", "1")
+	var logBuf bytes.Buffer
+	handler := slog.NewTextHandler(&logBuf, &slog.HandlerOptions{Level: slog.LevelDebug})
+	logger := slog.New(handler)
+	originalLogger := slog.Default()
+	slog.SetDefault(logger)
+	defer slog.SetDefault(originalLogger)
+
 	content := `
 package main
 import g "github.com/podhmo/goat"
@@ -50,7 +62,7 @@ func NewOpts() *Options {
 		{Name: "Verbose", CliName: "verbose", TypeName: "bool"},
 	}
 
-	err := InterpretInitializer(fileAst, "Options", "NewOpts", optionsMeta, goatPkgImportPath)
+	err := InterpretInitializer(fileAst, "Options", "NewOpts", optionsMeta, goatPkgImportPath, 0)
 	if err != nil {
 		t.Fatalf("InterpretInitializer failed: %v", err)
 	}
@@ -72,6 +84,14 @@ func NewOpts() *Options {
 				opt.Name, expected, expected, opt.DefaultValue, opt.DefaultValue)
 		}
 	}
+
+	logOutput := logBuf.String()
+	assert.Contains(t, logOutput, "InterpretInitializer: start")
+	assert.Contains(t, logOutput, "\tFound initializer function")
+	assert.Contains(t, logOutput, "\tInterpreting initializer body")
+	assert.Contains(t, logOutput, "\textractMarkerInfo: start", "Should call extractMarkerInfo for Name")
+	assert.Contains(t, logOutput, "Default value extracted", "Should log extracted default for Name")
+	assert.Contains(t, logOutput, "InterpretInitializer: end")
 }
 
 func TestInterpretInitializer_EnumAndCombined(t *testing.T) {
@@ -97,7 +117,16 @@ func InitOptions() *Options {
 		{Name: "Mode", CliName: "mode", TypeName: "string"},
 	}
 
-	err := InterpretInitializer(fileAst, "Options", "InitOptions", optionsMeta, goatPkgImportPath)
+	// Capture logs for this test too
+	t.Setenv("DEBUG", "1") // Ensure DEBUG is set for this specific execution if tests run in parallel or state is reset
+	var logBufEnum bytes.Buffer
+	handlerEnum := slog.NewTextHandler(&logBufEnum, &slog.HandlerOptions{Level: slog.LevelDebug})
+	loggerEnum := slog.New(handlerEnum)
+	originalLoggerEnum := slog.Default() // Save the potentially already overridden logger
+	slog.SetDefault(loggerEnum)
+	defer slog.SetDefault(originalLoggerEnum) // Restore to what it was before this test
+
+	err := InterpretInitializer(fileAst, "Options", "InitOptions", optionsMeta, goatPkgImportPath, 0)
 	if err != nil {
 		t.Fatalf("InterpretInitializer failed: %v", err)
 	}
@@ -119,6 +148,11 @@ func InitOptions() *Options {
 	if !reflect.DeepEqual(modeOpt.EnumValues, expectedModeEnum) {
 		t.Errorf("Mode: Expected enum %v, got %v", expectedModeEnum, modeOpt.EnumValues)
 	}
+
+	logOutputEnum := logBufEnum.String()
+	assert.Contains(t, logOutputEnum, "InterpretInitializer: start")
+	assert.Contains(t, logOutputEnum, "Enum values from goat.Enum extracted")
+	assert.Contains(t, logOutputEnum, "InterpretInitializer: end")
 }
 
 func TestInterpretInitializer_AssignmentStyle(t *testing.T) {
@@ -141,7 +175,15 @@ func New() *Options {
 		{Name: "Path", CliName: "path", TypeName: "string"},
 	}
 
-	err := InterpretInitializer(fileAst, "Options", "New", optionsMeta, goatPkgImportPath)
+	t.Setenv("DEBUG", "1")
+	var logBufAssign bytes.Buffer
+	handlerAssign := slog.NewTextHandler(&logBufAssign, &slog.HandlerOptions{Level: slog.LevelDebug})
+	loggerAssign := slog.New(handlerAssign)
+	originalLoggerAssign := slog.Default()
+	slog.SetDefault(loggerAssign)
+	defer slog.SetDefault(originalLoggerAssign)
+
+	err := InterpretInitializer(fileAst, "Options", "New", optionsMeta, goatPkgImportPath, 0)
 	if err != nil {
 		t.Fatalf("InterpretInitializer with assignment style failed: %v", err)
 	}
@@ -149,6 +191,11 @@ func New() *Options {
 	if optionsMeta[0].DefaultValue != "/tmp" {
 		t.Errorf("Path: Expected default '/tmp', got '%v'", optionsMeta[0].DefaultValue)
 	}
+
+	logOutputAssign := logBufAssign.String()
+	assert.Contains(t, logOutputAssign, "InterpretInitializer: start")
+	assert.Contains(t, logOutputAssign, "\tFound assignment to options field")
+	assert.Contains(t, logOutputAssign, "InterpretInitializer: end")
 }
 
 func TestInterpretInitializer_NonGoatPackageCall(t *testing.T) {
@@ -165,25 +212,51 @@ func New() *Options {
 	fileAst := parseTestFileForInterpreter(t, content)
 	optionsMeta := []*metadata.OptionMetadata{{Name: "Name"}}
 
-	err := InterpretInitializer(fileAst, "Options", "New", optionsMeta, goatPkgImportPath) // goatPkgImportPath is for "github.com/podhmo/goat"
+	t.Setenv("DEBUG", "1")
+	var logBufNonGoat bytes.Buffer
+	handlerNonGoat := slog.NewTextHandler(&logBufNonGoat, &slog.HandlerOptions{Level: slog.LevelDebug})
+	loggerNonGoat := slog.New(handlerNonGoat)
+	originalLoggerNonGoat := slog.Default()
+	slog.SetDefault(loggerNonGoat)
+	defer slog.SetDefault(originalLoggerNonGoat)
+
+	err := InterpretInitializer(fileAst, "Options", "New", optionsMeta, goatPkgImportPath, 0) // goatPkgImportPath is for "github.com/podhmo/goat"
 	if err != nil {
 		t.Fatalf("InterpretInitializer failed: %v", err)
 	}
 	if optionsMeta[0].DefaultValue != nil {
 		t.Errorf("Expected DefaultValue to be nil as g.Default is not from goat package, got %v", optionsMeta[0].DefaultValue)
 	}
+
+	logOutputNonGoat := logBufNonGoat.String()
+	assert.Contains(t, logOutputNonGoat, "InterpretInitializer: start")
+	assert.Contains(t, logOutputNonGoat, "Call is to a non-marker package")
+	assert.Contains(t, logOutputNonGoat, "InterpretInitializer: end")
 }
 
 func TestInterpretInitializer_InitializerNotFound(t *testing.T) {
+	t.Setenv("DEBUG", "1")
+	var logBufNotFound bytes.Buffer
+	handlerNotFound := slog.NewTextHandler(&logBufNotFound, &slog.HandlerOptions{Level: slog.LevelDebug})
+	loggerNotFound := slog.New(handlerNotFound)
+	originalLoggerNotFound := slog.Default()
+	slog.SetDefault(loggerNotFound)
+	defer slog.SetDefault(originalLoggerNotFound)
+
 	content := `package main; type Options struct{}`
 	fileAst := parseTestFileForInterpreter(t, content)
-	err := InterpretInitializer(fileAst, "Options", "NonExistentInit", nil, goatPkgImportPath)
+	err := InterpretInitializer(fileAst, "Options", "NonExistentInit", nil, goatPkgImportPath, 0)
 	if err == nil {
 		t.Fatal("InterpretInitializer should fail if initializer func not found")
 	}
 	if !strings.Contains(err.Error(), "NonExistentInit' not found") {
 		t.Errorf("Unexpected error message: %v", err)
 	}
+
+	logOutputNotFound := logBufNotFound.String()
+	assert.Contains(t, logOutputNotFound, "InterpretInitializer: start")
+	assert.Contains(t, logOutputNotFound, "initializer function 'NonExistentInit' not found") // This is part of the error message but also indicates flow
+	assert.Contains(t, logOutputNotFound, "InterpretInitializer: end") // Logged before error return
 }
 
 func TestInterpretInitializer_FileMarkers(t *testing.T) {
@@ -301,10 +374,21 @@ func New() *Config { return &Config{ Input: g.File("in.txt", other.SomeOption())
 				currentOptionsMeta[i] = &metaCopy
 			}
 
+		t.Setenv("DEBUG", "1")
+		var logBufFile bytes.Buffer
+		handlerFile := slog.NewTextHandler(&logBufFile, &slog.HandlerOptions{Level: slog.LevelDebug})
+		loggerFile := slog.New(handlerFile)
+		originalLoggerFile := slog.Default()
+		slog.SetDefault(loggerFile)
+		defer slog.SetDefault(originalLoggerFile)
 
-			err := InterpretInitializer(fileAst, tt.optionsName, tt.initializerName, currentOptionsMeta, goatPkgImportPath)
+		err := InterpretInitializer(fileAst, tt.optionsName, tt.initializerName, currentOptionsMeta, goatPkgImportPath, 0)
+
+		logOutputFile := logBufFile.String() // Capture log regardless of error
 
 			if tt.expectError {
+			assert.Contains(t, logOutputFile, "InterpretInitializer: start", "Test: %s", tt.name)
+			// Specific error related logs might not always hit "InterpretInitializer: end" if error is early
 				if err == nil {
 					t.Fatalf("Expected an error but got none")
 				}
@@ -340,6 +424,16 @@ func New() *Config { return &Config{ Input: g.File("in.txt", other.SomeOption())
 					if actualOpt.TypeName != expectedOpt.TypeName {t.Logf(" TypeName: expected '%s', got '%s'", expectedOpt.TypeName, actualOpt.TypeName)}
 					if actualOpt.FileMustExist != expectedOpt.FileMustExist {t.Logf(" FileMustExist: expected '%t', got '%t'", expectedOpt.FileMustExist, actualOpt.FileMustExist)}
 					if actualOpt.FileGlobPattern != expectedOpt.FileGlobPattern {t.Logf(" FileGlobPattern: expected '%t', got '%t'", expectedOpt.FileGlobPattern, actualOpt.FileGlobPattern)}
+				}
+			}
+			assert.Contains(t, logOutputFile, "InterpretInitializer: end", "Test: %s", tt.name)
+			if strings.Contains(tt.name, "File with") { // Check for specific marker logs in relevant tests
+				assert.Contains(t, logOutputFile, "Interpreting goat.File for field", "Test: %s", tt.name)
+				if strings.Contains(tt.name, "MustExist") {
+					assert.Contains(t, logOutputFile, "FileOption: MustExist set", "Test: %s", tt.name)
+				}
+				if strings.Contains(tt.name, "GlobPattern") {
+					assert.Contains(t, logOutputFile, "FileOption: GlobPattern set", "Test: %s", tt.name)
 				}
 			}
 		})

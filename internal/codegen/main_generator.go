@@ -3,6 +3,8 @@ package codegen
 import (
 	"bytes"
 	"fmt"
+	"log/slog"
+	"os"
 	"strings"
 	"text/template"
 
@@ -325,7 +327,8 @@ func formatHelpText(text string) string {
 // based on the extracted command metadata.
 // If generateFullFile is true, it returns a complete Go file content including package and imports.
 // Otherwise, it returns only the main function body.
-func GenerateMain(cmdMeta *metadata.CommandMetadata, helpText string, generateFullFile bool) (string, error) {
+func GenerateMain(cmdMeta *metadata.CommandMetadata, helpText string, generateFullFile bool, baseIndent int) (string, error) {
+	slog.Debug(strings.Repeat("\t", baseIndent)+"GenerateMain: start", "generateFullFile", generateFullFile)
 	templateFuncs := template.FuncMap{
 		"KebabCase":      stringutils.ToKebabCase,
 		"FormatHelpText": formatHelpText,
@@ -339,10 +342,13 @@ func GenerateMain(cmdMeta *metadata.CommandMetadata, helpText string, generateFu
 
 	tmpl := template.Must(template.New("main").Funcs(templateFuncs).Parse(mainFuncTmpl))
 
+	slog.Debug(strings.Repeat("\t", baseIndent+1)+"Validating command metadata for template generation")
 	if len(cmdMeta.Options) > 0 && cmdMeta.RunFunc.OptionsArgTypeNameStripped == "" {
+		slog.Debug(strings.Repeat("\t", baseIndent) + "GenerateMain: end (error)")
 		return "", fmt.Errorf("OptionsArgTypeNameStripped is empty for command %s, but options are present. This indicates an issue with parsing the run function's options struct type", cmdMeta.Name)
 	}
 
+	slog.Debug(strings.Repeat("\t", baseIndent+1)+"Preparing data for template execution")
 	data := struct {
 		RunFunc    *metadata.RunFuncInfo
 		Options    []*metadata.OptionMetadata
@@ -356,21 +362,25 @@ func GenerateMain(cmdMeta *metadata.CommandMetadata, helpText string, generateFu
 	}
 
 	var generatedCode bytes.Buffer
+	slog.Debug(strings.Repeat("\t", baseIndent+1)+"Executing main function template")
 	if err := tmpl.Execute(&generatedCode, data); err != nil {
+		slog.Debug(strings.Repeat("\t", baseIndent) + "GenerateMain: end (error)")
 		return "", fmt.Errorf("executing template: %w", err)
 	}
 
 	if generateFullFile {
+		slog.Debug(strings.Repeat("\t", baseIndent+1)+"Generating full file with package and imports")
 		// Construct the full Go source file content
 		var sb strings.Builder
 		sb.WriteString("package main\n\n")
+		slog.Debug(strings.Repeat("\t", baseIndent+2)+"Generating imports")
 		sb.WriteString("import (\n")
 
 		// Standard imports ONLY
 		stdImports := []string{
 			"flag",
 			"fmt",
-			"log/slog",
+			"log/slog", // This is already here from the template, but good to ensure.
 			"os",
 			"slices",
 			"strconv",
@@ -382,8 +392,11 @@ func GenerateMain(cmdMeta *metadata.CommandMetadata, helpText string, generateFu
 		}
 		// Removed all logic for userPkgImportPath
 		sb.WriteString(")\n\n")
+		slog.Debug(strings.Repeat("\t", baseIndent+2)+"Appending generated main body")
 		sb.WriteString(generatedCode.String())
+		slog.Debug(strings.Repeat("\t", baseIndent) + "GenerateMain: end (full file)")
 		return sb.String(), nil
 	}
+	slog.Debug(strings.Repeat("\t", baseIndent) + "GenerateMain: end (main function body only)")
 	return generatedCode.String(), nil
 }

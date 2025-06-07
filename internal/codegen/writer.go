@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"go/ast"
 	"go/token"
+	"log/slog"
 	"os"
 	"strings"
 
@@ -16,17 +17,21 @@ func WriteMain(
 	filePath string,
 	fileSet *token.FileSet, // Added FileSet to correctly get offsets
 	fileAst *ast.File,
-	newMainContent string,
+	newMainContent string, // Changed from []byte to string for consistency with GenerateMain
 	mainFuncPos *token.Position, // This is the position of the 'func' keyword
+	baseIndent int,
 ) error {
+	slog.Debug(strings.Repeat("\t", baseIndent)+"WriteMain: start", "targetFile", filePath)
 	originalContent, err := os.ReadFile(filePath)
 	if err != nil {
+		slog.Debug(strings.Repeat("\t", baseIndent)+"WriteMain: end (error reading file)")
 		return fmt.Errorf("reading original file %s: %w", filePath, err)
 	}
 
-	var newContent []byte
+	var newBytesContent []byte // Renamed to avoid conflict, will hold final bytes
 
 	if mainFuncPos == nil {
+		slog.Debug(strings.Repeat("\t", baseIndent+1) + "Main function position not provided, appending new content")
 		// Main function not found, append newMainContent to the end of the file.
 		// Ensure there's a newline between existing content and new main, if needed.
 		if len(originalContent) > 0 && originalContent[len(originalContent)-1] != '\n' {
@@ -34,8 +39,9 @@ func WriteMain(
 		}
 		originalContent = append(originalContent, '\n') // Add an extra newline for separation
 
-		newContent = append(originalContent, []byte(newMainContent)...)
+		newBytesContent = append(originalContent, []byte(newMainContent)...)
 	} else {
+		slog.Debug(strings.Repeat("\t", baseIndent+1)+"Main function position provided, attempting to replace existing main")
 		// Main function found, replace it.
 		var mainFuncNode *ast.FuncDecl
 		for _, decl := range fileAst.Decls {
@@ -51,6 +57,7 @@ func WriteMain(
 		}
 
 		if mainFuncNode == nil {
+			slog.Warn(strings.Repeat("\t", baseIndent+2)+"Failed to find main function node despite position being provided; appending content as fallback", "mainFuncPos", mainFuncPos)
 			// This case should ideally not happen if mainFuncPos is not nil
 			// and points to a valid 'main' function declaration.
 			// However, as a fallback, append.
@@ -58,8 +65,9 @@ func WriteMain(
 				originalContent = append(originalContent, '\n')
 			}
 			originalContent = append(originalContent, '\n')
-			newContent = append(originalContent, []byte(newMainContent)...)
+			newBytesContent = append(originalContent, []byte(newMainContent)...)
 		} else {
+			slog.Debug(strings.Repeat("\t", baseIndent+2)+"Main function node found, proceeding with line-by-line replacement")
 			// New line-by-line replacement logic
 			originalLines := strings.Split(string(originalContent), "\n")
 
@@ -105,21 +113,26 @@ func WriteMain(
 
 			// The call to format.Source later will ensure Go-specific formatting,
 			// including a single trailing newline if appropriate for Go files.
-			newContent = []byte(builder.String())
+			newBytesContent = []byte(builder.String())
 		}
 	}
 
+	slog.Debug(strings.Repeat("\t", baseIndent+1)+"Processing (goimports) the generated code")
 	// Use imports.Process to format and add/remove imports
-	formattedContent, err := imports.Process(filePath, newContent, nil)
+	formattedContent, err := imports.Process(filePath, newBytesContent, nil)
 	if err != nil {
-		return fmt.Errorf("processing (goimports) generated code for %s: %w\nOriginal newContent was:\n%s", filePath, err, string(newContent))
+		slog.Debug(strings.Repeat("\t", baseIndent)+"WriteMain: end (error during goimports)")
+		return fmt.Errorf("processing (goimports) generated code for %s: %w\nOriginal newContent was:\n%s", filePath, err, string(newBytesContent))
 	}
 
+	slog.Debug(strings.Repeat("\t", baseIndent+1)+"Writing modified content to file", "filePath", filePath)
 	err = os.WriteFile(filePath, formattedContent, 0644) // Default permissions
 	if err != nil {
+		slog.Debug(strings.Repeat("\t", baseIndent)+"WriteMain: end (error writing file)")
 		return fmt.Errorf("writing modified content to %s: %w", filePath, err)
 	}
 
+	slog.Debug(strings.Repeat("\t", baseIndent) + "WriteMain: end")
 	return nil
 }
 

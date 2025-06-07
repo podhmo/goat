@@ -1,13 +1,25 @@
 package help
 
 import (
+	"bytes" // Added for log capture
+	"log/slog" // Added for slog
+	"os"     // Added for Setenv
 	"strings"
 	"testing"
 
 	"github.com/podhmo/goat/internal/metadata"
+	"github.com/stretchr/testify/assert" // Added for assertions
 )
 
 func TestGenerateHelp_Basic(t *testing.T) {
+	t.Setenv("DEBUG", "1")
+	var logBuf bytes.Buffer
+	handler := slog.NewTextHandler(&logBuf, &slog.HandlerOptions{Level: slog.LevelDebug})
+	logger := slog.New(handler)
+	originalLogger := slog.Default()
+	slog.SetDefault(logger)
+	defer slog.SetDefault(originalLogger)
+
 	cmdMeta := &metadata.CommandMetadata{
 		Name:        "mytool",
 		Description: "A super useful tool.\nDoes amazing things.",
@@ -83,7 +95,7 @@ func TestGenerateHelp_Basic(t *testing.T) {
 		},
 	}
 
-	helpMsg := GenerateHelp(cmdMeta)
+	helpMsg := GenerateHelp(cmdMeta, 0)
 
 	expected := `mytool - A super useful tool.
          Does amazing things.
@@ -109,11 +121,29 @@ Flags:
 	if helpMsg != expected {
 		t.Errorf("help message mismatch:\n---EXPECTED---\n%s\n\n---ACTUAL---\n%s", expected, helpMsg)
 	}
+
+	logOutput := logBuf.String()
+	assert.Contains(t, logOutput, "GenerateHelp: start")
+	assert.Contains(t, logOutput, "\tgenerateHelp internal: start")
+	assert.Contains(t, logOutput, "Iterating over options to generate help text")
+	assert.Contains(t, logOutput, "GenerateHelp: end")
 }
 
 func TestGenerateHelp_NilMetadata(t *testing.T) {
-	helpMsg := GenerateHelp(nil)
+	t.Setenv("DEBUG", "1")
+	var logBuf bytes.Buffer
+	handler := slog.NewTextHandler(&logBuf, &slog.HandlerOptions{Level: slog.LevelDebug})
+	logger := slog.New(handler)
+	originalLogger := slog.Default()
+	slog.SetDefault(logger)
+	defer slog.SetDefault(originalLogger)
+
+	helpMsg := GenerateHelp(nil, 0)
 	if !strings.Contains(helpMsg, "<error>") {
 		t.Errorf("Expected error message for nil metadata, got: %s", helpMsg)
 	}
+
+	logOutput := logBuf.String()
+	assert.Contains(t, logOutput, "GenerateHelp: start")
+	assert.Contains(t, logOutput, "GenerateHelp: end (cmdMeta is nil)")
 }

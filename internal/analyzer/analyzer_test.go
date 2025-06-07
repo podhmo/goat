@@ -2,14 +2,16 @@ package analyzer
 
 import (
 	"go/ast"
+	"bytes" // Added for log capture
 	"go/parser"
 	"go/token"
 	"log/slog"
 	"os"
 	"path/filepath"
-	// "strings" // No longer used directly in the simplified parseTestFiles
+	"strings" // Added for log assertion
 	"testing"
 
+	"github.com/stretchr/testify/assert" // Added for assertions
 	// "golang.org/x/tools/go/packages" // No longer used in the simplified parseTestFiles
 )
 
@@ -66,8 +68,9 @@ func parseTestFiles(t *testing.T, sources map[string]string) (*token.FileSet, []
 
 
 func TestAnalyze_InitializerFunctionDiscovery(t *testing.T) {
-	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelDebug}))
-	slog.SetDefault(logger)
+	// Original slog setup in test is fine, but we'll override for capture
+	// logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelDebug}))
+	// slog.SetDefault(logger)
 
 	testCases := []struct {
 		name                 string
@@ -186,6 +189,14 @@ func main() { RunWithoutOptions(nil) }
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Setenv("DEBUG", "1")
+			var logBuf bytes.Buffer
+			handler := slog.NewTextHandler(&logBuf, &slog.HandlerOptions{Level: slog.LevelDebug})
+			capturedLogger := slog.New(handler) // Use a different variable name
+			originalLogger := slog.Default()
+			slog.SetDefault(capturedLogger)
+			defer slog.SetDefault(originalLogger)
+
 			// Using a fixed filename "main.go" for simplicity with the new parseTestFiles
 			fset, astFiles, moduleRootDir := parseTestFiles(t, map[string]string{"main.go": tc.sourceContent})
 			defer os.RemoveAll(moduleRootDir)
@@ -198,7 +209,13 @@ func main() { RunWithoutOptions(nil) }
 			}
 
 			// targetPackageID for Analyze should match the package declaration in the source.
-			cmdMeta, _, err := Analyze(fset, astFiles, tc.runFuncName, tc.packageName, moduleRootDir)
+			// Call Analyze with baseIndent = 0
+			cmdMeta, _, err := Analyze(fset, astFiles, tc.runFuncName, tc.packageName, moduleRootDir, 0)
+
+			// Verify basic log output even if other assertions fail later
+			logOutput := logBuf.String()
+			assert.Contains(t, logOutput, "Analyze: start", "Test case: %s", tc.name)
+			assert.Contains(t, logOutput, "\tAnalyzing run function", "Test case: %s", tc.name) // Indented log
 
 			// InitializerFunc is determined before AnalyzeOptionsV2 is called.
 			// So, we should be able to check it even if Analyze later returns an error from AnalyzeOptionsV2.
@@ -243,6 +260,7 @@ func main() { RunWithoutOptions(nil) }
 					t.Errorf("Analyze() returned an unexpected error: %v", err)
 				}
 			}
+			assert.Contains(t, logOutput, "Analyze: end", "Test case: %s", tc.name) // Ensure end log is present
 		})
 	}
 }

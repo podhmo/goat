@@ -3,27 +3,34 @@ package help
 import (
 	"fmt"
 	"io"
+	"log/slog"
+	"os"
 	"strings"
 
 	"github.com/podhmo/goat/internal/metadata"
 )
 
 // GenerateHelp writes a formatted help message to the given io.Writer from CommandMetadata.
-func GenerateHelp(cmdMeta *metadata.CommandMetadata) string {
+func GenerateHelp(cmdMeta *metadata.CommandMetadata, baseIndent int) string {
+	slog.Debug(strings.Repeat("\t", baseIndent) + "GenerateHelp: start")
 	if cmdMeta == nil {
+		slog.Debug(strings.Repeat("\t", baseIndent) + "GenerateHelp: end (cmdMeta is nil)")
 		return "<error>" // Handle nil case gracefully
 	}
 
 	var sb strings.Builder
-	generateHelp(&sb, cmdMeta)
+	generateHelp(&sb, cmdMeta, baseIndent+1) // Pass baseIndent+1 to the internal helper
+	slog.Debug(strings.Repeat("\t", baseIndent) + "GenerateHelp: end")
 	return sb.String()
 }
 
-func generateHelp(w io.Writer, cmdMeta *metadata.CommandMetadata) {
+func generateHelp(w io.Writer, cmdMeta *metadata.CommandMetadata, baseIndent int) {
+	slog.Debug(strings.Repeat("\t", baseIndent) + "generateHelp internal: start")
 	fmt.Fprintf(w, "%s - %s\n\n", cmdMeta.Name, strings.ReplaceAll(cmdMeta.Description, "\n", "\n         "))
 	fmt.Fprintf(w, "Usage:\n  %s [flags]\n\n", cmdMeta.Name) // Removed CommandArgsPlaceholder and trailing space
 	fmt.Fprintln(w, "Flags:")
 
+	slog.Debug(strings.Repeat("\t", baseIndent+1) + "Calculating max name length for alignment")
 	// Find max length of option names for alignment (include -h, --help)
 	maxNameLen := len("h, --help") // Length of "h, --help"
 	for _, opt := range cmdMeta.Options {
@@ -36,8 +43,11 @@ func generateHelp(w io.Writer, cmdMeta *metadata.CommandMetadata) {
 			maxNameLen = l
 		}
 	}
+	slog.Debug(strings.Repeat("\t", baseIndent+1)+"Calculated max name length", "maxNameLen", maxNameLen)
 
-	for _, opt := range cmdMeta.Options {
+	slog.Debug(strings.Repeat("\t", baseIndent+1) + "Iterating over options to generate help text")
+	for i, opt := range cmdMeta.Options {
+		slog.Debug(strings.Repeat("\t", baseIndent+2)+"Processing option", "index", i, "name", opt.Name, "cliName", opt.CliName)
 		baseType := strings.TrimPrefix(opt.TypeName, "*")
 		baseType = strings.TrimPrefix(baseType, "[]")
 		parts := strings.Split(baseType, ".")
@@ -118,4 +128,5 @@ func generateHelp(w io.Writer, cmdMeta *metadata.CommandMetadata) {
 	helpName := "h, --help"
 	helpText := "Show this help message and exit"
 	fmt.Fprintf(w, "  -%-*s %-8s %s\n", maxNameLen, helpName, "", helpText) // Added empty type indicator for alignment
+	slog.Debug(strings.Repeat("\t", baseIndent) + "generateHelp internal: end")
 }

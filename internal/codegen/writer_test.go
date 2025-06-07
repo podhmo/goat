@@ -11,8 +11,11 @@ import (
 	"strings" // Added for strings
 	"testing"
 	"go/format" // Added for format.Source in normalizeCode
+	"bytes"     // Added for log capture
+	"log/slog"  // Added for slog
 
 	"github.com/podhmo/goat/internal/codegen"
+	"github.com/stretchr/testify/assert" // Added for assertions
 	// Assuming normalizeCode is in the same package or adjust import
 )
 
@@ -123,7 +126,15 @@ func main() {
 		t.Fatal("Test setup error: main function not found in initial content.")
 	}
 
-	err = codegen.WriteMain(tempFilePath, fset, fileAst, newMainContent, mainFuncPos)
+	t.Setenv("DEBUG", "1")
+	var logBuf bytes.Buffer
+	handler := slog.NewTextHandler(&logBuf, &slog.HandlerOptions{Level: slog.LevelDebug})
+	logger := slog.New(handler)
+	originalLogger := slog.Default()
+	slog.SetDefault(logger)
+	defer slog.SetDefault(originalLogger)
+
+	err = codegen.WriteMain(tempFilePath, fset, fileAst, newMainContent, mainFuncPos, 0)
 	if err != nil {
 		t.Fatalf("WriteMain failed: %v", err)
 	}
@@ -138,6 +149,12 @@ func main() {
 			normalizeCode(t, expectedContentAfterWrite),
 			normalizeCode(t, string(modifiedContentBytes)))
 	}
+
+	logOutput := logBuf.String()
+	assert.Contains(t, logOutput, "WriteMain: start")
+	assert.Contains(t, logOutput, "\tMain function position provided, attempting to replace existing main")
+	assert.Contains(t, logOutput, "\tProcessing (goimports) the generated code")
+	assert.Contains(t, logOutput, "WriteMain: end")
 }
 
 func TestWriteMain_ReplaceMainWithComments(t *testing.T) {
@@ -188,7 +205,15 @@ func helper() {}
 		t.Fatal("Test setup error: main function not found in initial content.")
 	}
 
-	err = codegen.WriteMain(tempFilePath, fset, fileAst, newMainContent, mainFuncPos)
+	t.Setenv("DEBUG", "1")
+	var logBuf bytes.Buffer
+	handler := slog.NewTextHandler(&logBuf, &slog.HandlerOptions{Level: slog.LevelDebug})
+	logger := slog.New(handler)
+	originalLogger := slog.Default()
+	slog.SetDefault(logger)
+	defer slog.SetDefault(originalLogger)
+
+	err = codegen.WriteMain(tempFilePath, fset, fileAst, newMainContent, mainFuncPos, 0)
 	if err != nil {
 		t.Fatalf("WriteMain failed: %v", err)
 	}
@@ -203,6 +228,11 @@ func helper() {}
 			normalizeCode(t, expectedContentAfterWrite),
 			normalizeCode(t, string(modifiedContentBytes)))
 	}
+
+	logOutput := logBuf.String()
+	assert.Contains(t, logOutput, "WriteMain: start")
+	assert.Contains(t, logOutput, "\tMain function node found, proceeding with line-by-line replacement")
+	assert.Contains(t, logOutput, "WriteMain: end")
 }
 
 func TestWriteMain_AppendNewMain(t *testing.T) {
@@ -240,7 +270,15 @@ func main() {
 	}
 
 	// mainFuncPos is nil because main is not found
-	err = codegen.WriteMain(tempFilePath, fset, fileAst, newMainContent, nil)
+	t.Setenv("DEBUG", "1")
+	var logBuf bytes.Buffer
+	handler := slog.NewTextHandler(&logBuf, &slog.HandlerOptions{Level: slog.LevelDebug})
+	logger := slog.New(handler)
+	originalLogger := slog.Default()
+	slog.SetDefault(logger)
+	defer slog.SetDefault(originalLogger)
+
+	err = codegen.WriteMain(tempFilePath, fset, fileAst, newMainContent, nil, 0)
 	if err != nil {
 		t.Fatalf("WriteMain failed: %v", err)
 	}
@@ -260,6 +298,11 @@ func main() {
 			normalizedExpected,
 			normalizedModified)
 	}
+
+	logOutput := logBuf.String()
+	assert.Contains(t, logOutput, "WriteMain: start")
+	assert.Contains(t, logOutput, "\tMain function position not provided, appending new content")
+	assert.Contains(t, logOutput, "WriteMain: end")
 }
 
 func TestWriteMain_LineByLine_PreserveFormatting(t *testing.T) {
@@ -344,7 +387,15 @@ func AnotherFunctionAfterMain() {
 		t.Fatal("Test setup error: main function not found in initial content.")
 	}
 
-	err = codegen.WriteMain(tempFilePath, fset, fileAst, newMainContent, mainFuncPos)
+	t.Setenv("DEBUG", "1")
+	var logBuf bytes.Buffer
+	handler := slog.NewTextHandler(&logBuf, &slog.HandlerOptions{Level: slog.LevelDebug})
+	logger := slog.New(handler)
+	originalLogger := slog.Default()
+	slog.SetDefault(logger)
+	defer slog.SetDefault(originalLogger)
+
+	err = codegen.WriteMain(tempFilePath, fset, fileAst, newMainContent, mainFuncPos, 0)
 	if err != nil {
 		t.Fatalf("WriteMain failed: %v", err)
 	}
@@ -366,6 +417,11 @@ func AnotherFunctionAfterMain() {
 		t.Errorf("Content mismatch after WriteMain.\nEXPECTED (normalized):\n%s\nGOT (normalized):\n%s",
 			normalizedExpected, normalizedGot)
 	}
+
+	logOutput := logBuf.String()
+	assert.Contains(t, logOutput, "WriteMain: start")
+	assert.Contains(t, logOutput, "\tMain function node found, proceeding with line-by-line replacement")
+	assert.Contains(t, logOutput, "WriteMain: end")
 }
 
 func TestWriteMain_FileWithOtherDeclarations(t *testing.T) {
@@ -437,7 +493,15 @@ func anotherUtility() {
 		t.Fatal("Test setup error: main function not found in initial content.")
 	}
 
-	err = codegen.WriteMain(tempFilePath, fset, fileAst, newMainContent, mainFuncPos)
+	t.Setenv("DEBUG", "1")
+	var logBuf bytes.Buffer
+	handler := slog.NewTextHandler(&logBuf, &slog.HandlerOptions{Level: slog.LevelDebug})
+	logger := slog.New(handler)
+	originalLogger := slog.Default()
+	slog.SetDefault(logger)
+	defer slog.SetDefault(originalLogger)
+
+	err = codegen.WriteMain(tempFilePath, fset, fileAst, newMainContent, mainFuncPos, 0)
 	if err != nil {
 		t.Fatalf("WriteMain failed: %v", err)
 	}
@@ -452,6 +516,10 @@ func anotherUtility() {
 			normalizeCode(t, expectedContentAfterWrite),
 			normalizeCode(t, string(modifiedContentBytes)))
 	}
+
+	logOutput := logBuf.String()
+	assert.Contains(t, logOutput, "WriteMain: start")
+	assert.Contains(t, logOutput, "WriteMain: end")
 }
 
 func TestWriteMain_EmptyFileInput(t *testing.T) {
@@ -480,7 +548,16 @@ func main() {
 	}
 	// If initialContent is empty, fileAst remains nil.
 	// mainFuncPos is nil as the file is empty or main is not present.
-	err = codegen.WriteMain(tempFilePath, fset, fileAst, newMainContent, nil)
+
+	t.Setenv("DEBUG", "1")
+	var logBuf bytes.Buffer
+	handler := slog.NewTextHandler(&logBuf, &slog.HandlerOptions{Level: slog.LevelDebug})
+	logger := slog.New(handler)
+	originalLogger := slog.Default()
+	slog.SetDefault(logger)
+	defer slog.SetDefault(originalLogger)
+
+	err = codegen.WriteMain(tempFilePath, fset, fileAst, newMainContent, nil, 0)
 	if err != nil {
 		t.Fatalf("WriteMain failed: %v", err)
 	}
@@ -498,4 +575,9 @@ func main() {
 			normalizedExpected,
 			normalizedModified)
 	}
+
+	logOutput := logBuf.String()
+	assert.Contains(t, logOutput, "WriteMain: start")
+	assert.Contains(t, logOutput, "\tMain function position not provided, appending new content")
+	assert.Contains(t, logOutput, "WriteMain: end")
 }

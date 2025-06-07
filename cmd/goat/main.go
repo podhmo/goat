@@ -112,7 +112,7 @@ func main() {
 			os.Exit(1)
 		}
 
-		helpMsg := help.GenerateHelp(cmdMetadata)
+		helpMsg := help.GenerateHelp(cmdMetadata, 1) // Added baseIndent
 		fmt.Print(helpMsg) // Print to stdout, helpMsg likely has its own trailing newline
 
 	case "scan":
@@ -171,14 +171,14 @@ func runGoat(opts *Options) error {
 		return fmt.Errorf("failed to scan main: %w", err)
 	}
 
-	helpMsg := help.GenerateHelp(cmdMetadata)
+	helpMsg := help.GenerateHelp(cmdMetadata, 1) // Added baseIndent
 
-	newMainContent, err := codegen.GenerateMain(cmdMetadata, helpMsg, false /* generateFullFile */)
+	newMainContent, err := codegen.GenerateMain(cmdMetadata, helpMsg, false /* generateFullFile */, 1) // Added baseIndent
 	if err != nil {
 		return fmt.Errorf("failed to generate new main.go content: %w", err)
 	}
 
-	err = codegen.WriteMain(opts.TargetFile, fset, fileAST, newMainContent, cmdMetadata.MainFuncPosition)
+	err = codegen.WriteMain(opts.TargetFile, fset, fileAST, newMainContent, cmdMetadata.MainFuncPosition, 1) // Added baseIndent
 	if err != nil {
 		return fmt.Errorf("failed to write modified main.go: %w", err)
 	}
@@ -196,7 +196,7 @@ func scanMain(fset *token.FileSet, opts *Options) (*metadata.CommandMetadata, *a
 
 	slog.Info("Goat: Analyzing file", "targetFile", opts.TargetFile, "runFunc", opts.RunFuncName, "optionsInitializer", opts.OptionsInitializerName)
 
-	targetFileAst, err := loader.LoadFile(fset, opts.TargetFile)
+	targetFileAst, err := loader.LoadFile(fset, opts.TargetFile, 1) // Added baseIndent
 	if err != nil {
 		// Still return nil for *ast.File if targetFileAst itself failed to load
 		return nil, nil, fmt.Errorf("failed to load target file %s: %w", opts.TargetFile, err)
@@ -213,7 +213,7 @@ func scanMain(fset *token.FileSet, opts *Options) (*metadata.CommandMetadata, *a
 	// This avoids relying on build.ImportDir for temporary/non-standard paths,
 	// which might default to "." (current working directory) if it can't resolve targetDir.
 	slog.Info("Loading other files from package directory", "dir", targetDir)
-	packageFiles, err := loader.LoadPackageFiles(fset, targetDir, "") // Pass targetDir directly
+	packageFiles, err := loader.LoadPackageFiles(fset, targetDir, "", 1) // Added baseIndent, Pass targetDir directly
 	if err != nil {
 		slog.Warn("Failed to load other package files, proceeding with only the target file.", "dir", targetDir, "error", err)
 		// Proceeding with just targetFileAst in filesForAnalysis is handled by subsequent logic.
@@ -256,13 +256,13 @@ func scanMain(fset *token.FileSet, opts *Options) (*metadata.CommandMetadata, *a
 	// or /tmp/TestXYZ.../file.go (if moduleName is used directly for TempDir)
 	// The go.mod would be at /tmp/TestXYZ.../go.mod or /tmp/TestXYZ.../moduleName/go.mod
 
-	moduleRootPath, err := loader.FindModuleRoot(targetFileRegisteredPath)
+	moduleRootPath, err := loader.FindModuleRoot(targetFileRegisteredPath, 1) // Added baseIndent
 	if err != nil {
 		slog.Warn("Failed to find module root, using directory of target file as root.", "target", targetFileRegisteredPath, "error", err)
 		moduleRootPath = filepath.Dir(targetFileRegisteredPath)
 	}
 
-	moduleName, err := loader.GetModuleName(moduleRootPath)
+	moduleName, err := loader.GetModuleName(moduleRootPath, 1) // Added baseIndent
 	if err != nil {
 		slog.Warn("Failed to get module name from go.mod, using fallback.", "modRoot", moduleRootPath, "error", err)
 		// Fallback: if go.mod is unparsable or module name is weird, construct a pseudo-ID.
@@ -290,7 +290,7 @@ func scanMain(fset *token.FileSet, opts *Options) (*metadata.CommandMetadata, *a
 	// If moduleName is empty and targetPackageID is ".", it implies a simple dir-based package.
 	// currentPackageName (the Go `package foo` name) is used by AnalyzeOptionsV2 for struct lookup within the package.
 
-	cmdMetadata, returnedOptionsStructName, err := analyzer.Analyze(fset, finalFilesForAnalysis, opts.RunFuncName, targetPackageID, moduleRootPath)
+	cmdMetadata, returnedOptionsStructName, err := analyzer.Analyze(fset, finalFilesForAnalysis, opts.RunFuncName, targetPackageID, moduleRootPath, 1) // Added baseIndent
 	if err != nil {
 		return nil, targetFileAst, fmt.Errorf("failed to analyze AST (targetPkgID: %s, modRoot: %s): %w", targetPackageID, moduleRootPath, err)
 	}
@@ -302,7 +302,7 @@ func scanMain(fset *token.FileSet, opts *Options) (*metadata.CommandMetadata, *a
 		// InterpretInitializer might need to look into multiple files if the initializer is not in the main target file.
 		// For now, it's passed targetFileAst, which might need adjustment if initializers can be in other package files.
 		// The currentPackageName is now more accurately determined.
-		err = interpreter.InterpretInitializer(targetFileAst, returnedOptionsStructName, opts.OptionsInitializerName, cmdMetadata.Options, goatMarkersImportPath)
+		err = interpreter.InterpretInitializer(targetFileAst, returnedOptionsStructName, opts.OptionsInitializerName, cmdMetadata.Options, goatMarkersImportPath, 1) // Added baseIndent
 		if err != nil {
 			return nil, targetFileAst, fmt.Errorf("failed to interpret options initializer %s: %w", opts.OptionsInitializerName, err)
 		}
