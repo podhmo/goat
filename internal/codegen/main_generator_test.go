@@ -1057,7 +1057,8 @@ func TestGenerateMain_WithInitializer(t *testing.T) {
 	assertCodeContains(t, actualCode, `import "example.com/user/usercmd"`)
 
 	// Check for options initialization using the InitializerFunc
-	assertCodeContains(t, actualCode, "options = usercmd.NewMyOptions()")
+	// Now expects no package prefix as initializer is assumed to be in 'main' by analyzer
+	assertCodeContains(t, actualCode, "options = NewMyOptions()")
 
 	// Check that per-field default setting is NOT present
 	// (difficult to assert absence of a potentially large block,
