@@ -29,6 +29,11 @@ type Options struct {
 }
 
 func main() {
+	// debug mode: if DEBUG environment variable is set, enable debug logging
+	if _, ok := os.LookupEnv("DEBUG"); ok {
+		slog.SetLogLoggerLevel(slog.LevelDebug)
+	}
+
 	if len(os.Args) < 2 {
 		// Print general usage if no subcommand is provided
 		fmt.Fprintln(os.Stderr, "Usage: goat <subcommand> [options]")
