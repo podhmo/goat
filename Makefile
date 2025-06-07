@@ -5,8 +5,9 @@ examples-check:
 .PHONY: examples-check
 
 examples-emit:
-	go run ./cmd/goat/ emit examples/hello/main.go
-	go run ./cmd/goat/ emit -run FullsetRun -initializer NewFullsetOptions examples/fullset/main.go
+	go run ./cmd/goat/ emit ./examples/hello/main.go
+	go run ./cmd/goat/ emit -run FullsetRun -initializer NewFullsetOptions ./examples/fullset/main.go
+	go run ./cmd/goat/ emit -run Run -initializer NewOptions ./examples/enum/main.go
 .PHONY: examples-emit
 
 # format the code
