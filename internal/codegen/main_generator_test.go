@@ -234,7 +234,8 @@ func TestGenerateMain_WithOptions(t *testing.T) {
 		t.Fatalf("GenerateMain failed: %v", err)
 	}
 
-	assertCodeContains(t, actualCode, "var options = &MyOptionsType{}")
+	assertCodeContains(t, actualCode, "var options *MyOptionsType")
+	assertCodeContains(t, actualCode, "options = new(MyOptionsType)")
 
 	// 1. Default values
 	assertCodeContains(t, actualCode, `options.Name = "guest"`)
@@ -304,7 +305,8 @@ func TestGenerateMain_KebabCaseFlagNames(t *testing.T) {
 		t.Fatalf("GenerateMain failed: %v", err)
 	}
 
-	assertCodeContains(t, actualCode, "var options = &DataProcOptions{}")
+	assertCodeContains(t, actualCode, "var options *DataProcOptions")
+	assertCodeContains(t, actualCode, "options = new(DataProcOptions)")
 
 	// 1. Default values
 	assertCodeContains(t, actualCode, `options.InputFile = ""`)
@@ -343,7 +345,8 @@ func TestGenerateMain_RequiredFlags(t *testing.T) {
 		t.Fatalf("GenerateMain failed: %v", err)
 	}
 
-	assertCodeContains(t, actualCode, "var options = &Config{}")
+	assertCodeContains(t, actualCode, "var options *Config")
+	assertCodeContains(t, actualCode, "options = new(Config)")
 
 	// 1. Default values
 	assertCodeContains(t, actualCode, `options.ConfigFile = ""`)
@@ -415,7 +418,8 @@ func TestGenerateMain_EnumValidation(t *testing.T) {
 		t.Fatalf("GenerateMain failed: %v", err)
 	}
 
-	assertCodeContains(t, actualCode, "var options = &ModeOptions{}")
+	assertCodeContains(t, actualCode, "var options *ModeOptions")
+	assertCodeContains(t, actualCode, "options = new(ModeOptions)")
 
 	// 1. Default value
 	assertCodeContains(t, actualCode, `options.Mode = "auto"`)
@@ -463,7 +467,8 @@ func TestGenerateMain_EnvironmentVariables(t *testing.T) {
 		t.Fatalf("GenerateMain failed: %v", err)
 	}
 
-	assertCodeContains(t, actualCode, "var options = &AppSettings{}")
+	assertCodeContains(t, actualCode, "var options *AppSettings")
+	assertCodeContains(t, actualCode, "options = new(AppSettings)")
 
 	// 1. Default values
 	assertCodeContains(t, actualCode, `options.APIKey = ""`)
@@ -526,7 +531,8 @@ func TestGenerateMain_EnvVarForBoolWithTrueDefault(t *testing.T) {
 		t.Fatalf("GenerateMain failed: %v", err)
 	}
 
-	assertCodeContains(t, actualCode, "var options = &FeatureOptions{}")
+	assertCodeContains(t, actualCode, "var options *FeatureOptions")
+	assertCodeContains(t, actualCode, "options = new(FeatureOptions)")
 
 	// 1. Default value
 	assertCodeContains(t, actualCode, `options.SmartParsing = true`)
@@ -567,7 +573,8 @@ func TestGenerateMain_RequiredBool_DefaultFalse(t *testing.T) {
 		t.Fatalf("GenerateMain failed: %v", err)
 	}
 
-	assertCodeContains(t, actualCode, "var options = &DataOptions{}")
+	assertCodeContains(t, actualCode, "var options *DataOptions")
+	assertCodeContains(t, actualCode, "options = new(DataOptions)")
 
 	// 1. Default value
 	assertCodeContains(t, actualCode, `options.ForceOverwrite = false`)
@@ -605,7 +612,8 @@ func TestGenerateMain_RequiredBool_DefaultTrue(t *testing.T) {
 		t.Fatalf("GenerateMain failed: %v", err)
 	}
 
-	assertCodeContains(t, actualCode, "var options = &TaskConfig{}")
+	assertCodeContains(t, actualCode, "var options *TaskConfig")
+	assertCodeContains(t, actualCode, "options = new(TaskConfig)")
 
 	// 1. Default value
 	assertCodeContains(t, actualCode, `options.EnableSync = true`)
@@ -722,7 +730,8 @@ func TestGenerateMain_RequiredIntWithEnvVar(t *testing.T) {
 		t.Fatalf("GenerateMain failed: %v", err)
 	}
 
-	assertCodeContains(t, actualCode, "var options = &UserData{}")
+	assertCodeContains(t, actualCode, "var options *UserData")
+	assertCodeContains(t, actualCode, "options = new(UserData)")
 
 	// 1. Default value
 	assertCodeContains(t, actualCode, `options.UserId = 0`)
@@ -892,7 +901,8 @@ func TestGenerateMain_StringFlagWithQuotesInDefault(t *testing.T) {
 		t.Fatalf("GenerateMain failed: %v", err)
 	}
 
-	assertCodeContains(t, actualCode, "var options = &PrintOpts{}")
+	assertCodeContains(t, actualCode, "var options *PrintOpts")
+	assertCodeContains(t, actualCode, "options = new(PrintOpts)")
 
 	// 1. Default value
 	assertCodeContains(t, actualCode, `options.Greeting = "hello \"world\""`)
@@ -921,7 +931,8 @@ func TestGenerateMain_WithHelpText(t *testing.T) {
 		t.Fatalf("GenerateMain with help text failed: %v", err)
 	}
 
-	assertCodeContains(t, actualCode, "var options = &ToolOptions{}")
+	assertCodeContains(t, actualCode, "var options *ToolOptions")
+	assertCodeContains(t, actualCode, "options = new(ToolOptions)")
 	expectedHelpTextSnippet := `
 	flag.Usage = func() {
 		fmt.Fprint(os.Stderr, ` + "`" + helpText + "`" + `)
@@ -1022,6 +1033,124 @@ func TestGenerateMain_HelpTextNewlineFormatting(t *testing.T) {
 		}
 	})
 }
+
+func TestGenerateMain_WithInitializer(t *testing.T) {
+	cmdMeta := &metadata.CommandMetadata{
+		Name: "example.com/user/usercmd", // Used for import path
+		RunFunc: &metadata.RunFuncInfo{
+			Name:                       "Run",
+			PackageName:                "usercmd", // Package of the Run func and InitializerFunc
+			OptionsArgTypeNameStripped: "MyOptions",
+			OptionsArgIsPointer:        true,
+			InitializerFunc:            "NewMyOptions",
+		},
+		Options: []*metadata.OptionMetadata{}, // Options are not needed as initializer handles them
+	}
+
+	helpText := "Test command with initializer"
+	actualCode, err := GenerateMain(cmdMeta, helpText, true)
+	if err != nil {
+		t.Fatalf("GenerateMain with initializer failed: %v\nGenerated code:\n%s", err, actualCode)
+	}
+
+	// Check for import of the user's command package
+	assertCodeContains(t, actualCode, `import "example.com/user/usercmd"`)
+
+	// Check for options initialization using the InitializerFunc
+	assertCodeContains(t, actualCode, "options = usercmd.NewMyOptions()")
+
+	// Check that per-field default setting is NOT present
+	// (difficult to assert absence of a potentially large block,
+	// but we can check for a common pattern if one existed, e.g. "options.FieldName =")
+	// For this test, the main check is the presence of InitializerFunc call.
+	// We can also check that "options = new(MyOptions)" is NOT present.
+	assertCodeNotContains(t, actualCode, "options = new(MyOptions)")
+	assertCodeNotContains(t, actualCode, "var options = &MyOptions{}")
+
+
+	// Check for the call to the user's run function
+	assertCodeContains(t, actualCode, "err := usercmd.Run(options)")
+}
+
+func TestGenerateMain_WithoutInitializer_Fallback(t *testing.T) {
+	cmdMeta := &metadata.CommandMetadata{
+		Name: "example.com/user/usercmd", // Used for import path
+		RunFunc: &metadata.RunFuncInfo{
+			Name:                       "Run",
+			PackageName:                "usercmd",
+			OptionsArgTypeNameStripped: "MyOptions",
+			OptionsArgIsPointer:        true,
+			InitializerFunc:            "", // No initializer
+		},
+		Options: []*metadata.OptionMetadata{
+			{Name: "Mode", TypeName: "string", DefaultValue: "test", HelpText: "Operation mode"},
+			{Name: "Count", TypeName: "int", DefaultValue: 42, HelpText: "A number"},
+		},
+	}
+
+	helpText := "Test command without initializer"
+	actualCode, err := GenerateMain(cmdMeta, helpText, true)
+	if err != nil {
+		t.Fatalf("GenerateMain without initializer failed: %v\nGenerated code:\n%s", err, actualCode)
+	}
+
+	// Check for import of the user's command package
+	assertCodeContains(t, actualCode, `import "example.com/user/usercmd"`)
+
+	// Check that initializer call is NOT present
+	assertCodeNotContains(t, actualCode, "usercmd.NewMyOptions()")
+
+	// Check for "options = new(MyOptions)" or "var options *MyOptions; options = new(MyOptions)"
+	// The template uses `options = new({{.RunFunc.OptionsArgTypeNameStripped}})`
+	assertCodeContains(t, actualCode, "options = new(MyOptions)")
+
+	// Check for per-field default settings
+	assertCodeContains(t, actualCode, `options.Mode = "test"`)
+	assertCodeContains(t, actualCode, `options.Count = 42`)
+
+	// Check for flag setup for these fields
+	assertCodeContains(t, actualCode, `flag.StringVar(&options.Mode, "mode", options.Mode, "Operation mode" /* Original Default: test, Env: */)`)
+	assertCodeContains(t, actualCode, `flag.IntVar(&options.Count, "count", options.Count, "A number" /* Original Default: 42, Env: */)`)
+
+
+	// Check for the call to the user's run function
+	assertCodeContains(t, actualCode, "err := usercmd.Run(options)")
+}
+
+func TestGenerateMain_InitializerInMainPackage(t *testing.T) {
+	cmdMeta := &metadata.CommandMetadata{
+		Name: "main", // targetPackageID, used for cmdMeta.Name
+		RunFunc: &metadata.RunFuncInfo{
+			Name:                       "Run",
+			PackageName:                "main", // Package of the Run func and InitializerFunc
+			OptionsArgTypeNameStripped: "MyOptions",
+			OptionsArgIsPointer:        true,
+			InitializerFunc:            "NewMyOptions",
+		},
+		Options: []*metadata.OptionMetadata{},
+	}
+
+	helpText := "Test command with initializer in main package"
+	actualCode, err := GenerateMain(cmdMeta, helpText, true)
+	if err != nil {
+		t.Fatalf("GenerateMain with initializer in main package failed: %v\nGenerated code:\n%s", err, actualCode)
+	}
+
+	// Check that "main" is NOT imported
+	assertCodeNotContains(t, actualCode, `import "main"`)
+
+	// Check for options initialization using the InitializerFunc (no package prefix)
+	assertCodeContains(t, actualCode, "options = NewMyOptions()")
+
+	// Check that per-field default setting is NOT present
+	assertCodeNotContains(t, actualCode, "options = new(MyOptions)")
+	assertCodeNotContains(t, actualCode, "var options = &MyOptions{}")
+
+
+	// Check for the call to the user's run function (no package prefix)
+	assertCodeContains(t, actualCode, "err := Run(options)")
+}
+
 
 // New Test Function for formatHelpText
 func TestFormatHelpText(t *testing.T) {

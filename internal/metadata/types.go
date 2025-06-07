@@ -22,6 +22,7 @@ type RunFuncInfo struct {
 	OptionsArgIsPointer bool   // True if OptionsArgType is a pointer
 	ContextArgName string // Name of the context.Context parameter (if present)
 	ContextArgType string // Type name of the context.Context parameter (if present)
+	InitializerFunc string // Name of the function that initializes the options struct (e.g., NewOptions)
 }
 
 // OptionMetadata holds information about a single command-line option.

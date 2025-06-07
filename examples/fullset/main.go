@@ -304,3 +304,22 @@ Defaults to "output" if not specified by the user.` /* Original Default: output,
 		os.Exit(1)
 	}
 }
+
+// ConfigureOptions would be options for a hypothetical 'configure' command.
+type ConfigureOptions struct {
+	Name    string `env:"CONFIGURE_NAME"`
+	Verbose bool   `env:"CONFIGURE_VERBOSE"`
+	Mode    string `env:"CONFIGURE_MODE"`
+	Port    int    `env:"CONFIGURE_PORT"`
+}
+
+// NewConfigureOptions provides default values for ConfigureOptions.
+func NewConfigureOptions() *ConfigureOptions {
+	return &ConfigureOptions{
+		Name:    "DefaultFullsetName",
+		Verbose: true,
+		// Mode and Port will use their zero values (empty string, 0)
+		// or rely on struct tags for other defaults if those were supported by the initializer directly.
+		// For this example, explicit initialization is sufficient.
+	}
+}
