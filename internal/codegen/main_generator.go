@@ -26,7 +26,7 @@ func main() {
 
 	{{if .RunFunc.InitializerFunc}}
 	// 1. Create Options using the initializer function.
-	options = {{if ne .RunFunc.PackageName "main"}}{{.RunFunc.PackageName}}.{{end}}{{.RunFunc.InitializerFunc}}()
+	options = {{.RunFunc.InitializerFunc}}()
 	{{else}}
 	// 1. Create Options with default values (no initializer function provided).
 	options = new({{.RunFunc.OptionsArgTypeNameStripped}}) // options is now a valid pointer to a zeroed struct
