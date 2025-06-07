@@ -9,7 +9,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/podhmo/goat"
+	g "github.com/podhmo/goat"
 )
 
 //go:generate goat emit -run run -initializer newOptions main.go
@@ -46,10 +46,10 @@ type Options struct {
 // This function will be "interpreted" by the goat tool.
 func newOptions() *Options {
 	return &Options{
-		Name:      goat.Default("World"),
-		LogLevel:  goat.Default("info", goat.Enum([]string{"debug", "info", "warning", "error"})),
-		OutputDir: goat.Default("output"),
-		Mode:      goat.Enum([]string{"standard", "turbo", "eco"}),
+		Name:      g.Default("World"),
+		LogLevel:  g.Default("info", g.Enum([]string{"debug", "info", "warning", "error"})),
+		OutputDir: g.Default("output"),
+		Mode:      g.Enum([]string{"standard", "turbo", "eco"}),
 		// Age is optional (pointer) and has no default here.
 		// Features is a slice, will be handled by flag package (e.g. multiple --features flag or comma sep)
 		// SuperVerbose is a bool, defaults to false (zero value for bool)
@@ -160,7 +160,7 @@ Flags:
 	}
 
 	if val, ok := os.LookupEnv("SIMPLE_FEATURES"); ok {
-
+		options.Features = strings.Split(val, ",")
 	}
 
 	if val, ok := os.LookupEnv("SIMPLE_MODE"); ok {
