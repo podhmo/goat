@@ -259,6 +259,11 @@ func main() {
 	}
 	{{end}}
 	{{end}} // End of range .Options for required checks
+
+	// TODO: Implement runtime validation for file options based on metadata:
+	// - Check for opt.FileMustExist (e.g., using os.Stat)
+	// - Handle opt.FileGlobPattern (e.g., using filepath.Glob)
+	// Currently, these attributes are parsed but not enforced at runtime by the generated CLI.
 	{{end}} // End of if .RunFunc.OptionsArgTypeNameStripped (options handling block)
 
 	{{/* Run the actual command */}}

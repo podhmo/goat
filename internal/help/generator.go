@@ -98,7 +98,20 @@ func generateHelp(w io.Writer, cmdMeta *metadata.CommandMetadata) {
 			}
 			fmt.Fprintf(w, " (allowed: %s)", strings.Join(enumStrs, ", "))
 		}
-		fmt.Fprintln(w)
+
+		var fileInfoParts []string
+		if opt.FileMustExist {
+			fileInfoParts = append(fileInfoParts, "must exist")
+		}
+		if opt.FileGlobPattern {
+			fileInfoParts = append(fileInfoParts, "glob pattern")
+		}
+
+		if len(fileInfoParts) > 0 {
+			fmt.Fprintf(w, " (file, %s)", strings.Join(fileInfoParts, ", "))
+		}
+
+		fmt.Fprintln(w) // This is the existing newline print
 	}
 
 	fmt.Fprintln(w, "")
