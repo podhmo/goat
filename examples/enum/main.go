@@ -43,6 +43,7 @@ type Options struct {
 func NewOptions() *Options {
 	return &Options{
 		LocalEnumField: goat.Default(LocalA, goat.Enum(GetLocalEnumsAsStrings())),
+// TODO: Since it's a generic function, there should be no need to cast it to a string type.If there are reasons why it is not possible, I want to resolve them.
 		ImportedEnumField: goat.Default(customtypes.OptionX, goat.Enum(customtypes.GetCustomEnumOptionsAsStrings())),
 		OptionalImportedEnumField: goat.Enum(nil, []string{string(customtypes.OptionX), string(customtypes.OptionY)}),
 	}
