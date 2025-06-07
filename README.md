@@ -19,8 +19,6 @@ The main subcommands are:
 
 *   **Automatic CLI generation:** Parses `Options` struct fields (name, type, comments, tags) to create CLI flags.
 *   **Help message generation:** Creates comprehensive help messages based on comments and option attributes.
-*   **Default values:** Supports default values via `goat.Default()` marker function.
-*   **Enum validation:** Supports enum-like restricted values via `goat.Enum()` marker function.
 *   **Environment variable loading:** Reads option values from environment variables specified in struct tags (e.g., `env:"MY_VAR"`).
 *   **Required flags:** Non-pointer fields in the `Options` struct are treated as required.
 *   **Custom Option Types:** Supports fields implementing `encoding.TextUnmarshaler` and `encoding.TextMarshaler` for custom parsing logic and default value representation (via `flag.TextVar`).
@@ -111,6 +109,17 @@ go build -o myapp
 
 This would (ideally) produce a CLI tool with flags derived from `AppOptions`.
 
+## Marker Functions
+
+`goat` utilizes special marker functions within your options initializer to provide metadata for CLI generation. These functions are typically used as the right-hand side of an assignment to a field in your options struct.
+
+*   `goat.Default(value interface{}, options ...interface{}) interface{}`: Specifies a default value for an option. The first argument is the default value itself. Optional subsequent arguments can be other markers like `goat.Enum`.
+*   `goat.Enum(allowed []string) interface{}`: Restricts the allowed values for a string option to the provided list.
+*   `goat.File(defaultPath string, options ...FileOption) string`: Marks a string field as representing a file path.
+    *   `goat.MustExist()`: A `FileOption` indicating that the file specified must exist at runtime.
+    *   `goat.GlobPattern()`: A `FileOption` indicating that the file path can be a glob pattern.
+    *   **Note:** While these markers are parsed, runtime validation (e.g., file existence checks or glob expansion based on these markers) is not yet implemented in the generated CLI code. This is planned for future enhancement.
+
 ### Subcommands
 
 *   **`emit`**
@@ -140,18 +149,22 @@ This would (ideally) produce a CLI tool with flags derived from `AppOptions`.
 
 ## Development
 
-(Details on building `goat` itself, running tests, etc. will go here.)
-
+To build the `goat` tool:
 ```bash
-# To build the goat tool itself
-# cd cmd/goat
-# go build -o ../../goat_tool # builds to project root as goat_tool
+go build -o goat_tool cmd/goat/main.go
 ```
+(Or use `make build` if a Makefile exists and has a build target for the tool)
+
+To run tests:
+```bash
+go test ./...
+```
+(Or use `make test` if a Makefile exists and has a test target)
 
 ## Contributing
 
-(Contribution guidelines will go here.)
+Contributions are welcome! Please feel free to open an issue to discuss a bug or a new feature, or submit a pull request.
 
 ## License
 
-(License information will go here, e.g., MIT License.)
+This project is licensed under the MIT License. See the [LICENSE](LICENSE) file for details.
