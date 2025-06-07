@@ -61,23 +61,30 @@ func Analyze(fset *token.FileSet, files []*ast.File, runFuncName string, targetP
 		initializerFuncFoundInAst := false // Flag to track if we found any function with the name
 
 		for _, file := range files {
-			if runFuncInfo.InitializerFunc != "" { // Already found and validated
+			if file.Name.Name != "main" { // Check if the file belongs to package "main"
+				slog.Debug("Goat: Skipping file as it does not belong to package main for initializer search", "fileName", fset.File(file.Pos()).Name(), "packageName", file.Name.Name)
+				continue // Skip files not in package "main"
+			}
+
+			if runFuncInfo.InitializerFunc != "" { // Already found and validated in a "main" package file
 				break
 			}
+
 			for _, decl := range file.Decls {
 				if fn, ok := decl.(*ast.FuncDecl); ok && fn.Name.Name == initializerFuncName {
-					initializerFuncFoundInAst = true // Found a function with the conventional name
+					initializerFuncFoundInAst = true // Found a function with the conventional name in a "main" package file
 					// Check signature: must have no parameters.
 					// A more robust future check might inspect return types: e.g. *OptionsType or (*OptionsType, error).
 					if fn.Type.Params == nil || len(fn.Type.Params.List) == 0 {
 						runFuncInfo.InitializerFunc = initializerFuncName
-						slog.Info("Goat: Found and using conventional initializer function", "name", initializerFuncName, "package", runFuncInfo.PackageName)
+						// Log with the actual package name from the AST file node, which we've confirmed is "main"
+						slog.Info("Goat: Found and using conventional initializer function", "name", initializerFuncName, "package", file.Name.Name)
 						// No need to 'break' inner loop here, outer loop will break due to InitializerFunc being set.
 					} else {
-						slog.Warn("Goat: Conventional initializer function found but has unexpected parameters; it will be ignored.",
+						slog.Warn("Goat: Conventional initializer function found in package main but has unexpected parameters; it will be ignored.",
 							"functionName", initializerFuncName,
 							"paramCount", len(fn.Type.Params.List),
-							"package", runFuncInfo.PackageName)
+							"package", file.Name.Name) // Log with actual package name "main"
 						// Do not set runFuncInfo.InitializerFunc, let it remain empty.
 					}
 					break // Found the function by name, processed it (either used or warned), stop checking other decls in this file.
@@ -86,11 +93,12 @@ func Analyze(fset *token.FileSet, files []*ast.File, runFuncName string, targetP
 		}
 
 		if runFuncInfo.InitializerFunc == "" && !initializerFuncFoundInAst {
-			slog.Info("Goat: No conventional initializer function found with the expected name", "expectedName", initializerFuncName, "package", runFuncInfo.PackageName)
+			// This log refers to searching in "package main" files implicitly due to the loop structure
+			slog.Info("Goat: No conventional initializer function found with the expected name in package main", "expectedName", initializerFuncName)
 		} else if runFuncInfo.InitializerFunc == "" && initializerFuncFoundInAst {
-			// This case means a function was found by name, but it had the wrong signature (and a warning was logged).
+			// This case means a function was found by name in a "main" package file, but it had the wrong signature (and a warning was logged).
 			// No additional general message needed here, the specific warning is sufficient.
-			slog.Debug("Goat: A function matching conventional initializer name was found but ignored due to signature.", "expectedName", initializerFuncName)
+			slog.Debug("Goat: A function matching conventional initializer name was found in package main but ignored due to signature.", "expectedName", initializerFuncName)
 		}
 	}
 
