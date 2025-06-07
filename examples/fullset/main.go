@@ -4,11 +4,11 @@ import (
 	"flag"
 	"fmt"
 	"log/slog"
+	"net"
 	"os"
 	"slices"
 	"strconv"
 	"strings"
-	"net"
 
 	"github.com/podhmo/goat"
 )
@@ -83,9 +83,9 @@ func NewFullsetOptions() *Options {
 		// TODO: The goat tool fails to parse the following line for Pattern.
 		// TODO: It reports an error: "in call to goat.Default, type string of goat.File(...) does not match []T (cannot infer T)".
 		// TODO: This suggests an issue with how goat's parser handles goat.File when nested in goat.Default, potentially misinterpreting goat.File's return type.
-		Pattern:    goat.Default("*.go", goat.File("*.go", goat.GlobPattern())),
-		EnableFeatureX: goat.Default(true),
-		HostIP:     goat.Default(net.ParseIP("127.0.0.1")),
+		Pattern:                     goat.Default("*.go", goat.File("*.go", goat.GlobPattern())),
+		EnableFeatureX:              goat.Default(true),
+		HostIP:                      goat.Default(net.ParseIP("127.0.0.1")),
 		ExistingFieldToMakeOptional: goat.Default(stringPtr("was set by default")),
 	}
 }

@@ -24,7 +24,7 @@ func WriteMain(
 	slog.Debug(strings.Repeat("\t", baseIndent)+"WriteMain: start", "targetFile", filePath)
 	originalContent, err := os.ReadFile(filePath)
 	if err != nil {
-		slog.Debug(strings.Repeat("\t", baseIndent)+"WriteMain: end (error reading file)")
+		slog.Debug(strings.Repeat("\t", baseIndent) + "WriteMain: end (error reading file)")
 		return fmt.Errorf("reading original file %s: %w", filePath, err)
 	}
 
@@ -41,7 +41,7 @@ func WriteMain(
 
 		newBytesContent = append(originalContent, []byte(newMainContent)...)
 	} else {
-		slog.Debug(strings.Repeat("\t", baseIndent+1)+"Main function position provided, attempting to replace existing main")
+		slog.Debug(strings.Repeat("\t", baseIndent+1) + "Main function position provided, attempting to replace existing main")
 		// Main function found, replace it.
 		var mainFuncNode *ast.FuncDecl
 		for _, decl := range fileAst.Decls {
@@ -67,7 +67,7 @@ func WriteMain(
 			originalContent = append(originalContent, '\n')
 			newBytesContent = append(originalContent, []byte(newMainContent)...)
 		} else {
-			slog.Debug(strings.Repeat("\t", baseIndent+2)+"Main function node found, proceeding with line-by-line replacement")
+			slog.Debug(strings.Repeat("\t", baseIndent+2) + "Main function node found, proceeding with line-by-line replacement")
 			// New line-by-line replacement logic
 			originalLines := strings.Split(string(originalContent), "\n")
 
@@ -117,18 +117,18 @@ func WriteMain(
 		}
 	}
 
-	slog.Debug(strings.Repeat("\t", baseIndent+1)+"Processing (goimports) the generated code")
+	slog.Debug(strings.Repeat("\t", baseIndent+1) + "Processing (goimports) the generated code")
 	// Use imports.Process to format and add/remove imports
 	formattedContent, err := imports.Process(filePath, newBytesContent, nil)
 	if err != nil {
-		slog.Debug(strings.Repeat("\t", baseIndent)+"WriteMain: end (error during goimports)")
+		slog.Debug(strings.Repeat("\t", baseIndent) + "WriteMain: end (error during goimports)")
 		return fmt.Errorf("processing (goimports) generated code for %s: %w\nOriginal newContent was:\n%s", filePath, err, string(newBytesContent))
 	}
 
 	slog.Debug(strings.Repeat("\t", baseIndent+1)+"Writing modified content to file", "filePath", filePath)
 	err = os.WriteFile(filePath, formattedContent, 0644) // Default permissions
 	if err != nil {
-		slog.Debug(strings.Repeat("\t", baseIndent)+"WriteMain: end (error writing file)")
+		slog.Debug(strings.Repeat("\t", baseIndent) + "WriteMain: end (error writing file)")
 		return fmt.Errorf("writing modified content to %s: %w", filePath, err)
 	}
 

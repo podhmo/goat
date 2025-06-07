@@ -3,8 +3,8 @@ package loader
 import (
 	"fmt"
 	"go/ast"
-	"go/parser"
 	"go/build"
+	"go/parser"
 	"go/token"
 	"log/slog"
 	"os"
@@ -17,10 +17,10 @@ func LoadFile(fset *token.FileSet, filename string, baseIndent int) (*ast.File, 
 	slog.Debug(strings.Repeat("\t", baseIndent)+"LoadFile: start", "filename", filename)
 	file, err := parser.ParseFile(fset, filename, nil, parser.ParseComments)
 	if err != nil {
-		slog.Debug(strings.Repeat("\t", baseIndent)+"LoadFile: end (error)")
+		slog.Debug(strings.Repeat("\t", baseIndent) + "LoadFile: end (error)")
 		return nil, fmt.Errorf("failed to parse file %s: %w", filename, err)
 	}
-	slog.Debug(strings.Repeat("\t", baseIndent)+"LoadFile: end")
+	slog.Debug(strings.Repeat("\t", baseIndent) + "LoadFile: end")
 	return file, nil
 }
 
@@ -40,11 +40,11 @@ func LoadPackageFiles(fset *token.FileSet, path string, currentGoFile string, ba
 		// Check if it's actually a directory
 		info, err := os.Stat(dirToScan)
 		if err != nil {
-			slog.Debug(strings.Repeat("\t", baseIndent)+"LoadPackageFiles: end (error stat-ing path)")
+			slog.Debug(strings.Repeat("\t", baseIndent) + "LoadPackageFiles: end (error stat-ing path)")
 			return nil, fmt.Errorf("failed to stat path %q: %w", dirToScan, err)
 		}
 		if !info.IsDir() {
-			slog.Debug(strings.Repeat("\t", baseIndent)+"LoadPackageFiles: end (path is not a directory)")
+			slog.Debug(strings.Repeat("\t", baseIndent) + "LoadPackageFiles: end (path is not a directory)")
 			return nil, fmt.Errorf("absolute path %q is not a directory", dirToScan)
 		}
 	} else {
@@ -52,7 +52,7 @@ func LoadPackageFiles(fset *token.FileSet, path string, currentGoFile string, ba
 		pkgNameForLogging = path
 		pkgBuildInfo, err := build.Default.Import(path, ".", build.FindOnly)
 		if err != nil {
-			slog.Debug(strings.Repeat("\t", baseIndent)+"LoadPackageFiles: end (error importing package)")
+			slog.Debug(strings.Repeat("\t", baseIndent) + "LoadPackageFiles: end (error importing package)")
 			return nil, fmt.Errorf("failed to find package %q using build.Import: %w", path, err)
 		}
 		dirToScan = pkgBuildInfo.Dir
@@ -61,7 +61,7 @@ func LoadPackageFiles(fset *token.FileSet, path string, currentGoFile string, ba
 
 	files, err := os.ReadDir(dirToScan)
 	if err != nil {
-		slog.Debug(strings.Repeat("\t", baseIndent)+"LoadPackageFiles: end (error reading directory)")
+		slog.Debug(strings.Repeat("\t", baseIndent) + "LoadPackageFiles: end (error reading directory)")
 		return nil, fmt.Errorf("failed to read directory %q (derived from path %q): %w", dirToScan, pkgNameForLogging, err)
 	}
 	slog.Debug(strings.Repeat("\t", baseIndent+1)+"Read directory contents", "numFiles", len(files))
@@ -73,7 +73,6 @@ func LoadPackageFiles(fset *token.FileSet, path string, currentGoFile string, ba
 		lowerCurrentGoFileHint = strings.ToLower(filepath.Base(currentGoFile)) // Use Base to match only filename part
 		slog.Debug(strings.Repeat("\t", baseIndent+1)+"Using hint for prioritizing files", "hint", lowerCurrentGoFileHint)
 	}
-
 
 	for _, file := range files {
 		if file.IsDir() || !strings.HasSuffix(file.Name(), ".go") || strings.HasSuffix(file.Name(), "_test.go") {
@@ -100,14 +99,14 @@ func LoadPackageFiles(fset *token.FileSet, path string, currentGoFile string, ba
 		slog.Debug(strings.Repeat("\t", baseIndent+2)+"Parsing file", "index", i, "path", filePath)
 		fileAst, err := parser.ParseFile(fset, filePath, nil, parser.ParseComments)
 		if err != nil {
-			slog.Debug(strings.Repeat("\t", baseIndent)+"LoadPackageFiles: end (error parsing file)")
+			slog.Debug(strings.Repeat("\t", baseIndent) + "LoadPackageFiles: end (error parsing file)")
 			return nil, fmt.Errorf("failed to parse file %q: %w", filePath, err)
 		}
 		slog.Debug(strings.Repeat("\t", baseIndent+2)+"Loaded file", "path", filePath) // Matches requested internal log
 		parsedFiles = append(parsedFiles, fileAst)
 	}
 
-	slog.Debug(strings.Repeat("\t", baseIndent)+"LoadPackageFiles: end")
+	slog.Debug(strings.Repeat("\t", baseIndent) + "LoadPackageFiles: end")
 	return parsedFiles, nil
 }
 
@@ -118,7 +117,7 @@ func FindModuleRoot(filePath string, baseIndent int) (string, error) {
 	slog.Debug(strings.Repeat("\t", baseIndent)+"FindModuleRoot: start", "startPath", filePath)
 	dir := filepath.Dir(filePath)
 	if dir == "" || dir == "." || dir == "/" { // Reached root or invalid path
-		slog.Debug(strings.Repeat("\t", baseIndent)+"FindModuleRoot: end (error - initial path is root or invalid)")
+		slog.Debug(strings.Repeat("\t", baseIndent) + "FindModuleRoot: end (error - initial path is root or invalid)")
 		return "", fmt.Errorf("go.mod not found for path %s", filePath)
 	}
 
@@ -128,7 +127,7 @@ func FindModuleRoot(filePath string, baseIndent int) (string, error) {
 		goModPath := filepath.Join(currentPath, "go.mod")
 		if _, err := os.Stat(goModPath); err == nil {
 			slog.Debug(strings.Repeat("\t", baseIndent+1)+"Found go.mod", "path", currentPath)
-			slog.Debug(strings.Repeat("\t", baseIndent)+"FindModuleRoot: end")
+			slog.Debug(strings.Repeat("\t", baseIndent) + "FindModuleRoot: end")
 			return currentPath, nil // Found go.mod
 		}
 
@@ -139,7 +138,7 @@ func FindModuleRoot(filePath string, baseIndent int) (string, error) {
 		}
 		currentPath = parentDir
 	}
-	slog.Debug(strings.Repeat("\t", baseIndent)+"FindModuleRoot: end (error - go.mod not found)")
+	slog.Debug(strings.Repeat("\t", baseIndent) + "FindModuleRoot: end (error - go.mod not found)")
 	return "", fmt.Errorf("go.mod not found upwards from %s", filePath)
 }
 
@@ -150,7 +149,7 @@ func GetModuleName(moduleRootPath string, baseIndent int) (string, error) {
 	slog.Debug(strings.Repeat("\t", baseIndent+1)+"Reading go.mod file", "path", goModPath)
 	modBytes, err := os.ReadFile(goModPath)
 	if err != nil {
-		slog.Debug(strings.Repeat("\t", baseIndent)+"GetModuleName: end (error reading go.mod)")
+		slog.Debug(strings.Repeat("\t", baseIndent) + "GetModuleName: end (error reading go.mod)")
 		return "", fmt.Errorf("could not read go.mod at %s: %w", goModPath, err)
 	}
 
@@ -167,9 +166,9 @@ func GetModuleName(moduleRootPath string, baseIndent int) (string, error) {
 	}
 
 	if modulePath == "" {
-		slog.Debug(strings.Repeat("\t", baseIndent)+"GetModuleName: end (error - module directive not found)")
+		slog.Debug(strings.Repeat("\t", baseIndent) + "GetModuleName: end (error - module directive not found)")
 		return "", fmt.Errorf("module directive not found in %s", goModPath)
 	}
-	slog.Debug(strings.Repeat("\t", baseIndent)+"GetModuleName: end")
+	slog.Debug(strings.Repeat("\t", baseIndent) + "GetModuleName: end")
 	return modulePath, nil
 }
