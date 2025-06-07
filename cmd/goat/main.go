@@ -113,7 +113,7 @@ func main() {
 		}
 
 		helpMsg := help.GenerateHelp(cmdMetadata, 1) // Added baseIndent
-		fmt.Print(helpMsg) // Print to stdout, helpMsg likely has its own trailing newline
+		fmt.Print(helpMsg)                           // Print to stdout, helpMsg likely has its own trailing newline
 
 	case "scan":
 		scanCmd := flag.NewFlagSet("scan", flag.ExitOnError)

@@ -5,7 +5,6 @@ import (
 	"go/ast"
 	"go/token"
 	"log/slog"
-	"os"
 	"strings"
 
 	"github.com/podhmo/goat/internal/metadata"
@@ -64,7 +63,7 @@ func InterpretInitializer(
 		slog.Debug(strings.Repeat("\t", baseIndent+2)+"Inspecting node", "type", fmt.Sprintf("%T", n))
 		switch stmtNode := n.(type) {
 		case *ast.AssignStmt: // e.g. options.Field = goat.Default(...) or var x = goat.Default(...)
-			slog.Debug(strings.Repeat("\t", baseIndent+3)+"Assignment statement found")
+			slog.Debug(strings.Repeat("\t", baseIndent+3) + "Assignment statement found")
 			// We need to trace assignments to see if they end up in an OptionMetadata field
 			// This example focuses on direct assignments to struct fields.
 			// E.g., `opt.MyField = goat.Default("value")`
@@ -80,7 +79,7 @@ func InterpretInitializer(
 			}
 
 		case *ast.ReturnStmt: // e.g. return &Options{ Field: goat.Default(...) }
-			slog.Debug(strings.Repeat("\t", baseIndent+3)+"Return statement found")
+			slog.Debug(strings.Repeat("\t", baseIndent+3) + "Return statement found")
 			if len(stmtNode.Results) == 1 {
 				actualExpr := stmtNode.Results[0]
 				if unaryExpr, ok := actualExpr.(*ast.UnaryExpr); ok && unaryExpr.Op == token.AND {
@@ -88,7 +87,7 @@ func InterpretInitializer(
 				}
 
 				if compLit, ok := actualExpr.(*ast.CompositeLit); ok {
-					slog.Debug(strings.Repeat("\t", baseIndent+4)+"Return composite literal found")
+					slog.Debug(strings.Repeat("\t", baseIndent+4) + "Return composite literal found")
 					// Check if this composite literal is for our Options struct
 					// This requires resolving compLit.Type to optionsStructName, which can be complex.
 					// For a simpler start, assume if it's a struct literal in NewOptions, it's the one.
@@ -128,7 +127,7 @@ func extractMarkerInfo(valueExpr ast.Expr, optMeta *metadata.OptionMetadata, fil
 
 	// Allow original goat path or the one used in cmd/goat tests via testcmdmodule
 	isKnownMarkerPackage := (actualMarkerPkgPath == markerPkgImportPath || // e.g. "github.com/podhmo/goat"
-							 actualMarkerPkgPath == "testcmdmodule/internal/goat") // For cmd/goat tests
+		actualMarkerPkgPath == "testcmdmodule/internal/goat") // For cmd/goat tests
 
 	if !isKnownMarkerPackage {
 		slog.Debug(strings.Repeat("\t", baseIndent+1)+"Call is to a non-marker package", "actualMarkerPkgPath", actualMarkerPkgPath, "expectedMarkerPkgPath", markerPkgImportPath)

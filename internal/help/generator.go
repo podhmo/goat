@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
-	"os"
 	"strings"
 
 	"github.com/podhmo/goat/internal/metadata"
@@ -72,7 +71,7 @@ func generateHelp(w io.Writer, cmdMeta *metadata.CommandMetadata, baseIndent int
 
 		// Default value printing logic
 		shouldPrintDefault := opt.DefaultValue != nil && opt.DefaultValue != "" // Initial state
-		if strings.HasSuffix(opt.TypeName, "bool") { // Covers "bool" and "*bool"
+		if strings.HasSuffix(opt.TypeName, "bool") {                            // Covers "bool" and "*bool"
 			isDefaultTrue := opt.DefaultValueAsBool() // Correctly handles nil, non-bool, *bool
 			if !isDefaultTrue {
 				// If default is false (or nil for *bool), don't print default.

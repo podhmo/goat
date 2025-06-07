@@ -1,12 +1,13 @@
 package interpreter
 
 import (
+	"bytes" // Added for log capture
 	"go/ast"
 	"go/parser"
-	"bytes" // Added for log capture
 	"go/token"
 	"log/slog" // Added for slog
-	"os"       // Added for Setenv
+
+	// Added for Setenv
 	"reflect"
 	"strings"
 	"testing"
@@ -256,19 +257,19 @@ func TestInterpretInitializer_InitializerNotFound(t *testing.T) {
 	logOutputNotFound := logBufNotFound.String()
 	assert.Contains(t, logOutputNotFound, "InterpretInitializer: start")
 	assert.Contains(t, logOutputNotFound, "initializer function 'NonExistentInit' not found") // This is part of the error message but also indicates flow
-	assert.Contains(t, logOutputNotFound, "InterpretInitializer: end") // Logged before error return
+	assert.Contains(t, logOutputNotFound, "InterpretInitializer: end")                        // Logged before error return
 }
 
 func TestInterpretInitializer_FileMarkers(t *testing.T) {
 	tests := []struct {
-		name              string
-		content           string
-		optionsName       string
-		initializerName   string
-		initialOptMeta    []*metadata.OptionMetadata // Input metadata to InterpretInitializer
-		expectedOptMeta   []*metadata.OptionMetadata // Expected metadata after InterpretInitializer
-		expectError       bool
-		expectedErrorMsg  string
+		name             string
+		content          string
+		optionsName      string
+		initializerName  string
+		initialOptMeta   []*metadata.OptionMetadata // Input metadata to InterpretInitializer
+		expectedOptMeta  []*metadata.OptionMetadata // Expected metadata after InterpretInitializer
+		expectError      bool
+		expectedErrorMsg string
 	}{
 		{
 			name: "File with default path only",
@@ -374,21 +375,21 @@ func New() *Config { return &Config{ Input: g.File("in.txt", other.SomeOption())
 				currentOptionsMeta[i] = &metaCopy
 			}
 
-		t.Setenv("DEBUG", "1")
-		var logBufFile bytes.Buffer
-		handlerFile := slog.NewTextHandler(&logBufFile, &slog.HandlerOptions{Level: slog.LevelDebug})
-		loggerFile := slog.New(handlerFile)
-		originalLoggerFile := slog.Default()
-		slog.SetDefault(loggerFile)
-		defer slog.SetDefault(originalLoggerFile)
+			t.Setenv("DEBUG", "1")
+			var logBufFile bytes.Buffer
+			handlerFile := slog.NewTextHandler(&logBufFile, &slog.HandlerOptions{Level: slog.LevelDebug})
+			loggerFile := slog.New(handlerFile)
+			originalLoggerFile := slog.Default()
+			slog.SetDefault(loggerFile)
+			defer slog.SetDefault(originalLoggerFile)
 
-		err := InterpretInitializer(fileAst, tt.optionsName, tt.initializerName, currentOptionsMeta, goatPkgImportPath, 0)
+			err := InterpretInitializer(fileAst, tt.optionsName, tt.initializerName, currentOptionsMeta, goatPkgImportPath, 0)
 
-		logOutputFile := logBufFile.String() // Capture log regardless of error
+			logOutputFile := logBufFile.String() // Capture log regardless of error
 
 			if tt.expectError {
-			assert.Contains(t, logOutputFile, "InterpretInitializer: start", "Test: %s", tt.name)
-			// Specific error related logs might not always hit "InterpretInitializer: end" if error is early
+				assert.Contains(t, logOutputFile, "InterpretInitializer: start", "Test: %s", tt.name)
+				// Specific error related logs might not always hit "InterpretInitializer: end" if error is early
 				if err == nil {
 					t.Fatalf("Expected an error but got none")
 				}
@@ -414,16 +415,25 @@ func New() *Config { return &Config{ Input: g.File("in.txt", other.SomeOption())
 					expectedOpt.CliName = actualOpt.CliName
 				}
 
-
 				if !reflect.DeepEqual(actualOpt, expectedOpt) {
 					t.Errorf("OptionMetadata mismatch for '%s':\nExpected: %+v (type %T)\nActual:   %+v (type %T)",
 						expectedOpt.Name, expectedOpt, expectedOpt, actualOpt, actualOpt)
 					// Detailed field comparison for debugging
-					if actualOpt.Name != expectedOpt.Name {t.Logf(" Name: expected '%s', got '%s'", expectedOpt.Name, actualOpt.Name)}
-					if actualOpt.DefaultValue != expectedOpt.DefaultValue {t.Logf(" DefaultValue: expected '%v', got '%v'", expectedOpt.DefaultValue, actualOpt.DefaultValue)}
-					if actualOpt.TypeName != expectedOpt.TypeName {t.Logf(" TypeName: expected '%s', got '%s'", expectedOpt.TypeName, actualOpt.TypeName)}
-					if actualOpt.FileMustExist != expectedOpt.FileMustExist {t.Logf(" FileMustExist: expected '%t', got '%t'", expectedOpt.FileMustExist, actualOpt.FileMustExist)}
-					if actualOpt.FileGlobPattern != expectedOpt.FileGlobPattern {t.Logf(" FileGlobPattern: expected '%t', got '%t'", expectedOpt.FileGlobPattern, actualOpt.FileGlobPattern)}
+					if actualOpt.Name != expectedOpt.Name {
+						t.Logf(" Name: expected '%s', got '%s'", expectedOpt.Name, actualOpt.Name)
+					}
+					if actualOpt.DefaultValue != expectedOpt.DefaultValue {
+						t.Logf(" DefaultValue: expected '%v', got '%v'", expectedOpt.DefaultValue, actualOpt.DefaultValue)
+					}
+					if actualOpt.TypeName != expectedOpt.TypeName {
+						t.Logf(" TypeName: expected '%s', got '%s'", expectedOpt.TypeName, actualOpt.TypeName)
+					}
+					if actualOpt.FileMustExist != expectedOpt.FileMustExist {
+						t.Logf(" FileMustExist: expected '%t', got '%t'", expectedOpt.FileMustExist, actualOpt.FileMustExist)
+					}
+					if actualOpt.FileGlobPattern != expectedOpt.FileGlobPattern {
+						t.Logf(" FileGlobPattern: expected '%t', got '%t'", expectedOpt.FileGlobPattern, actualOpt.FileGlobPattern)
+					}
 				}
 			}
 			assert.Contains(t, logOutputFile, "InterpretInitializer: end", "Test: %s", tt.name)

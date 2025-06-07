@@ -3,11 +3,13 @@ package analyzer
 import (
 	"fmt"
 	"go/ast"
+
 	// "go/build" // Unused
 	"go/token"
 	"go/types"
+
 	// "log/slog" // Unused
-	"os" // Re-add for ReadDir
+	"os"            // Re-add for ReadDir
 	"path/filepath" // Re-add for Join
 	"reflect"
 	"strings"
@@ -33,7 +35,7 @@ func init() {
 		nil, // recv type params
 		nil, // type params
 		types.NewTuple(types.NewParam(token.NoPos, nil, "", types.NewSlice(types.Universe.Lookup("byte").Type()))), // params
-		types.NewTuple(types.NewParam(token.NoPos, nil, "", types.Universe.Lookup("error").Type())), // results
+		types.NewTuple(types.NewParam(token.NoPos, nil, "", types.Universe.Lookup("error").Type())),                // results
 		false, // variadic
 	))
 	textUnmarshalerType = types.NewInterfaceType([]*types.Func{textUnmarshalerMeth}, nil).Complete()
@@ -54,17 +56,17 @@ func init() {
 }
 
 // AnalyzeOptionsV2 finds the Options struct definition using an on-disk temporary module structure.
-// - fset: Token fileset for parsing.
-// - astFilesForLookup: ASTs of files in the target package, primarily used to locate the options struct AST.
-//                      These ASTs must have been parsed from files whose paths are on disk.
-// - optionsTypeName: Name of the options struct type (e.g., "MainConfig").
-// - targetPackageID: The import path of the package containing optionsTypeName (e.g., "testmodule/example.com/mainpkg").
-// - moduleRootPath: Absolute path to the root of the temporary module (where go.mod is).
+//   - fset: Token fileset for parsing.
+//   - astFilesForLookup: ASTs of files in the target package, primarily used to locate the options struct AST.
+//     These ASTs must have been parsed from files whose paths are on disk.
+//   - optionsTypeName: Name of the options struct type (e.g., "MainConfig").
+//   - targetPackageID: The import path of the package containing optionsTypeName (e.g., "testmodule/example.com/mainpkg").
+//   - moduleRootPath: Absolute path to the root of the temporary module (where go.mod is).
 func AnalyzeOptionsV2(fset *token.FileSet, astFilesForLookup []*ast.File, optionsTypeName string, targetPackageID string, moduleRootPath string) ([]*metadata.OptionMetadata, string, error) {
 	cfg := &packages.Config{
 		Fset:    fset,
 		Mode:    packages.NeedName | packages.NeedFiles | packages.NeedSyntax | packages.NeedTypes | packages.NeedTypesInfo | packages.NeedImports | packages.NeedModule,
-		Dir:     moduleRootPath, // Root of the temporary module
+		Dir:     moduleRootPath,          // Root of the temporary module
 		Overlay: make(map[string][]byte), // Overlay is not strictly needed if all files are on disk and up-to-date
 		// Env: os.Environ(), // Inherit environment
 	}
@@ -138,7 +140,6 @@ func AnalyzeOptionsV2(fset *token.FileSet, astFilesForLookup []*ast.File, option
 		return nil, "", fmt.Errorf("target package '%s' not found among loaded packages: %v. (cfg.Dir='%s', patterns=%q)", targetPackageID, foundPkgIDs, cfg.Dir, loadPatterns)
 	}
 
-
 	// Remove potential module prefix from optionsTypeName if it's fully qualified
 	// e.g. "testmodule/example.com/mainpkg.MainConfig" -> "MainConfig"
 	// The optionsTypeName should be the simple name for lookup within the package's ASTs.
@@ -151,9 +152,8 @@ func AnalyzeOptionsV2(fset *token.FileSet, astFilesForLookup []*ast.File, option
 		simpleOptionsTypeName = simpleOptionsTypeName[1:]
 	}
 
-
 	var optionsStruct *ast.TypeSpec
-	var actualStructName string       // This will be simpleOptionsTypeName if found
+	var actualStructName string               // This will be simpleOptionsTypeName if found
 	var fileContainingOptionsStruct *ast.File // The AST of the file where the struct is defined
 
 	// Iterate through the ASTs that belong to the currentPkg to find the struct.
@@ -183,7 +183,6 @@ func AnalyzeOptionsV2(fset *token.FileSet, astFilesForLookup []*ast.File, option
 	if fileContainingOptionsStruct == nil { // Should be set if optionsStruct is not nil
 		return nil, "", fmt.Errorf("internal error: options struct '%s' found but its containing AST was not identified within package %s", actualStructName, currentPkg.ID)
 	}
-
 
 	structType, ok := optionsStruct.Type.(*ast.StructType)
 	if !ok {
@@ -238,7 +237,7 @@ func AnalyzeOptionsV2(fset *token.FileSet, astFilesForLookup []*ast.File, option
 				// as the relevant ASTs are already loaded by packages.Load and are in pkg.Syntax.
 				// The ASTs for the external package are in resolvedImportedPkg.Syntax
 				if resolvedImportedPkg == nil { // Should not happen if foundImportMatchingSelector is true
-					 return nil, actualStructName, fmt.Errorf("internal error: resolvedImportedPkg is nil for selector '%s'", pkgSelectorInAST)
+					return nil, actualStructName, fmt.Errorf("internal error: resolvedImportedPkg is nil for selector '%s'", pkgSelectorInAST)
 				}
 				relevantASTsForExternal := resolvedImportedPkg.Syntax
 				if len(relevantASTsForExternal) == 0 && resolvedImportedPkg.Name != "" { // Check PkgPath for stdlib
@@ -248,7 +247,6 @@ func AnalyzeOptionsV2(fset *token.FileSet, astFilesForLookup []*ast.File, option
 					// This logic assumes all analyzed structs (even from stdlib) will have their ASTs available.
 					// For now, proceed; if typeNameInExternalPkg is not found, it will error appropriately.
 				}
-
 
 				embeddedOptions, _, err = AnalyzeOptionsV2(fset, relevantASTsForExternal, typeNameInExternalPkg, externalPkgImportPath, moduleRootPath)
 			} else { // Embedded struct from the same package
@@ -302,10 +300,18 @@ func AnalyzeOptionsV2(fset *token.FileSet, astFilesForLookup []*ast.File, option
 				// Try TypeOf if Defs fails.
 				tv := currentPkg.TypesInfo.TypeOf(field.Type)
 				if tv != nil {
-					if types.Implements(tv, textUnmarshalerType) { opt.IsTextUnmarshaler = true }
-					if !opt.IsTextUnmarshaler && types.Implements(types.NewPointer(tv), textUnmarshalerType) { opt.IsTextUnmarshaler = true }
-					if types.Implements(tv, textMarshalerType) { opt.IsTextMarshaler = true }
-					if !opt.IsTextMarshaler && types.Implements(types.NewPointer(tv), textMarshalerType) { opt.IsTextMarshaler = true }
+					if types.Implements(tv, textUnmarshalerType) {
+						opt.IsTextUnmarshaler = true
+					}
+					if !opt.IsTextUnmarshaler && types.Implements(types.NewPointer(tv), textUnmarshalerType) {
+						opt.IsTextUnmarshaler = true
+					}
+					if types.Implements(tv, textMarshalerType) {
+						opt.IsTextMarshaler = true
+					}
+					if !opt.IsTextMarshaler && types.Implements(types.NewPointer(tv), textMarshalerType) {
+						opt.IsTextMarshaler = true
+					}
 				}
 			}
 		}
@@ -332,7 +338,6 @@ func AnalyzeOptionsV2(fset *token.FileSet, astFilesForLookup []*ast.File, option
 	}
 	return extractedOptions, actualStructName, nil
 }
-
 
 // Original AnalyzeOptions - keep for now if other parts of the codebase use it,
 // or remove if AnalyzeOptionsV2 is a direct replacement.

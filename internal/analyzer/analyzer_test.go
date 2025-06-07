@@ -1,14 +1,13 @@
 package analyzer
 
 import (
-	"go/ast"
 	"bytes" // Added for log capture
+	"go/ast"
 	"go/parser"
 	"go/token"
 	"log/slog"
 	"os"
-	"path/filepath"
-	"strings" // Added for log assertion
+	"path/filepath" // Added for log assertion
 	"testing"
 
 	"github.com/stretchr/testify/assert" // Added for assertions
@@ -65,7 +64,6 @@ func parseTestFiles(t *testing.T, sources map[string]string) (*token.FileSet, []
 
 	return fset, []*ast.File{astFile}, tempDir
 }
-
 
 func TestAnalyze_InitializerFunctionDiscovery(t *testing.T) {
 	// Original slog setup in test is fine, but we'll override for capture

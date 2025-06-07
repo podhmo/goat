@@ -1,9 +1,10 @@
 package help
 
 import (
-	"bytes" // Added for log capture
+	"bytes"    // Added for log capture
 	"log/slog" // Added for slog
-	"os"     // Added for Setenv
+
+	// Added for Setenv
 	"strings"
 	"testing"
 

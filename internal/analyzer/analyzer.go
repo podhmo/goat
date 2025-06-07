@@ -5,7 +5,6 @@ import (
 	"go/ast"
 	"go/token" // Added import
 	"log/slog"
-	"os"
 	"strings" // Added import
 
 	"github.com/podhmo/goat/internal/metadata"
@@ -45,7 +44,6 @@ func Analyze(fset *token.FileSet, files []*ast.File, runFuncName string, targetP
 	// For now, let's assume the last part of targetPackageID is the Go package name.
 	pkgNameParts := strings.Split(targetPackageID, "/")
 	runFuncInfo.PackageName = pkgNameParts[len(pkgNameParts)-1]
-
 
 	// Populate OptionsArgTypeNameStripped and OptionsArgIsPointer
 	if runFuncInfo.OptionsArgType != "" {

@@ -79,7 +79,6 @@ func createTestModuleInTempDir(t *testing.T, moduleName string, packages TestMod
 	return tempModRoot, astFiles, fset
 }
 
-
 // parseSingleFileAst is a helper to parse string content into an AST file.
 // DEPRECATED for multi-file/multi-package tests. Use createTestModuleInTempDir.
 func parseSingleFileAst(t *testing.T, content string) (*token.FileSet, *ast.File) {
@@ -146,9 +145,9 @@ type AnotherExternalEmbedded struct { Token string }`
 
 	expectedOptions := []*metadata.OptionMetadata{
 		{Name: "LocalName", CliName: "local-name", TypeName: "string", HelpText: "", IsRequired: true, EnvVar: "LOCAL_NAME"},
-		{Name: "IsRemote", CliName: "is-remote", TypeName: "bool", HelpText: "", IsRequired: true, EnvVar: "IS_REMOTE_TAG"},    // Help text from comments in original strings would be lost here.
-		{Name: "APIKey", CliName: "api-key", TypeName: "string", HelpText: "", IsRequired: true, EnvVar: "API_KEY_TAG"},      // Help text lost.
-		{Name: "Token", CliName: "token", TypeName: "string", HelpText: "", IsRequired: true, EnvVar: ""},                     // Help text lost.
+		{Name: "IsRemote", CliName: "is-remote", TypeName: "bool", HelpText: "", IsRequired: true, EnvVar: "IS_REMOTE_TAG"}, // Help text from comments in original strings would be lost here.
+		{Name: "APIKey", CliName: "api-key", TypeName: "string", HelpText: "", IsRequired: true, EnvVar: "API_KEY_TAG"},     // Help text lost.
+		{Name: "Token", CliName: "token", TypeName: "string", HelpText: "", IsRequired: true, EnvVar: ""},                   // Help text lost.
 	}
 
 	// Temporarily comment out the actual call to AnalyzeOptions until it's refactored.
@@ -238,7 +237,6 @@ func TestAnalyzeOptions_WithTextVarTypes(t *testing.T) {
 	}
 	tempModRoot, astFiles, fset := createTestModuleInTempDir(t, moduleName, packages)
 
-
 	expected := []struct {
 		name              string
 		isTextUnmarshaler bool
@@ -311,10 +309,10 @@ type Config struct {
 		expectedOptions []*metadata.OptionMetadata
 	}{
 		{
-			name:            "All not required (required tag ignored)",
-			pkgName:         "main", // Go package name in source
-			structName:      "Config",
-			tags:            []string{"`env:\"APP_NAME\"`", "`env:\"USER_AGE\"`", "", "`env:\"APP_FEATURES\"`"},
+			name:       "All not required (required tag ignored)",
+			pkgName:    "main", // Go package name in source
+			structName: "Config",
+			tags:       []string{"`env:\"APP_NAME\"`", "`env:\"USER_AGE\"`", "", "`env:\"APP_FEATURES\"`"},
 			expectedOptions: []*metadata.OptionMetadata{
 				{Name: "Name", CliName: "name", TypeName: "string", HelpText: "Name of the user.", IsRequired: true, EnvVar: "APP_NAME"},
 				{Name: "Age", CliName: "age", TypeName: "*int", HelpText: "Age of the user, optional.", IsPointer: true, IsRequired: false, EnvVar: "USER_AGE"},
@@ -334,7 +332,7 @@ type Config struct {
 
 			currentPkgPathSuffix := "." // Place in module root
 			packages := TestModulePackages{
-				currentPkgPathSuffix: { {Name: strings.ToLower(tc.structName) + ".go", Content: formattedContent} },
+				currentPkgPathSuffix: {{Name: strings.ToLower(tc.structName) + ".go", Content: formattedContent}},
 			}
 			tempModRoot, astFiles, fset := createTestModuleInTempDir(t, moduleName, packages)
 
@@ -379,7 +377,7 @@ type Config struct {
 `
 	moduleName := "testunexported"
 	packages := TestModulePackages{
-		".": { {Name: "config.go", Content: content} },
+		".": {{Name: "config.go", Content: content}},
 	}
 	tempModRoot, astFiles, fset := createTestModuleInTempDir(t, moduleName, packages)
 
@@ -400,7 +398,7 @@ func TestAnalyzeOptions_StructNotFound(t *testing.T) {
 	content := `package main; type OtherStruct struct{}`
 	moduleName := "teststructnotfound"
 	packages := TestModulePackages{
-		".": { {Name: "other.go", Content: content} },
+		".": {{Name: "other.go", Content: content}},
 	}
 	tempModRoot, astFiles, fset := createTestModuleInTempDir(t, moduleName, packages)
 
@@ -431,7 +429,7 @@ type ParentConfig struct {
 	AnotherField string
 }`
 	formattedContent1 := fmt.Sprintf(content1, "`env:\"EMBEDDED_STRING\"`", "`env:\"EMBEDDED_INT\"`", "`env:\"PARENT_FIELD\"`")
-	packages1 := TestModulePackages{ ".": { {Name: "config1.go", Content: formattedContent1} } }
+	packages1 := TestModulePackages{".": {{Name: "config1.go", Content: formattedContent1}}}
 	tempModRoot1, astFiles1, fset1 := createTestModuleInTempDir(t, moduleName+"1", packages1)
 
 	targetPackageID1 := moduleName + "1" // moduleName is "testembedded", so "testembedded1"
@@ -517,9 +515,9 @@ type PointerPkgConfig struct { APIKey string ` + "`env:\"API_KEY_TAG\"`" + `}`
 type AnotherExternalEmbedded struct { Token string }`
 
 	packages := TestModulePackages{
-		mainPkgImportSuffix:       { {Name: "main.go", Content: mainContent} },
-		externalPkgImportSuffix:   { {Name: "external.go", Content: externalPkgContent} },
-		anotherPkgImportSuffix:    { {Name: "another.go", Content: anotherPkgContent} },
+		mainPkgImportSuffix:     {{Name: "main.go", Content: mainContent}},
+		externalPkgImportSuffix: {{Name: "external.go", Content: externalPkgContent}},
+		anotherPkgImportSuffix:  {{Name: "another.go", Content: anotherPkgContent}},
 	}
 	tempModRoot, astFiles, fset := createTestModuleInTempDir(t, moduleName, packages)
 
@@ -562,7 +560,7 @@ func TestAnalyzeOptions_ExternalPackageDirectly(t *testing.T) {
 type ExternalConfig struct { ExternalURL string; ExternalRetryCount int }`
 
 	packages := TestModulePackages{
-		pkgSuffix: { {Name: "external.go", Content: externalPkgContent} },
+		pkgSuffix: {{Name: "external.go", Content: externalPkgContent}},
 	}
 	tempModRoot, astFiles, fset := createTestModuleInTempDir(t, moduleName, packages)
 
