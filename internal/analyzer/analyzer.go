@@ -54,6 +54,46 @@ func Analyze(fset *token.FileSet, files []*ast.File, runFuncName string, targetP
 	cmdMeta.Description = runFuncDoc
 	cmdMeta.RunFunc = runFuncInfo
 
+	// After runFuncInfo is populated, try to find an initializer function for the options struct
+	if runFuncInfo.OptionsArgTypeNameStripped != "" {
+		initializerFuncName := "New" + runFuncInfo.OptionsArgTypeNameStripped
+		slog.Debug("Goat: Looking for conventional options initializer function", "expectedName", initializerFuncName)
+		initializerFuncFoundInAst := false // Flag to track if we found any function with the name
+
+		for _, file := range files {
+			if runFuncInfo.InitializerFunc != "" { // Already found and validated
+				break
+			}
+			for _, decl := range file.Decls {
+				if fn, ok := decl.(*ast.FuncDecl); ok && fn.Name.Name == initializerFuncName {
+					initializerFuncFoundInAst = true // Found a function with the conventional name
+					// Check signature: must have no parameters.
+					// A more robust future check might inspect return types: e.g. *OptionsType or (*OptionsType, error).
+					if fn.Type.Params == nil || len(fn.Type.Params.List) == 0 {
+						runFuncInfo.InitializerFunc = initializerFuncName
+						slog.Info("Goat: Found and using conventional initializer function", "name", initializerFuncName, "package", runFuncInfo.PackageName)
+						// No need to 'break' inner loop here, outer loop will break due to InitializerFunc being set.
+					} else {
+						slog.Warn("Goat: Conventional initializer function found but has unexpected parameters; it will be ignored.",
+							"functionName", initializerFuncName,
+							"paramCount", len(fn.Type.Params.List),
+							"package", runFuncInfo.PackageName)
+						// Do not set runFuncInfo.InitializerFunc, let it remain empty.
+					}
+					break // Found the function by name, processed it (either used or warned), stop checking other decls in this file.
+				}
+			}
+		}
+
+		if runFuncInfo.InitializerFunc == "" && !initializerFuncFoundInAst {
+			slog.Info("Goat: No conventional initializer function found with the expected name", "expectedName", initializerFuncName, "package", runFuncInfo.PackageName)
+		} else if runFuncInfo.InitializerFunc == "" && initializerFuncFoundInAst {
+			// This case means a function was found by name, but it had the wrong signature (and a warning was logged).
+			// No additional general message needed here, the specific warning is sufficient.
+			slog.Debug("Goat: A function matching conventional initializer name was found but ignored due to signature.", "expectedName", initializerFuncName)
+		}
+	}
+
 	if runFuncInfo.OptionsArgName != "" && runFuncInfo.OptionsArgType != "" {
 		// optionsTypeName is the simple name of the type, e.g. "Options" or "*Options"
 		// targetPackageID is the import path of the package where this type is defined.
