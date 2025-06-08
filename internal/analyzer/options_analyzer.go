@@ -145,6 +145,7 @@ func AnalyzeOptionsV2(fset *token.FileSet, astFilesForLookup []*ast.File, option
 	// Remove potential module prefix from optionsTypeName if it's fully qualified
 	// e.g. "testmodule/example.com/mainpkg.MainConfig" -> "MainConfig"
 	// The optionsTypeName should be the simple name for lookup within the package's ASTs.
+	var typesInfo *types.Info = nil // TODO: Implement type checking to populate types.Info
 	simpleOptionsTypeName := optionsTypeName
 	if strings.Contains(optionsTypeName, ".") {
 		parts := strings.Split(optionsTypeName, ".")
@@ -345,8 +346,10 @@ func AnalyzeOptionsV2(fset *token.FileSet, astFilesForLookup []*ast.File, option
 // It was created to address issues with `go/packages`'s eager evaluation of all imports
 // (as used in AnalyzeOptionsV2), which can be slow and resource-intensive for large codebases
 // or when only a specific struct's definition is needed without full dependency resolution.
-// IMPORTANT: AnalyzeOptionsV3 does not perform type checking. As such, metadata fields that
-// depend on type information (like IsTextUnmarshaler or IsTextMarshaler) will not be accurately populated.
+// IMPORTANT: AnalyzeOptionsV3 does not currently perform type checking. As such, metadata fields
+// that depend on type information (like IsTextUnmarshaler or IsTextMarshaler) are initialized to false
+// and not accurately populated. Placeholders and TODO comments exist for future type checking
+// implementation to enable these features.
 // The function primarily relies on AST parsing to extract option metadata.
 //
 //   - fset: Token fileset for parsing.
@@ -481,6 +484,46 @@ func AnalyzeOptionsV3(
 			IsTextUnmarshaler: false,
 			IsTextMarshaler:   false,
 		}
+
+		// TODO: Implement type checking for TextUnmarshaler/Marshaler detection.
+		// The following block is placeholder logic that would use typesInfo.
+		// if typesInfo != nil && field.Names[0] != nil {
+		// 	obj := typesInfo.Defs[field.Names[0]]
+		// 	if obj != nil {
+		// 		tv := obj.Type()
+		// 		if tv != nil {
+		// 			if types.Implements(tv, textUnmarshalerType) {
+		// 				opt.IsTextUnmarshaler = true
+		// 			}
+		// 			if !opt.IsTextUnmarshaler && types.Implements(types.NewPointer(tv), textUnmarshalerType) {
+		// 				opt.IsTextUnmarshaler = true
+		// 			}
+		// 			if types.Implements(tv, textMarshalerType) {
+		// 				opt.IsTextMarshaler = true
+		// 			}
+		// 			if !opt.IsTextMarshaler && types.Implements(types.NewPointer(tv), textMarshalerType) {
+		// 				opt.IsTextMarshaler = true
+		// 			}
+		// 		}
+		// 	} else {
+		// 		// Fallback for fields that might not be in Defs
+		// 		tv := typesInfo.TypeOf(field.Type)
+		// 		if tv != nil {
+		// 			if types.Implements(tv, textUnmarshalerType) {
+		// 				opt.IsTextUnmarshaler = true
+		// 			}
+		// 			if !opt.IsTextUnmarshaler && types.Implements(types.NewPointer(tv), textUnmarshalerType) {
+		// 				opt.IsTextUnmarshaler = true
+		// 			}
+		// 			if types.Implements(tv, textMarshalerType) {
+		// 				opt.IsTextMarshaler = true
+		// 			}
+		// 			if !opt.IsTextMarshaler && types.Implements(types.NewPointer(tv), textMarshalerType) {
+		// 				opt.IsTextMarshaler = true
+		// 			}
+		// 		}
+		// 	}
+		// }
 
 		if field.Doc != nil {
 			opt.HelpText = strings.TrimSpace(field.Doc.Text())
