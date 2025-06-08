@@ -2,8 +2,6 @@ package enum
 
 import (
 	"fmt"
-	"log/slog"
-	"os"
 
 	"github.com/podhmo/goat"
 	"github.com/podhmo/goat/examples/enum/customtypes"
@@ -43,8 +41,8 @@ type Options struct {
 func NewOptions() *Options {
 	return &Options{
 		LocalEnumField: goat.Default(LocalA, goat.Enum(GetLocalEnumsAsStrings())),
-// TODO: Since it's a generic function, there should be no need to cast it to a string type.If there are reasons why it is not possible, I want to resolve them.
-		ImportedEnumField: goat.Default(customtypes.OptionX, goat.Enum(customtypes.GetCustomEnumOptionsAsStrings())),
+		// TODO: Since it's a generic function, there should be no need to cast it to a string type.If there are reasons why it is not possible, I want to resolve them.
+		ImportedEnumField:         goat.Default(customtypes.OptionX, goat.Enum(customtypes.GetCustomEnumOptionsAsStrings())),
 		OptionalImportedEnumField: goat.Enum(nil, []string{string(customtypes.OptionX), string(customtypes.OptionY)}),
 	}
 }
@@ -52,14 +50,11 @@ func NewOptions() *Options {
 // Run is the main execution logic for the enum example CLI.
 // It prints the selected enum values.
 func Run(opts Options) error {
-	fmt.Printf("Selected Local Enum: %s
-", opts.LocalEnumField)
-	fmt.Printf("Selected Imported Enum: %s
-", opts.ImportedEnumField)
+	fmt.Printf("Selected Local Enum: %s\n", opts.LocalEnumField)
+	fmt.Printf("Selected Imported Enum: %s\n", opts.ImportedEnumField)
 
 	if opts.OptionalImportedEnumField != nil {
-		fmt.Printf("Selected Optional Imported Enum: %s
-", *opts.OptionalImportedEnumField)
+		fmt.Printf("Selected Optional Imported Enum: %s\n", *opts.OptionalImportedEnumField)
 	} else {
 		fmt.Println("Optional Imported Enum: not set")
 	}

@@ -3,9 +3,11 @@ package analyzer
 import (
 	"fmt"
 	"go/ast"
+
 	// "go/build" // Unused
 	"go/token"
 	"go/types"
+
 	// "log/slog" // Unused
 	"os"            // Re-add for ReadDir
 	"path/filepath" // Re-add for Join
@@ -19,8 +21,7 @@ import (
 	"github.com/podhmo/goat/internal/metadata"
 	"github.com/podhmo/goat/internal/utils/astutils"
 	"github.com/podhmo/goat/internal/utils/stringutils"
-
-	"go/parser" // Added for V3
+	// Added for V3
 	// "golang.org/x/tools/go/importer" // May need for V3 type checking without go/packages
 )
 

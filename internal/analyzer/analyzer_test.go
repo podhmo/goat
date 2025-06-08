@@ -7,9 +7,9 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+
 	// "strings" // No longer used directly in the simplified parseTestFiles
 	"testing"
-
 	// "golang.org/x/tools/go/packages" // No longer used in the simplified parseTestFiles
 )
 
@@ -63,7 +63,6 @@ func parseTestFiles(t *testing.T, sources map[string]string) (*token.FileSet, []
 
 	return fset, []*ast.File{astFile}, tempDir
 }
-
 
 func TestAnalyze_InitializerFunctionDiscovery(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelDebug}))

@@ -3,14 +3,14 @@ package codegen_test
 import (
 	"fmt"
 	"go/ast"
+	"go/format" // Added for format.Source in normalizeCode
 	"go/parser"
 	"go/token"
 	"os"
 	"path/filepath"
-	"regexp" // Added for regexes
+	"regexp"  // Added for regexes
 	"strings" // Added for strings
 	"testing"
-	"go/format" // Added for format.Source in normalizeCode
 
 	"github.com/podhmo/goat/internal/codegen"
 	// Assuming normalizeCode is in the same package or adjust import
@@ -56,6 +56,7 @@ func normalizeCode(t *testing.T, code string) string {
 	// After gofmt, further normalize for robust comparison (remove comments, compact whitespace)
 	return normalizeForContains(string(formatted))
 }
+
 // End of helper functions
 
 // createTempFile creates a temporary Go file with the given initial content.

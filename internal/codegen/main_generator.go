@@ -320,7 +320,6 @@ func formatHelpText(text string) string {
 	}
 }
 
-
 // GenerateMain creates the Go code string for the new main() function
 // based on the extracted command metadata.
 // If generateFullFile is true, it returns a complete Go file content including package and imports.

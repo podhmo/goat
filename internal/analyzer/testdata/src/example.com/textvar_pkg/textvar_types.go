@@ -40,11 +40,11 @@ func (m MyOnlyMarshaler) MarshalText() ([]byte, error) {
 }
 
 type TextVarOptions struct {
-	FieldA MyTextValue         // Should be Unmarshaler (via *MyTextValue) & Marshaler (via MyTextValue)
-	FieldB *MyPtrTextValue     // Should be Unmarshaler & Marshaler (both via *MyPtrTextValue)
-	FieldC MyPtrTextValue      // Should be Unmarshaler & Marshaler (both via *MyPtrTextValue, on value type)
-	FieldD string              // Standard string, neither
-	FieldE *MyTextValue        // Pointer to type from FieldA
-	FieldF MyOnlyUnmarshaler   // Only Unmarshaler
-	FieldG MyOnlyMarshaler     // Only Marshaler
+	FieldA MyTextValue       // Should be Unmarshaler (via *MyTextValue) & Marshaler (via MyTextValue)
+	FieldB *MyPtrTextValue   // Should be Unmarshaler & Marshaler (both via *MyPtrTextValue)
+	FieldC MyPtrTextValue    // Should be Unmarshaler & Marshaler (both via *MyPtrTextValue, on value type)
+	FieldD string            // Standard string, neither
+	FieldE *MyTextValue      // Pointer to type from FieldA
+	FieldF MyOnlyUnmarshaler // Only Unmarshaler
+	FieldG MyOnlyMarshaler   // Only Marshaler
 }
