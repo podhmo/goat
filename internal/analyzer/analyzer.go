@@ -38,7 +38,6 @@ func Analyze(fset *token.FileSet, files []*ast.File, runFuncName string, targetP
 	pkgNameParts := strings.Split(targetPackageID, "/")
 	runFuncInfo.PackageName = pkgNameParts[len(pkgNameParts)-1]
 
-
 	// Populate OptionsArgTypeNameStripped and OptionsArgIsPointer
 	if runFuncInfo.OptionsArgType != "" {
 		if strings.HasPrefix(runFuncInfo.OptionsArgType, "*") {

@@ -11,11 +11,11 @@ type ExternalConfig struct {
 // ExternalEmbedded holds fields to be embedded from external package.
 type ExternalEmbedded struct {
 	// Flag from external package.
-	IsRemote bool ` + "`env:\"IS_REMOTE_TAG\"`" + `
+	IsRemote bool `env:"IS_REMOTE_TAG"`
 }
 
 // PointerPkgConfig is an external struct often used as a pointer.
 type PointerPkgConfig struct {
 	// APIKey for external service.
-	APIKey string ` + "`env:\"API_KEY_TAG\"`" + `
+	APIKey string `env:"API_KEY_TAG"`
 }

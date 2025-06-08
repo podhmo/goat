@@ -3,8 +3,8 @@ package loader
 import (
 	"fmt"
 	"go/ast"
-	"go/parser"
 	"go/build"
+	"go/parser"
 	"go/token"
 	"os"
 	"path/filepath"

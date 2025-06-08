@@ -847,7 +847,6 @@ func TestGenerateMain_InitializerInMainPackage(t *testing.T) {
 	assertCodeContains(t, actualCode, "err = Run(options)")
 }
 
-
 // New Test Function for formatHelpText
 func TestFormatHelpText(t *testing.T) {
 	tests := []struct {
@@ -888,7 +887,7 @@ func TestFormatHelpText(t *testing.T) {
 		{
 			name:  "pre-existing newline and single quote to backtick",
 			input: "Pre-existing newline\nAnd pre-existing 'backtick'.",
-			want: "`Pre-existing newline\nAnd pre-existing ` + \"`\" + `backtick` + \"`\" + `.`",
+			want:  "`Pre-existing newline\nAnd pre-existing ` + \"`\" + `backtick` + \"`\" + `.`",
 		},
 		{
 			name:  "empty string",

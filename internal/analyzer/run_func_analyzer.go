@@ -45,12 +45,18 @@ func AnalyzeRunFunc(files []*ast.File, funcName string) (*metadata.RunFuncInfo, 
 	// Analyze parameters: expecting `run(options MyOptions) error` or `run(ctx context.Context, options MyOptions) error`
 	params := runFuncDecl.Type.Params.List
 	if len(params) == 1 {
-		if len(params[0].Names) > 0 { info.OptionsArgName = params[0].Names[0].Name }
+		if len(params[0].Names) > 0 {
+			info.OptionsArgName = params[0].Names[0].Name
+		}
 		info.OptionsArgType = astutils.ExprToTypeName(params[0].Type)
 	} else if len(params) == 2 {
-		if len(params[0].Names) > 0 { info.ContextArgName = params[0].Names[0].Name }
+		if len(params[0].Names) > 0 {
+			info.ContextArgName = params[0].Names[0].Name
+		}
 		info.ContextArgType = astutils.ExprToTypeName(params[0].Type)
-		if len(params[1].Names) > 0 { info.OptionsArgName = params[1].Names[0].Name }
+		if len(params[1].Names) > 0 {
+			info.OptionsArgName = params[1].Names[0].Name
+		}
 		info.OptionsArgType = astutils.ExprToTypeName(params[1].Type)
 	} else {
 		return nil, strings.TrimSpace(docComment), fmt.Errorf("function '%s' has unexpected signature: expected 1 or 2 parameters, got %d", funcName, len(params))
