@@ -486,44 +486,6 @@ func AnalyzeOptionsV3(
 		}
 
 		// TODO: Implement type checking for TextUnmarshaler/Marshaler detection.
-		// The following block is placeholder logic that would use typesInfo.
-		// if typesInfo != nil && field.Names[0] != nil {
-		// 	obj := typesInfo.Defs[field.Names[0]]
-		// 	if obj != nil {
-		// 		tv := obj.Type()
-		// 		if tv != nil {
-		// 			if types.Implements(tv, textUnmarshalerType) {
-		// 				opt.IsTextUnmarshaler = true
-		// 			}
-		// 			if !opt.IsTextUnmarshaler && types.Implements(types.NewPointer(tv), textUnmarshalerType) {
-		// 				opt.IsTextUnmarshaler = true
-		// 			}
-		// 			if types.Implements(tv, textMarshalerType) {
-		// 				opt.IsTextMarshaler = true
-		// 			}
-		// 			if !opt.IsTextMarshaler && types.Implements(types.NewPointer(tv), textMarshalerType) {
-		// 				opt.IsTextMarshaler = true
-		// 			}
-		// 		}
-		// 	} else {
-		// 		// Fallback for fields that might not be in Defs
-		// 		tv := typesInfo.TypeOf(field.Type)
-		// 		if tv != nil {
-		// 			if types.Implements(tv, textUnmarshalerType) {
-		// 				opt.IsTextUnmarshaler = true
-		// 			}
-		// 			if !opt.IsTextUnmarshaler && types.Implements(types.NewPointer(tv), textUnmarshalerType) {
-		// 				opt.IsTextUnmarshaler = true
-		// 			}
-		// 			if types.Implements(tv, textMarshalerType) {
-		// 				opt.IsTextMarshaler = true
-		// 			}
-		// 			if !opt.IsTextMarshaler && types.Implements(types.NewPointer(tv), textMarshalerType) {
-		// 				opt.IsTextMarshaler = true
-		// 			}
-		// 		}
-		// 	}
-		// }
 
 		if field.Doc != nil {
 			opt.HelpText = strings.TrimSpace(field.Doc.Text())
