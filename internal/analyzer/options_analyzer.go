@@ -145,7 +145,7 @@ func AnalyzeOptionsV2(fset *token.FileSet, astFilesForLookup []*ast.File, option
 	// Remove potential module prefix from optionsTypeName if it's fully qualified
 	// e.g. "testmodule/example.com/mainpkg.MainConfig" -> "MainConfig"
 	// The optionsTypeName should be the simple name for lookup within the package's ASTs.
-	var typesInfo *types.Info = nil // TODO: Implement type checking to populate types.Info
+	var _ *types.Info = nil // TODO: Implement type checking to populate types.Info (currently assigned to _ to avoid unused variable error)
 	simpleOptionsTypeName := optionsTypeName
 	if strings.Contains(optionsTypeName, ".") {
 		parts := strings.Split(optionsTypeName, ".")
