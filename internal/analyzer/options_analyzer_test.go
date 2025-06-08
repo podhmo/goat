@@ -797,7 +797,7 @@ type MainConfig struct {
 }`, externalPkgImportPath) // This import path won't be resolvable by V3's current stub
 
 	// externalContent := `package extpkg
-// type ExternalEmbedded struct { ExternalField bool }`
+	// type ExternalEmbedded struct { ExternalField bool }`
 
 	// Setup for V3: Create ASTs for both packages
 	packages := TestModulePackages{

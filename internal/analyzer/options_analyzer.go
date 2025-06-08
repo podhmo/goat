@@ -145,6 +145,7 @@ func AnalyzeOptionsV2(fset *token.FileSet, astFilesForLookup []*ast.File, option
 	// Remove potential module prefix from optionsTypeName if it's fully qualified
 	// e.g. "testmodule/example.com/mainpkg.MainConfig" -> "MainConfig"
 	// The optionsTypeName should be the simple name for lookup within the package's ASTs.
+	var _ *types.Info = nil // TODO: Implement type checking to populate types.Info (currently assigned to _ to avoid unused variable error)
 	simpleOptionsTypeName := optionsTypeName
 	if strings.Contains(optionsTypeName, ".") {
 		parts := strings.Split(optionsTypeName, ".")
@@ -345,7 +346,11 @@ func AnalyzeOptionsV2(fset *token.FileSet, astFilesForLookup []*ast.File, option
 // It was created to address issues with `go/packages`'s eager evaluation of all imports
 // (as used in AnalyzeOptionsV2), which can be slow and resource-intensive for large codebases
 // or when only a specific struct's definition is needed without full dependency resolution.
-// AnalyzeOptionsV3 aims for a lazier approach, parsing and type-checking only what is necessary.
+// IMPORTANT: AnalyzeOptionsV3 does not currently perform type checking. As such, metadata fields
+// that depend on type information (like IsTextUnmarshaler or IsTextMarshaler) are initialized to false
+// and not accurately populated. Placeholders and TODO comments exist for future type checking
+// implementation to enable these features.
+// The function primarily relies on AST parsing to extract option metadata.
 //
 //   - fset: Token fileset for parsing.
 //   - parsedFiles: A map of package import path to a list of already parsed AST files for that package.
@@ -379,16 +384,6 @@ func AnalyzeOptionsV3(
 	if len(astFilesForLookup) == 0 {
 		return nil, "", fmt.Errorf("no AST files found for package '%s'", targetPackagePath)
 	}
-
-	// TODO: Type checking setup without go/packages.
-	//       This requires:
-	//       1. A types.Importer implementation. `go/importer.Default()` might work if source files are available
-	//          in standard locations (GOROOT/GOPATH). For modules, `golang.org/x/tools/go/packages/packagestest/importer`
-	//          or a custom importer that can resolve module paths might be needed.
-	//       2. Collecting all necessary ASTs (target package and its dependencies).
-	//       3. Running types.Config.Check to populate types.Info.
-	//       For now, TypesInfo will be nil, so TextUnmarshaler/Marshaler checks will be skipped.
-	var typesInfo *types.Info = nil // Placeholder
 
 	simpleOptionsTypeName := optionsTypeName
 	if strings.Contains(optionsTypeName, ".") {
@@ -486,48 +481,11 @@ func AnalyzeOptionsV3(
 			TypeName:          astutils.ExprToTypeName(field.Type),
 			IsPointer:         astutils.IsPointerType(field.Type),
 			IsRequired:        !astutils.IsPointerType(field.Type),
-			IsTextUnmarshaler: false, // Requires type info
-			IsTextMarshaler:   false, // Requires type info
+			IsTextUnmarshaler: false,
+			IsTextMarshaler:   false,
 		}
 
-		// TODO: Re-implement TextUnmarshaler/Marshaler checks using typesInfo if available.
-		// This was the original logic from V2:
-		if typesInfo != nil && field.Names[0] != nil {
-			obj := typesInfo.Defs[field.Names[0]]
-			if obj != nil {
-				tv := obj.Type()
-				if tv != nil {
-					if types.Implements(tv, textUnmarshalerType) {
-						opt.IsTextUnmarshaler = true
-					}
-					if !opt.IsTextUnmarshaler && types.Implements(types.NewPointer(tv), textUnmarshalerType) {
-						opt.IsTextUnmarshaler = true
-					}
-					if types.Implements(tv, textMarshalerType) {
-						opt.IsTextMarshaler = true
-					}
-					if !opt.IsTextMarshaler && types.Implements(types.NewPointer(tv), textMarshalerType) {
-						opt.IsTextMarshaler = true
-					}
-				}
-			} else {
-				tv := typesInfo.TypeOf(field.Type)
-				if tv != nil {
-					if types.Implements(tv, textUnmarshalerType) {
-						opt.IsTextUnmarshaler = true
-					}
-					if !opt.IsTextUnmarshaler && types.Implements(types.NewPointer(tv), textUnmarshalerType) {
-						opt.IsTextUnmarshaler = true
-					}
-					if types.Implements(tv, textMarshalerType) {
-						opt.IsTextMarshaler = true
-					}
-					if !opt.IsTextMarshaler && types.Implements(types.NewPointer(tv), textMarshalerType) {
-						opt.IsTextMarshaler = true
-					}
-				}
-			}
-		}
+		// TODO: Implement type checking for TextUnmarshaler/Marshaler detection.
 
 		if field.Doc != nil {
 			opt.HelpText = strings.TrimSpace(field.Doc.Text())
