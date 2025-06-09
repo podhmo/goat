@@ -59,9 +59,9 @@ func (p *Package) ensureParsed() error {
 		fset := token.NewFileSet() // One fset per package for now
 		for _, goFile := range p.GoFiles {
 			path := filepath.Join(p.Dir, goFile)
-			fileAST, err := parser.ParseFile(fset, path, nil, parser.ImportsOnly|parser.ParseComments) // Initially parse imports for quick access, then full parse on demand for GetStruct etc.
+			// fileAST, err := parser.ParseFile(fset, path, nil, parser.ImportsOnly|parser.ParseComments) // Initially parse imports for quick access, then full parse on demand for GetStruct etc.
 			// For full functionality, we'd need a full parse:
-			// fileAST, err := parser.ParseFile(fset, path, nil, parser.ParseComments)
+			fileAST, err := parser.ParseFile(fset, path, nil, parser.ParseComments)
 			if err != nil {
 				p.parseErr = fmt.Errorf("failed to parse %s: %w", path, err)
 				return
