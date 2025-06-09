@@ -17,7 +17,7 @@ type Package struct {
 	ImportPath string          // Import path
 	Dir        string          // Directory containing package sources
 	GoFiles    []string        // Go source files (non-test) relative to Dir
-	rawMeta    PackageMetaInfo // Raw metadata from locator
+	RawMeta    PackageMetaInfo // Raw metadata from locator
 
 	loader *Loader // The loader that loaded this package
 
@@ -44,7 +44,7 @@ func NewPackage(meta PackageMetaInfo, loader *Loader) *Package {
 		ImportPath:      meta.ImportPath,
 		Dir:             meta.Dir,
 		GoFiles:         meta.GoFiles,
-		rawMeta:         meta, // Keep original meta
+		RawMeta:         meta, // Keep original meta
 		loader:          loader,
 		parsedFiles:     make(map[string]*ast.File),
 		resolvedImports: make(map[string]*Package),
@@ -121,8 +121,8 @@ func (p *Package) ResolveImport(importPath string) (*Package, error) {
 		}
 	}
 	// Or check rawMeta if it contains direct imports
-	if !foundInFileImports && p.rawMeta.DirectImports != nil {
-		for _, rawImp := range p.rawMeta.DirectImports {
+	if !foundInFileImports && p.RawMeta.DirectImports != nil {
+		for _, rawImp := range p.RawMeta.DirectImports {
 			if rawImp == importPath {
 				foundInFileImports = true
 				break
