@@ -12,6 +12,7 @@ import (
 	"os"            // Re-add for ReadDir
 	"path/filepath" // Re-add for Join
 	"reflect"
+	"strconv" // For strconv.Unquote
 	"strings"
 
 	// No longer need "bytes" or "go/format" for overlay population from ASTs
@@ -22,7 +23,7 @@ import (
 	"github.com/podhmo/goat/internal/utils/astutils"
 	"github.com/podhmo/goat/internal/utils/stringutils"
 	// Added for V3
-	// "golang.org/x/tools/go/importer" // May need for V3 type checking without go/packages
+	"go/importer" // Used for type checking in V3
 )
 
 var (
@@ -346,11 +347,9 @@ func AnalyzeOptionsV2(fset *token.FileSet, astFilesForLookup []*ast.File, option
 // It was created to address issues with `go/packages`'s eager evaluation of all imports
 // (as used in AnalyzeOptionsV2), which can be slow and resource-intensive for large codebases
 // or when only a specific struct's definition is needed without full dependency resolution.
-// IMPORTANT: AnalyzeOptionsV3 does not currently perform type checking. As such, metadata fields
-// that depend on type information (like IsTextUnmarshaler or IsTextMarshaler) are initialized to false
-// and not accurately populated. Placeholders and TODO comments exist for future type checking
-// implementation to enable these features.
-// The function primarily relies on AST parsing to extract option metadata.
+// AnalyzeOptionsV3 performs type checking to accurately populate metadata fields like
+// IsTextUnmarshaler and IsTextMarshaler.
+// The function primarily relies on AST parsing and type checking to extract option metadata.
 //
 //   - fset: Token fileset for parsing.
 //   - parsedFiles: A map of package import path to a list of already parsed AST files for that package.
@@ -383,6 +382,18 @@ func AnalyzeOptionsV3(
 
 	if len(astFilesForLookup) == 0 {
 		return nil, "", fmt.Errorf("no AST files found for package '%s'", targetPackagePath)
+	}
+
+	// Initialize type checker
+	conf := types.Config{Importer: importer.Default()}
+	info := &types.Info{
+		Types: make(map[ast.Expr]types.TypeAndValue),
+		Defs:  make(map[*ast.Ident]types.Object),
+		Uses:  make(map[*ast.Ident]types.Object),
+	}
+	checker := types.NewChecker(&conf, fset, astFilesForLookup, info)
+	if err := checker.Files(astFilesForLookup); err != nil {
+		return nil, "", fmt.Errorf("type checking failed for package '%s': %w", targetPackagePath, err)
 	}
 
 	simpleOptionsTypeName := optionsTypeName
@@ -436,40 +447,92 @@ func AnalyzeOptionsV3(
 			var embeddedOptions []*metadata.OptionMetadata
 			var err error
 
-			// TODO: Handle embedded structs. This is complex without go/packages because it requires:
-			//       1. Resolving the import path of the embedded type if it's from an external package.
-			//          - AST nodes for selectors (e.g., `pkg.Type`) only give the selector name (`pkg`).
-			//          - Need to map this selector to a full import path using the `import` declarations in the file.
-			//       2. Recursively calling AnalyzeOptionsV3 with the correct package path and files.
-			//          - This means the `parsedFiles` map needs to be populated for dependencies, or dynamic loading needs to work.
-
-			// Placeholder for current package name, true resolution is needed.
-			currentPkgIdentForRecursion := targetPackagePath
-			_ = currentPkgIdentForRecursion // avoid unused error for now
+			// currentPkgIdentForRecursion := targetPackagePath // No longer needed with direct import path resolution
 
 			selParts := strings.SplitN(strings.TrimPrefix(embeddedTypeName, "*"), ".", 2)
 			if len(selParts) == 2 { // External package selector found
-				// pkgSelectorInAST := selParts[0] // e.g., "pkg"
-				// typeNameInExternalPkg := selParts[1] // e.g., "Type"
+				pkgSelectorInAST := selParts[0]    // e.g., "myexternalpkg"
+				typeNameInExternalPkg := selParts[1] // e.g., "ExternalEmbedded"
+				var externalPackageImportPath string
+				foundImport := false
 
-				// TODO (external-embed-todo): Implement handling for embedded structs from external packages.
-				// This will require:
-				//   1. Resolving the package selector (e.g., `pkg`) to a full import path using
-				//      `fileContainingOptionsStruct.Imports`.
-				//   2. Ensuring the ASTs for the external package are loaded/available in `parsedFiles`.
-				//      This might involve enhancing `parsedFiles` population or adding dynamic parsing logic
-				//      for missing packages.
-				//   3. Recursively calling AnalyzeOptionsV3 with the context of the external package:
-				//      `AnalyzeOptionsV3(fset, parsedFiles, typeNameInExternalPkg, resolvedExternalImportPath, baseDir)`
-				return nil, actualStructName, fmt.Errorf("analysis of embedded structs from external packages ('%s') is not yet implemented in V3. See TODO.", embeddedTypeName)
+				if fileContainingOptionsStruct == nil || fileContainingOptionsStruct.Imports == nil {
+					return nil, actualStructName, fmt.Errorf("internal error: fileContainingOptionsStruct or its imports are nil, cannot resolve external package for '%s'", embeddedTypeName)
+				}
+
+				for _, impSpec := range fileContainingOptionsStruct.Imports {
+					// impSpec.Path.Value is the quoted import path, e.g., "\"path/to/pkg\""
+					unquotedPath, uqErr := strconv.Unquote(impSpec.Path.Value)
+					if uqErr != nil {
+						// This might happen if the path is not properly quoted, though rare for valid Go code.
+						return nil, actualStructName, fmt.Errorf("error unquoting import path '%s' for embedded struct '%s': %w", impSpec.Path.Value, embeddedTypeName, uqErr)
+					}
+
+					if impSpec.Name != nil { // Aliased import: import customname "path/to/pkg"
+						if impSpec.Name.Name == pkgSelectorInAST {
+							externalPackageImportPath = unquotedPath
+							foundImport = true
+							break
+						}
+					} else { // Non-aliased import: import "path/to/pkg" or import . "path/to/pkg"
+						// We need to match pkgSelectorInAST against the actual package name.
+						// filepath.Base(unquotedPath) gives the last segment of the path, which is usually the package name.
+						// This is a common convention but not guaranteed if the package name is different from its directory name.
+						// For dot imports (impSpec.Name.Name == "."), pkgSelectorInAST would be part of typeNameInExternalPkg,
+						// but selParts splits by the first ".", so this case should be fine.
+						derivedPkgName := filepath.Base(unquotedPath)
+						if derivedPkgName == pkgSelectorInAST {
+							externalPackageImportPath = unquotedPath
+							foundImport = true
+							break
+						}
+					}
+				}
+
+				if !foundImport {
+					// Construct a list of available imports for better error messaging
+					var availableImports []string
+					for _, impSpec := range fileContainingOptionsStruct.Imports {
+						name := ""
+						if impSpec.Name != nil {
+							name = impSpec.Name.Name + " "
+						}
+						availableImports = append(availableImports, name+impSpec.Path.Value)
+					}
+					return nil, actualStructName, fmt.Errorf("could not resolve import for package selector '%s' used in embedded type '%s'. File: '%s'. Available imports: [%s]",
+						pkgSelectorInAST, embeddedTypeName, fset.Position(fileContainingOptionsStruct.Pos()).Filename, strings.Join(availableImports, ", "))
+				}
+
+				// Ensure ASTs for the external package are available
+				externalASTFiles, astsOk := parsedFiles[externalPackageImportPath]
+				if !astsOk {
+					// TODO: Future enhancement - attempt to dynamically load/parse externalPackageImportPath if not in parsedFiles.
+					// For now, strict check: ASTs must be pre-supplied.
+					return nil, actualStructName, fmt.Errorf("ASTs for external package '%s' (selected by '%s' for type '%s') were not found in the parsedFiles map. Dynamic loading is not yet implemented.", externalPackageImportPath, pkgSelectorInAST, embeddedTypeName)
+				}
+				if len(externalASTFiles) == 0 {
+					return nil, actualStructName, fmt.Errorf("no AST files were provided for external package '%s' (selected by '%s' for type '%s'), which is required for analyzing the embedded struct.", externalPackageImportPath, pkgSelectorInAST, embeddedTypeName)
+				}
+
+				// Recursively call AnalyzeOptionsV3 with the context of the external package
+				// Note: baseDir is passed along; it's assumed to be relevant for any potential further dynamic loading
+				// (though current step assumes all ASTs are in parsedFiles).
+				embeddedOptions, _, err = AnalyzeOptionsV3(fset, parsedFiles, typeNameInExternalPkg, externalPackageImportPath, baseDir)
+				if err != nil {
+					return nil, actualStructName, fmt.Errorf("error analyzing embedded struct '%s' from resolved external package '%s': %w", typeNameInExternalPkg, externalPackageImportPath, err)
+				}
 
 			} else { // Embedded struct from the same package
 				cleanEmbeddedTypeName := strings.TrimPrefix(embeddedTypeName, "*")
+				// Type checking for the current targetPackagePath has already been done at the beginning of this function call.
+				// The recursive call for the same package will re-perform type checking for that package's files, which is acceptable.
 				embeddedOptions, _, err = AnalyzeOptionsV3(fset, parsedFiles, cleanEmbeddedTypeName, targetPackagePath, baseDir)
 			}
 
-			if err != nil {
-				return nil, actualStructName, fmt.Errorf("error analyzing embedded struct '%s' (from type %s): %w", embeddedTypeName, targetPackagePath, err)
+			if err != nil { // This error is from the recursive call (either external or same-package)
+				// Error message now includes embeddedTypeName and the relevant package path (targetPackagePath or externalPackageImportPath)
+				// The specific error (e.g., struct not found, type checking error in recursion) will be wrapped.
+				return nil, actualStructName, fmt.Errorf("error analyzing embedded struct '%s': %w", embeddedTypeName, err)
 			}
 			extractedOptions = append(extractedOptions, embeddedOptions...)
 			continue
@@ -486,11 +549,36 @@ func AnalyzeOptionsV3(
 			TypeName:          astutils.ExprToTypeName(field.Type),
 			IsPointer:         astutils.IsPointerType(field.Type),
 			IsRequired:        !astutils.IsPointerType(field.Type),
-			IsTextUnmarshaler: false,
-			IsTextMarshaler:   false,
+			IsTextUnmarshaler: false, // Default, will be updated by type checking
+			IsTextMarshaler:   false, // Default, will be updated by type checking
 		}
 
-		// TODO: Implement type checking for TextUnmarshaler/Marshaler detection.
+		// Type checking for TextUnmarshaler/Marshaler
+		if field.Names[0] != nil { // Ensure it's not an embedded struct handled above
+			obj := info.Defs[field.Names[0]]
+			if obj != nil {
+				theType := obj.Type()
+				if theType != nil {
+					// Check for encoding.TextUnmarshaler
+					if types.Implements(theType, textUnmarshalerType) {
+						opt.IsTextUnmarshaler = true
+					}
+					if !opt.IsTextUnmarshaler && types.Implements(types.NewPointer(theType), textUnmarshalerType) {
+						// Check if pointer to the type implements the interface
+						opt.IsTextUnmarshaler = true
+					}
+
+					// Check for encoding.TextMarshaler
+					if types.Implements(theType, textMarshalerType) {
+						opt.IsTextMarshaler = true
+					}
+					if !opt.IsTextMarshaler && types.Implements(types.NewPointer(theType), textMarshalerType) {
+						// Check if pointer to the type implements the interface
+						opt.IsTextMarshaler = true
+					}
+				}
+			}
+		}
 
 		if field.Doc != nil {
 			opt.HelpText = strings.TrimSpace(field.Doc.Text())
