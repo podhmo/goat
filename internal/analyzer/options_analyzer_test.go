@@ -767,7 +767,6 @@ type ParentConfig struct {
 	fset, parsedPkgFiles, tempModRoot := helperV3_parseTestModulePackages(t, moduleName, packages)
 	t.Logf("Test module for TestAnalyzeOptionsV3_WithEmbeddedStructs_SamePackage created at: %s", tempModRoot)
 
-
 	targetPackagePath := moduleName // Since files are in the "root" of this conceptual module
 	options, structNameOut, err := AnalyzeOptionsV3(fset, parsedPkgFiles, "ParentConfig", targetPackagePath, "")
 	if err != nil {
