@@ -12,7 +12,7 @@ examples-emit:
 # format the code
 # need: go install golang.org/x/tools/cmd/goimports@latest
 format:
-	goimports -w $(shell find . -name '*.go' -not -path './vendor/*' -not -path './.git/*')
+	go tool goimports -w $(shell find . -name '*.go' -not -path './vendor/*' -not -path './.git/*')
 .PHONY: format
 
 test:
