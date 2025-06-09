@@ -44,12 +44,3 @@ The project employs a custom mechanism for loading Go package information, prima
 
 -   **Simplicity for Basic Utilities**:
     For some straightforward tasks, like finding a module root (`internal/loader.FindModuleRoot`) or loading individual files or all files in a known directory (`internal/loader.LoadFile`, `internal/loader.LoadPackageFiles`), direct use of `os` functions, `go/parser`, or a minimal invocation of `go/build` (for path resolution) is simpler and more direct than a full `go/packages` setup. The `AnalyzeOptionsV2` function in `options_analyzer.go` does use `go/packages` when full type information is required for its analysis, demonstrating its use where appropriate.
-
-## Future Considerations for `go/packages`
-
-While the current AST-centric and lazy-loading approach serves the project's needs, `go/packages` might be considered for more extensive use in the future if:
--   Analyzers evolve to require deep and comprehensive type checking (i.e., heavy reliance on `go/types.Info` and `go/types.Package` across multiple packages).
--   Handling complex Go build scenarios (e.g., intricate build tag combinations, cgo, overlays beyond simple AST maps) becomes a primary requirement.
--   The cost of maintaining the custom loading logic outweighs the benefits of its fine-grained control.
-
-The current strategy provides a balance between performance, control, and the specific requirements of the analysis tools.
