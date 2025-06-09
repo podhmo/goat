@@ -449,17 +449,22 @@ func AnalyzeOptionsV3(
 
 			selParts := strings.SplitN(strings.TrimPrefix(embeddedTypeName, "*"), ".", 2)
 			if len(selParts) == 2 { // External package selector found
-				// pkgSelectorInAST := selParts[0]
-				// typeNameInExternalPkg := selParts[1]
-				// TODO: Resolve pkgSelectorInAST to full import path using fileContainingOptionsStruct.Imports
-				// TODO: Then call AnalyzeOptionsV3 for the external package.
-				// Example: embeddedOptions, _, err = AnalyzeOptionsV3(fset, parsedFiles, typeNameInExternalPkg, resolvedExternalPath, baseDir)
-				return nil, actualStructName, fmt.Errorf("analysis of embedded structs from external packages ('%s') not yet implemented in V3", embeddedTypeName)
+				// pkgSelectorInAST := selParts[0] // e.g., "pkg"
+				// typeNameInExternalPkg := selParts[1] // e.g., "Type"
+
+				// TODO (external-embed-todo): Implement handling for embedded structs from external packages.
+				// This will require:
+				//   1. Resolving the package selector (e.g., `pkg`) to a full import path using
+				//      `fileContainingOptionsStruct.Imports`.
+				//   2. Ensuring the ASTs for the external package are loaded/available in `parsedFiles`.
+				//      This might involve enhancing `parsedFiles` population or adding dynamic parsing logic
+				//      for missing packages.
+				//   3. Recursively calling AnalyzeOptionsV3 with the context of the external package:
+				//      `AnalyzeOptionsV3(fset, parsedFiles, typeNameInExternalPkg, resolvedExternalImportPath, baseDir)`
+				return nil, actualStructName, fmt.Errorf("analysis of embedded structs from external packages ('%s') is not yet implemented in V3. See TODO.", embeddedTypeName)
 
 			} else { // Embedded struct from the same package
 				cleanEmbeddedTypeName := strings.TrimPrefix(embeddedTypeName, "*")
-				// TODO: Ensure astFilesForLookup are correctly passed for the same package recursion if needed,
-				//       or confirm if the current set is sufficient.
 				embeddedOptions, _, err = AnalyzeOptionsV3(fset, parsedFiles, cleanEmbeddedTypeName, targetPackagePath, baseDir)
 			}
 

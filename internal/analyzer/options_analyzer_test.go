@@ -731,45 +731,86 @@ func TestAnalyzeOptionsV3_WithEmbeddedStructs_SamePackage(t *testing.T) {
 	moduleName := "testembeddedv3" // This will be the package import path
 	content1 := `
 package main
-type EmbeddedConfig struct {
-	EmbeddedString string %s
-	EmbeddedInt *int %s
+
+type NestedConfig struct {
+	NestedField string ` + "`env:\"NESTED_FIELD_ENV\"`" + `
 }
+
+type EmbeddedConfig struct {
+	EmbeddedString string ` + "`env:\"EMBEDDED_STRING_ENV\"`" + `
+	EmbeddedInt    *int   ` + "`env:\"EMBEDDED_INT_ENV\"`" + `
+	NestedConfig          // Nested same-package embed
+}
+
+type PointedToEmbeddedConfig struct {
+	PointerField bool ` + "`env:\"POINTER_FIELD_ENV\"`" + `
+}
+
+type AnotherEmbeddedConfig struct {
+	AnotherOpt float64 ` + "`env:\"ANOTHER_OPT_ENV\"`" + `
+}
+
 type ParentConfig struct {
-	ParentField bool %s
-	EmbeddedConfig
-	AnotherField string
+	ParentField             bool ` + "`env:\"PARENT_FIELD_ENV\"`" + `
+	EmbeddedConfig          // Direct embed
+	*PointedToEmbeddedConfig // Pointer embed
+	AnotherEmbeddedConfig   // Second direct embed
+	FinalField              string ` + "`env:\"FINAL_FIELD_ENV\"`" + `
 }`
-	formattedContent1 := fmt.Sprintf(content1, "`env:\"EMBEDDED_STRING\"`", "`env:\"EMBEDDED_INT\"`", "`env:\"PARENT_FIELD\"`")
+	// No need for fmt.Sprintf if tags are directly in the string literal now.
 
 	packages := TestModulePackages{
-		".": {{Name: "config1.go", Content: formattedContent1}},
+		// Using moduleName as the key for the package files, as per helperV3_parseTestModulePackages convention
+		// when pkgImportPathSuffix is "." or empty.
+		".": {{Name: "config_embed.go", Content: content1}},
 	}
-	fset, parsedPkgFiles, _ := helperV3_parseTestModulePackages(t, moduleName, packages)
+	fset, parsedPkgFiles, tempModRoot := helperV3_parseTestModulePackages(t, moduleName, packages)
+	t.Logf("Test module for TestAnalyzeOptionsV3_WithEmbeddedStructs_SamePackage created at: %s", tempModRoot)
 
-	targetPackagePath := moduleName
+
+	targetPackagePath := moduleName // Since files are in the "root" of this conceptual module
 	options, structNameOut, err := AnalyzeOptionsV3(fset, parsedPkgFiles, "ParentConfig", targetPackagePath, "")
 	if err != nil {
-		t.Fatalf("AnalyzeOptionsV3 with same-package embedded structs failed: %v. Content:\n%s", err, formattedContent1)
+		t.Fatalf("AnalyzeOptionsV3 with same-package embedded structs failed: %v. Content:\n%s", err, content1)
 	}
 
 	expectedOptions := []*metadata.OptionMetadata{
-		{Name: "ParentField", CliName: "parent-field", TypeName: "bool", IsRequired: true, EnvVar: "PARENT_FIELD"},
-		{Name: "EmbeddedString", CliName: "embedded-string", TypeName: "string", IsRequired: true, EnvVar: "EMBEDDED_STRING"},
-		{Name: "EmbeddedInt", CliName: "embedded-int", TypeName: "*int", IsPointer: true, IsRequired: false, EnvVar: "EMBEDDED_INT"},
-		{Name: "AnotherField", CliName: "another-field", TypeName: "string", IsRequired: true},
+		// Fields from ParentConfig itself
+		{Name: "ParentField", CliName: "parent-field", TypeName: "bool", IsRequired: true, EnvVar: "PARENT_FIELD_ENV"},
+
+		// Fields from EmbeddedConfig (first direct embed)
+		{Name: "EmbeddedString", CliName: "embedded-string", TypeName: "string", IsRequired: true, EnvVar: "EMBEDDED_STRING_ENV"},
+		{Name: "EmbeddedInt", CliName: "embedded-int", TypeName: "*int", IsPointer: true, IsRequired: false, EnvVar: "EMBEDDED_INT_ENV"},
+		// Fields from NestedConfig (nested within EmbeddedConfig)
+		{Name: "NestedField", CliName: "nested-field", TypeName: "string", IsRequired: true, EnvVar: "NESTED_FIELD_ENV"},
+
+		// Fields from PointedToEmbeddedConfig (pointer embed)
+		{Name: "PointerField", CliName: "pointer-field", TypeName: "bool", IsRequired: true, EnvVar: "POINTER_FIELD_ENV"},
+
+		// Fields from AnotherEmbeddedConfig (second direct embed)
+		{Name: "AnotherOpt", CliName: "another-opt", TypeName: "float64", IsRequired: true, EnvVar: "ANOTHER_OPT_ENV"},
+
+		// Final field from ParentConfig
+		{Name: "FinalField", CliName: "final-field", TypeName: "string", IsRequired: true, EnvVar: "FINAL_FIELD_ENV"},
 	}
 	// Adjust IsTextUnmarshaler/IsTextMarshaler to false for all, as V3 doesn't support type info yet.
 	for _, opt := range expectedOptions {
 		opt.IsTextUnmarshaler = false
 		opt.IsTextMarshaler = false
+		// HelpText is not specified in the new structs, so it should be empty.
+		opt.HelpText = ""
 	}
 
 	if structNameOut != "ParentConfig" {
 		t.Errorf("Expected struct name 'ParentConfig', got '%s'", structNameOut)
 	}
 	if len(options) != len(expectedOptions) {
-		t.Fatalf("Expected %d options, got %d. Options: %+v", len(expectedOptions), len(options), options)
+		// For debugging: print out the options received
+		var receivedOptsStr strings.Builder
+		for i, opt := range options {
+			receivedOptsStr.WriteString(fmt.Sprintf("\n%d: %+v", i, opt))
+		}
+		t.Fatalf("Expected %d options, got %d. Options: %s", len(expectedOptions), len(options), receivedOptsStr.String())
 	}
 	for i, opt := range options {
 		expectedOpt := expectedOptions[i]
@@ -820,9 +861,9 @@ type MainConfig struct {
 		t.Fatalf("AnalyzeOptionsV3 should have failed for external package embedded struct due to current limitations")
 	}
 
-	// Check current V3 error: "analysis of embedded structs from external packages ('%s') not yet implemented in V3"
+	// Check current V3 error: "analysis of embedded structs from external packages ('%s') is not yet implemented in V3. See TODO."
 	// The type name in the error will be `extpkg.ExternalEmbedded`.
-	expectedErrorSubstring := "analysis of embedded structs from external packages ('extpkg.ExternalEmbedded') not yet implemented in V3"
+	expectedErrorSubstring := "analysis of embedded structs from external packages ('extpkg.ExternalEmbedded') is not yet implemented in V3. See TODO."
 	if !strings.Contains(err.Error(), expectedErrorSubstring) {
 		t.Errorf("Expected error message to contain '%s', but got: %v", expectedErrorSubstring, err)
 	}
