@@ -197,7 +197,8 @@ func main() { RunWithoutOptions(nil) }
 			}
 
 			// targetPackageID for Analyze should match the package declaration in the source.
-			cmdMeta, _, err := Analyze(fset, astFiles, tc.runFuncName, tc.packageName, moduleRootDir)
+			// Existing tests implicitly test V2 behavior.
+			cmdMeta, _, err := Analyze(fset, astFiles, tc.runFuncName, tc.packageName, moduleRootDir, 2)
 
 			// InitializerFunc is determined before AnalyzeOptionsV2 is called.
 			// So, we should be able to check it even if Analyze later returns an error from AnalyzeOptionsV2.
