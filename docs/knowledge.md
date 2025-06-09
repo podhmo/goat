@@ -28,3 +28,28 @@ This method provides a self-contained way to test:
 -   The loader's ability to handle package dependencies as defined within the test data, isolated from the broader project or system Go environment.
 
 This setup is crucial for detailed unit testing of package analysis and loading logic.
+
+# Package Loading Strategy
+
+The project employs a custom mechanism for loading Go package information, primarily centered around the `internal/loader/lazyload` package, rather than relying directly on `golang.org/x/tools/go/packages` for all loading tasks. This strategic choice is based on several factors:
+
+-   **Fine-grained Control and Lazy Evaluation**:
+    The `lazyload` system allows for a two-step loading process. Initially, it can use `go list -json` (via `lazyload.GoListLocator`) to gather minimal package metadata (like import paths, directory, file names, and direct imports). The full parsing of Go source files into ASTs and the resolution of further dependencies are deferred until a specific package's details are actually requested (e.g., by `Package.Files()` or `Package.ResolveImport()`). This lazy evaluation provides granular control over performance and resource usage, avoiding the upfront cost of processing an entire package graph if only partial information is needed.
+
+-   **AST-Centric Analysis**:
+    The primary consumers of package information, such as the analyzers in `internal/analyzer/` (e.g., `options_analyzer.go`), predominantly operate on Abstract Syntax Trees (ASTs). Once the relevant Go source files for a package are located, direct parsing using `go/parser` is often sufficient for their needs. Currently, these analyzers do not heavily rely on comprehensive type information from `go/types` (which `go/packages` excels at providing). The `AnalyzeOptionsV3` function, for example, is designed to work with pre-parsed ASTs and defers full type checking.
+
+-   **Decoupling of Concerns**:
+    The analyzers are generally designed to consume pre-parsed ASTs or specific metadata structures. This decouples the analysis logic from the concrete mechanism of how packages are discovered, loaded, and parsed. The `lazyload.PackageLoader` and its `lazyload.PackageLocator` interface allow for different strategies to find and initially describe packages, while the analyzers focus on the already-loaded code representation.
+
+-   **Simplicity for Basic Utilities**:
+    For some straightforward tasks, like finding a module root (`internal/loader.FindModuleRoot`) or loading individual files or all files in a known directory (`internal/loader.LoadFile`, `internal/loader.LoadPackageFiles`), direct use of `os` functions, `go/parser`, or a minimal invocation of `go/build` (for path resolution) is simpler and more direct than a full `go/packages` setup. The `AnalyzeOptionsV2` function in `options_analyzer.go` does use `go/packages` when full type information is required for its analysis, demonstrating its use where appropriate.
+
+## Future Considerations for `go/packages`
+
+While the current AST-centric and lazy-loading approach serves the project's needs, `go/packages` might be considered for more extensive use in the future if:
+-   Analyzers evolve to require deep and comprehensive type checking (i.e., heavy reliance on `go/types.Info` and `go/types.Package` across multiple packages).
+-   Handling complex Go build scenarios (e.g., intricate build tag combinations, cgo, overlays beyond simple AST maps) becomes a primary requirement.
+-   The cost of maintaining the custom loading logic outweighs the benefits of its fine-grained control.
+
+The current strategy provides a balance between performance, control, and the specific requirements of the analysis tools.
