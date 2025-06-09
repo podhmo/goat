@@ -357,3 +357,188 @@ func TestLazyLoading(t *testing.T) {
 		t.Errorf("another.go was not found in anotherpkg.parsedFiles. Found: %v", resolvedImport.parsedFiles)
 	}
 }
+
+func TestGetStructWithEmbeddedForeignStruct(t *testing.T) {
+	cfg := Config{
+		Context: BuildContext{},
+		Locator: testdataLocator,
+	}
+	loader := NewLoader(cfg)
+
+	// 1. Load the userpkg package
+	pkgs, err := loader.Load("example.com/embed_foreign_pkg_user")
+	if err != nil {
+		t.Fatalf("Failed to load package 'example.com/embed_foreign_pkg_user': %v", err)
+	}
+	if len(pkgs) != 1 {
+		t.Fatalf("Expected 1 package, got %d", len(pkgs))
+	}
+	userPkg := pkgs[0]
+	if userPkg.Name != "userpkg" {
+		t.Errorf("Expected package name 'userpkg', got '%s'", userPkg.Name)
+	}
+
+	// 2. Get the StructInfo for UserStruct
+	userStructInfo, err := userPkg.GetStruct("UserStruct")
+	if err != nil {
+		t.Fatalf("Failed to get struct 'UserStruct' from package '%s': %v", userPkg.Name, err)
+	}
+	if userStructInfo.Name != "UserStruct" {
+		t.Errorf("Expected struct name 'UserStruct', got '%s'", userStructInfo.Name)
+	}
+
+	// 3. Verify regular fields and find the embedded field
+	expectedRegularFields := map[string]struct {
+		typeName string
+		tag      string
+	}{
+		"Name":      {typeName: "string", tag: "`json:\"name\"`"},
+		"OwnField":  {typeName: "string", tag: "`json:\"own_field\"`"},
+		"AnotherID": {typeName: "int", tag: "`json:\"another_id\" custom_tag:\"custom_value\"`"},
+	}
+	var embeddedField *FieldInfo
+	regularFieldsFound := 0
+
+	for _, field := range userStructInfo.Fields {
+		if data, ok := expectedRegularFields[field.Name]; ok {
+			regularFieldsFound++
+			if ident, okType := field.TypeExpr.(*ast.Ident); !okType || ident.Name != data.typeName {
+				t.Errorf("Field %s: expected type %s, got %T (%v)", field.Name, data.typeName, field.TypeExpr, field.TypeExpr)
+			}
+			if field.Tag != data.tag {
+				t.Errorf("Field %s: expected tag '%s', got '%s'", field.Name, data.tag, field.Tag)
+			}
+		} else if field.Embedded {
+			if embeddedField != nil {
+				t.Fatalf("Found multiple embedded fields in UserStruct, expected only one (BaseStruct)")
+			}
+			embeddedField = &field
+		} else {
+			t.Errorf("Unexpected field '%s' in UserStruct", field.Name)
+		}
+	}
+
+	if regularFieldsFound != len(expectedRegularFields) {
+		t.Errorf("Expected %d regular fields, found %d", len(expectedRegularFields), regularFieldsFound)
+	}
+	if embeddedField == nil {
+		t.Fatalf("Did not find the embedded BaseStruct field in UserStruct")
+	}
+
+	// 4. Verify embedded BaseStruct field
+	selExpr, ok := embeddedField.TypeExpr.(*ast.SelectorExpr)
+	if !ok {
+		t.Fatalf("Embedded field's TypeExpr is not *ast.SelectorExpr, got %T", embeddedField.TypeExpr)
+	}
+	pkgAliasIdent, ok := selExpr.X.(*ast.Ident)
+	if !ok {
+		t.Fatalf("Embedded field's SelectorExpr.X is not *ast.Ident, got %T", selExpr.X)
+	}
+	embeddedPkgAlias := pkgAliasIdent.Name
+	if selExpr.Sel.Name != "BaseStruct" {
+		t.Errorf("Embedded field's type selector is not 'BaseStruct', got '%s'", selExpr.Sel.Name)
+	}
+
+	// 5. Determine the full import path for the package alias
+	// Need to parse the files of userPkg to inspect imports
+	userPkgFiles, err := userPkg.Files()
+	if err != nil {
+		t.Fatalf("Failed to get AST files for userPkg: %v", err)
+	}
+	var basePkgFullImportPath string
+	foundImport := false
+	for _, astFile := range userPkgFiles { // Should be only one, user.go
+		for _, importSpec := range astFile.Imports {
+			importPathValue := strings.Trim(importSpec.Path.Value, `"`)
+			var alias string
+			if importSpec.Name != nil {
+				alias = importSpec.Name.Name
+			} else {
+				// If no explicit alias, the package name is implicitly the alias.
+				// The testdataLocator should have set the correct package name for "example.com/embed_foreign_pkg_base"
+				// which is "basepkg". However, the embedded struct uses `embed_foreign_pkg_base.BaseStruct`.
+				// This means the import statement `import "example.com/embed_foreign_pkg_base"` implies
+				// that `embed_foreign_pkg_base` is the identifier used.
+				// This usually happens if the directory name is `embed_foreign_pkg_base`.
+				// Let's verify the package name from the locator.
+				// The problem statement implies `embed_foreign_pkg_base` is used as the selector.
+				// This means `selExpr.X` is `embed_foreign_pkg_base`.
+				// So we need to match `embeddedPkgAlias` (from selExpr.X) with the alias or the last part of the import path.
+				pathParts := strings.Split(importPathValue, "/")
+				if len(pathParts) > 0 {
+					alias = pathParts[len(pathParts)-1]
+				}
+			}
+
+			if alias == embeddedPkgAlias {
+				basePkgFullImportPath = importPathValue
+				foundImport = true
+				break
+			}
+		}
+		if foundImport {
+			break
+		}
+	}
+
+	if !foundImport {
+		t.Fatalf("Could not find import spec for alias '%s' in userpkg's files", embeddedPkgAlias)
+	}
+	expectedBaseImportPath := "example.com/embed_foreign_pkg_base"
+	if basePkgFullImportPath != expectedBaseImportPath {
+		t.Errorf("Expected full import path '%s' for alias '%s', got '%s'",
+			expectedBaseImportPath, embeddedPkgAlias, basePkgFullImportPath)
+	}
+
+	// 6. Resolve the imported package for BaseStruct
+	basePkg, err := userPkg.ResolveImport(basePkgFullImportPath)
+	if err != nil {
+		t.Fatalf("Failed to resolve import '%s' for BaseStruct: %v", basePkgFullImportPath, err)
+	}
+	if basePkg == nil {
+		t.Fatalf("Resolved package for '%s' is nil", basePkgFullImportPath)
+	}
+	if basePkg.ImportPath != expectedBaseImportPath {
+		t.Errorf("Resolved package import path is '%s', expected '%s'", basePkg.ImportPath, expectedBaseImportPath)
+	}
+	if basePkg.Name != "basepkg" { // As defined in base.go
+		t.Errorf("Resolved package name is '%s', expected 'basepkg'", basePkg.Name)
+	}
+
+	// 7. Get the StructInfo for BaseStruct from the resolved basepkg
+	baseStructInfo, err := basePkg.GetStruct("BaseStruct")
+	if err != nil {
+		t.Fatalf("Failed to get struct 'BaseStruct' from resolved package '%s': %v", basePkg.Name, err)
+	}
+	if baseStructInfo.Name != "BaseStruct" {
+		t.Errorf("Expected struct name 'BaseStruct' from resolved package, got '%s'", baseStructInfo.Name)
+	}
+
+	// 8. Verify fields of BaseStruct
+	expectedBaseFields := map[string]struct {
+		typeName string
+		tag      string
+	}{
+		"ID":      {typeName: "int", tag: "`json:\"id,omitempty\" xml:\"id,attr\"`"},
+		"Version": {typeName: "string", tag: "`json:\"version\" xml:\"version\"`"},
+	}
+	baseFieldsFound := 0
+	for _, field := range baseStructInfo.Fields {
+		if data, ok := expectedBaseFields[field.Name]; ok {
+			baseFieldsFound++
+			if ident, okType := field.TypeExpr.(*ast.Ident); !okType || ident.Name != data.typeName {
+				t.Errorf("BaseStruct field %s: expected type %s, got %T (%v)", field.Name, data.typeName, field.TypeExpr, field.TypeExpr)
+			}
+			if field.Tag != data.tag {
+				t.Errorf("BaseStruct field %s: expected tag '%s', got '%s'", field.Name, data.tag, field.Tag)
+			}
+		} else {
+			t.Errorf("Unexpected field '%s' in BaseStruct", field.Name)
+		}
+	}
+	if baseFieldsFound != len(expectedBaseFields) {
+		t.Errorf("Expected %d fields in BaseStruct, found %d", len(expectedBaseFields), baseFieldsFound)
+	}
+
+	t.Log("Successfully verified UserStruct with embedded foreign BaseStruct.")
+}
