@@ -354,3 +354,135 @@ func TestEmitSubcommand(t *testing.T) {
 		t.Errorf("Modified file content could not be parsed as Go: %v\nContent:\n%s", err, string(modifiedContent))
 	}
 }
+
+const textUnmarshalerAppContent = `
+package main
+
+import (
+	goat "testcmdmodule/internal/goat"
+	"time"
+)
+
+// Options holds the command-line options.
+type Options struct {
+	// MyTime is a time value that implements TextUnmarshaler.
+	MyTime time.Time ` + "`description:\"A time value\"`" + `
+	// AnotherField is just another field.
+	AnotherField string ` + "`description:\"Another field\" goat:\"default=hello\"`" + `
+}
+
+// NewOptions is the initializer for Options.
+func NewOptions() *Options {
+	return &Options{
+		MyTime:       goat.Default(time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)),
+		AnotherField: goat.Default("hello"),
+	}
+}
+
+// Run is the entry point for this test app.
+func Run(opts *Options) error {
+	// Logic for the command
+	return nil
+}
+
+func main() {
+	// This main is a placeholder, goat will replace it.
+}
+`
+
+func TestScanAnalyzerVersionDefaultsToV2(t *testing.T) {
+	tmpFile := setupTestAppWithGoMod(t, textUnmarshalerAppContent)
+
+	// Explicitly use -run and -initializer to match other tests, though defaults might work.
+	args := []string{"scan", "-run", "Run", "-initializer", "NewOptions", tmpFile} // Default, V2 expected
+	out := runMainWithArgs(t, args...)
+
+	var metadataOutput metadata.CommandMetadata
+	if err := json.Unmarshal([]byte(out), &metadataOutput); err != nil {
+		t.Fatalf("Failed to unmarshal JSON output: %v\nOutput was:\n%s", err, out)
+	}
+
+	if metadataOutput.Name != "testcmdmodule" {
+		t.Errorf("Expected metadata Name 'testcmdmodule', got %q", metadataOutput.Name)
+	}
+
+	var myTimeOption *metadata.OptionMetadata
+	for _, opt := range metadataOutput.Options {
+		if opt.Name == "MyTime" {
+			myTimeOption = opt
+			break
+		}
+	}
+
+	if myTimeOption == nil {
+		t.Fatalf("Option 'MyTime' not found in metadata output. Output:\n%s", out)
+	}
+
+	if !myTimeOption.IsTextUnmarshaler {
+		t.Errorf("Expected IsTextUnmarshaler to be true for MyTime with Analyzer V2 (default), got false. Option: %+v", myTimeOption)
+	}
+}
+
+func TestScanAnalyzerVersionExplicitV2(t *testing.T) {
+	tmpFile := setupTestAppWithGoMod(t, textUnmarshalerAppContent)
+
+	args := []string{"scan", "-run", "Run", "-initializer", "NewOptions", "-analyzer-version=2", tmpFile}
+	out := runMainWithArgs(t, args...)
+
+	var metadataOutput metadata.CommandMetadata
+	if err := json.Unmarshal([]byte(out), &metadataOutput); err != nil {
+		t.Fatalf("Failed to unmarshal JSON output: %v\nOutput was:\n%s", err, out)
+	}
+
+	if metadataOutput.Name != "testcmdmodule" {
+		t.Errorf("Expected metadata Name 'testcmdmodule', got %q", metadataOutput.Name)
+	}
+
+	var myTimeOption *metadata.OptionMetadata
+	for _, opt := range metadataOutput.Options {
+		if opt.Name == "MyTime" {
+			myTimeOption = opt
+			break
+		}
+	}
+
+	if myTimeOption == nil {
+		t.Fatalf("Option 'MyTime' not found in metadata output. Output:\n%s", out)
+	}
+
+	if !myTimeOption.IsTextUnmarshaler {
+		t.Errorf("Expected IsTextUnmarshaler to be true for MyTime with Analyzer V2 (explicit), got false. Option: %+v", myTimeOption)
+	}
+}
+
+func TestScanAnalyzerVersionV3(t *testing.T) {
+	tmpFile := setupTestAppWithGoMod(t, textUnmarshalerAppContent)
+
+	args := []string{"scan", "-run", "Run", "-initializer", "NewOptions", "-analyzer-version=3", tmpFile}
+	out := runMainWithArgs(t, args...)
+
+	var metadataOutput metadata.CommandMetadata
+	if err := json.Unmarshal([]byte(out), &metadataOutput); err != nil {
+		t.Fatalf("Failed to unmarshal JSON output: %v\nOutput was:\n%s", err, out)
+	}
+
+	if metadataOutput.Name != "testcmdmodule" {
+		t.Errorf("Expected metadata Name 'testcmdmodule', got %q", metadataOutput.Name)
+	}
+
+	var myTimeOption *metadata.OptionMetadata
+	for _, opt := range metadataOutput.Options {
+		if opt.Name == "MyTime" {
+			myTimeOption = opt
+			break
+		}
+	}
+
+	if myTimeOption == nil {
+		t.Fatalf("Option 'MyTime' not found in metadata output. Output:\n%s", out)
+	}
+
+	if myTimeOption.IsTextUnmarshaler { // V3 currently doesn't set this
+		t.Errorf("Expected IsTextUnmarshaler to be false for MyTime with Analyzer V3, got true. Option: %+v", myTimeOption)
+	}
+}

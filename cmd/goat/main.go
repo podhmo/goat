@@ -26,6 +26,7 @@ type Options struct {
 	RunFuncName            string // Name of the target 'run' function (e.g., "run")
 	OptionsInitializerName string // Name of the options initializer function (e.g., "NewOptions")
 	TargetFile             string // Path to the target Go file to be processed
+	AnalyzerVersion        int    // Version of the analyzer to use (2 or 3)
 }
 
 func main() {
@@ -50,9 +51,11 @@ func main() {
 		var (
 			runFuncName            string
 			optionsInitializerName string
+			analyzerVersion        int
 		)
 		emitCmd.StringVar(&runFuncName, "run", "run", "Name of the function to be treated as the entrypoint")
 		emitCmd.StringVar(&optionsInitializerName, "initializer", "", "Name of the function that initializes the options struct")
+		emitCmd.IntVar(&analyzerVersion, "analyzer-version", 2, "Version of the analyzer to use (2 or 3)")
 		// Add usage for emitCmd
 		emitCmd.Usage = func() {
 			fmt.Fprintf(os.Stderr, "Usage: goat emit [options] <target_gofile.go>\n\nOptions:\n")
@@ -71,6 +74,7 @@ func main() {
 			RunFuncName:            runFuncName,
 			OptionsInitializerName: optionsInitializerName,
 			TargetFile:             targetFilename,
+			AnalyzerVersion:        analyzerVersion,
 		}
 		if err := runGoat(opts); err != nil {
 			slog.Error("Error running goat (emit)", "error", err)
@@ -82,9 +86,11 @@ func main() {
 		var (
 			runFuncName            string
 			optionsInitializerName string
+			analyzerVersion        int
 		)
 		helpMessageCmd.StringVar(&runFuncName, "run", "run", "Name of the function to be treated as the entrypoint")
 		helpMessageCmd.StringVar(&optionsInitializerName, "initializer", "", "Name of the function that initializes the options struct")
+		helpMessageCmd.IntVar(&analyzerVersion, "analyzer-version", 2, "Version of the analyzer to use (2 or 3)")
 
 		helpMessageCmd.Usage = func() {
 			fmt.Fprintf(os.Stderr, "Usage: goat help-message [options] <target_gofile.go>\n\nOptions:\n")
@@ -103,6 +109,7 @@ func main() {
 			RunFuncName:            runFuncName,
 			OptionsInitializerName: optionsInitializerName,
 			TargetFile:             targetFilename,
+			AnalyzerVersion:        analyzerVersion,
 		}
 
 		fset := token.NewFileSet()
@@ -120,9 +127,11 @@ func main() {
 		var (
 			runFuncName            string
 			optionsInitializerName string
+			analyzerVersion        int
 		)
 		scanCmd.StringVar(&runFuncName, "run", "run", "Name of the function to be treated as the entrypoint")
 		scanCmd.StringVar(&optionsInitializerName, "initializer", "", "Name of the function that initializes the options struct")
+		scanCmd.IntVar(&analyzerVersion, "analyzer-version", 2, "Version of the analyzer to use (2 or 3)")
 
 		scanCmd.Usage = func() {
 			fmt.Fprintf(os.Stderr, "Usage: goat scan [options] <target_gofile.go>\n\nOptions:\n")
@@ -141,6 +150,7 @@ func main() {
 			RunFuncName:            runFuncName,
 			OptionsInitializerName: optionsInitializerName,
 			TargetFile:             targetFilename,
+			AnalyzerVersion:        analyzerVersion,
 		}
 
 		fset := token.NewFileSet()
@@ -290,7 +300,7 @@ func scanMain(fset *token.FileSet, opts *Options) (*metadata.CommandMetadata, *a
 	// If moduleName is empty and targetPackageID is ".", it implies a simple dir-based package.
 	// currentPackageName (the Go `package foo` name) is used by AnalyzeOptionsV2 for struct lookup within the package.
 
-	cmdMetadata, returnedOptionsStructName, err := analyzer.Analyze(fset, finalFilesForAnalysis, opts.RunFuncName, targetPackageID, moduleRootPath)
+	cmdMetadata, returnedOptionsStructName, err := analyzer.Analyze(fset, finalFilesForAnalysis, opts.RunFuncName, targetPackageID, moduleRootPath, opts.AnalyzerVersion)
 	if err != nil {
 		return nil, targetFileAst, fmt.Errorf("failed to analyze AST (targetPkgID: %s, modRoot: %s): %w", targetPackageID, moduleRootPath, err)
 	}
