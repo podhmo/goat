@@ -1,6 +1,6 @@
 # v3 Migration: Technical Architecture and Development Guide
 
-## 1. v3アーキテクチャ概要 (v3 Architecture Overview)
+## 1. v3 Architecture Overview
 
 The v3 release introduces significant architectural changes primarily aimed at improving performance and reducing memory consumption compared to v2. The core design goals are to enable faster analysis of large Go projects and to minimize the memory footprint, especially during complex analysis tasks.
 
@@ -17,7 +17,7 @@ To achieve these objectives, v3 incorporates several key technical decisions:
 
 These foundational changes necessitate a different approach to how package information is accessed and utilized within the analysis tools built on this library.
 
-## 2. パッケージローダー設計 (v3) (Package Loader Design (v3))
+## 2. Package Loader Design (v3)
 
 The custom package loader in v3 is a cornerstone of its performance improvements and reduced memory footprint, replacing the broader approach of `go/packages` with a more targeted and efficient system. This section details its design, drawing from what was previously "Appendix A."
 
@@ -50,7 +50,7 @@ The custom package loader in v3 is a cornerstone of its performance improvements
     *   **Advantages of v3 Loader:** Performance (speed and memory), flexibility in defining scope of analysis.
     *   **Challenges of v3 Loader:** Requires the analysis engine to be tolerant of incomplete type information for some parts of the program. Heuristics may be needed where full type resolution was previously relied upon.
 
-## 3. アナライザー設計 (v3) (Analyzer Design (v3))
+## 3. Analyzer Design (v3)
 
 Given v3's package loader design, which emphasizes lazy loading and potentially limited type information for indirect dependencies, the analysis engine (`AnalyzeOptionsV3` or similar configuration structures guiding it) must adopt specific strategies. This section outlines these strategies, incorporating and expanding on "Appendix B."
 
