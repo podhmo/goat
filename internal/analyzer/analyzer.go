@@ -16,7 +16,8 @@ import (
 // - runFuncName: Name of the main run function.
 // - targetPackageID: Import path of the package containing the runFuncName (e.g., "testmodule/example.com/mainpkg").
 // - moduleRootPath: Absolute path to the root of the module this package belongs to.
-func Analyze(fset *token.FileSet, files []*ast.File, runFuncName string, targetPackageID string, moduleRootPath string) (*metadata.CommandMetadata, string, error) {
+// - analyzerVersion: Version of the analyzer to use (2 or 3).
+func Analyze(fset *token.FileSet, files []*ast.File, runFuncName string, targetPackageID string, moduleRootPath string, analyzerVersion int) (*metadata.CommandMetadata, string, error) {
 	cmdMeta := &metadata.CommandMetadata{
 		Options: []*metadata.OptionMetadata{},
 	}
@@ -102,12 +103,24 @@ func Analyze(fset *token.FileSet, files []*ast.File, runFuncName string, targetP
 	}
 
 	if runFuncInfo.OptionsArgName != "" && runFuncInfo.OptionsArgType != "" {
-		// optionsTypeName is the simple name of the type, e.g. "Options" or "*Options"
-		// targetPackageID is the import path of the package where this type is defined.
-		// moduleRootPath is the filesystem root of the module containing this package.
-		options, foundOptionsStructName, err := AnalyzeOptionsV2(fset, files, runFuncInfo.OptionsArgType, targetPackageID, moduleRootPath)
+		var options []*metadata.OptionMetadata
+		var foundOptionsStructName string
+		// err is already declared in the function scope from AnalyzeRunFunc, reuse it.
+
+		if analyzerVersion == 3 {
+			slog.Debug("Goat: Using AnalyzerV3", "targetPackageID", targetPackageID, "moduleRootPath", moduleRootPath)
+			// AnalyzeOptionsV3 expects parsedFiles map[string][]*ast.File.
+			// A simple approach for now is to assume all files belong to targetPackageID.
+			parsedFiles := map[string][]*ast.File{targetPackageID: files}
+			options, foundOptionsStructName, err = AnalyzeOptionsV3(fset, parsedFiles, runFuncInfo.OptionsArgType, targetPackageID, moduleRootPath)
+		} else { // Default to V2 (analyzerVersion == 2 or any other value)
+			slog.Debug("Goat: Using AnalyzerV2 (default)", "targetPackageID", targetPackageID, "moduleRootPath", moduleRootPath)
+			options, foundOptionsStructName, err = AnalyzeOptionsV2(fset, files, runFuncInfo.OptionsArgType, targetPackageID, moduleRootPath)
+		}
+
 		if err != nil {
-			return nil, "", fmt.Errorf("analyzing options struct for run function '%s' in package '%s': %w", runFuncName, targetPackageID, err)
+			// Include analyzerVersion in the error message for better debugging
+			return nil, "", fmt.Errorf("analyzing options struct for run function '%s' in package '%s' (analyzer version %d): %w", runFuncName, targetPackageID, analyzerVersion, err)
 		}
 		cmdMeta.Options = options
 		optionsStructName = foundOptionsStructName // Assign to the variable that will be returned
