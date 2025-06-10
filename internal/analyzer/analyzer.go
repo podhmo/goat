@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"strings" // Added import
 
+	"github.com/podhmo/goat/internal/loader/lazyload" // Added import for lazyload.Config
 	"github.com/podhmo/goat/internal/metadata"
 )
 
@@ -111,7 +112,12 @@ func Analyze(fset *token.FileSet, files []*ast.File, runFuncName string, targetP
 			slog.Debug("Goat: Using AnalyzerV3", "targetPackageID", targetPackageID, "moduleRootPath", moduleRootPath)
 			// AnalyzeOptionsV3 uses the lazyload package for dynamic parsing and type analysis.
 			// It no longer requires a map of pre-parsed AST files.
-			options, foundOptionsStructName, err = AnalyzeOptionsV3(fset, runFuncInfo.OptionsArgType, targetPackageID, moduleRootPath)
+			// Production code uses default lazyload config. Tests can inject a different one.
+			defaultLLCfg := lazyload.Config{
+				Fset: fset,
+				// No custom LocatorFactory means it uses the default (go list based).
+			}
+			options, foundOptionsStructName, err = AnalyzeOptionsV3(fset, runFuncInfo.OptionsArgType, targetPackageID, moduleRootPath, &defaultLLCfg)
 		} else { // Default to V2 (analyzerVersion == 2 or any other value)
 			slog.Debug("Goat: Using AnalyzerV2 (default)", "targetPackageID", targetPackageID, "moduleRootPath", moduleRootPath)
 			options, foundOptionsStructName, err = AnalyzeOptionsV2(fset, files, runFuncInfo.OptionsArgType, targetPackageID, moduleRootPath)

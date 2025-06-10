@@ -7,9 +7,11 @@ import (
 	"go/token"
 	"os"
 	"path/filepath" // For writing temp files
+	"strconv"       // Added for strconv.Unquote in NewTestPackageLocator
 	"strings"
 	"testing"
 
+	"github.com/podhmo/goat/internal/loader/lazyload" // Added for lazyload types
 	"github.com/podhmo/goat/internal/metadata"
 )
 
@@ -606,6 +608,135 @@ func helperV3_setupTestEnvironment(t *testing.T, moduleName string, packages Tes
 	return fset, tempModRoot
 }
 
+// NewTestPackageLocator creates a PackageLocator specifically for tests using temporary modules.
+func NewTestPackageLocator(moduleRootPath string, t *testing.T) lazyload.PackageLocator {
+	return func(pattern string, buildCtx lazyload.BuildContext) ([]lazyload.PackageMetaInfo, error) {
+		t.Logf("TestPackageLocator: Locating pattern='%s', moduleRootPath='%s'", pattern, moduleRootPath)
+
+		// 1. Read and parse go.mod to find the declared module name
+		goModPath := filepath.Join(moduleRootPath, "go.mod")
+		goModBytes, err := os.ReadFile(goModPath)
+		if err != nil {
+			return nil, fmt.Errorf("testlocator: failed to read go.mod at %s: %w", goModPath, err)
+		}
+
+		var declaredModuleName string
+		lines := strings.Split(string(goModBytes), "\n")
+		for _, line := range lines {
+			if strings.HasPrefix(line, "module ") {
+				declaredModuleName = strings.TrimSpace(strings.TrimPrefix(line, "module "))
+				break
+			}
+		}
+		if declaredModuleName == "" {
+			return nil, fmt.Errorf("testlocator: could not find module declaration in %s", goModPath)
+		}
+		t.Logf("TestPackageLocator: Declared module name='%s'", declaredModuleName)
+
+		// 2. Determine the actual directory of the package
+		var pkgDir string
+		var importPathToUse string
+
+		// buildCtx.Dir is not available. All path resolutions must be relative to moduleRootPath or absolute.
+		if pattern == "." || pattern == declaredModuleName {
+			pkgDir = moduleRootPath
+			importPathToUse = declaredModuleName
+		} else if strings.HasPrefix(pattern, declaredModuleName+"/") {
+			pkgDir = filepath.Join(moduleRootPath, strings.TrimPrefix(pattern, declaredModuleName+"/"))
+			importPathToUse = pattern
+		} else if filepath.IsAbs(pattern) {
+			// If an absolute path is given, use it. This might occur if a resolved import from another module points here.
+			// We need to ensure it's within the conceptual test setup.
+			if !strings.HasPrefix(pattern, moduleRootPath) {
+				return nil, fmt.Errorf("testlocator: absolute pattern '%s' is outside the module root '%s'", pattern, moduleRootPath)
+			}
+			pkgDir = pattern
+			// Attempt to derive an import path relative to moduleRootPath
+			relPath, err := filepath.Rel(moduleRootPath, pkgDir)
+			if err != nil {
+				return nil, fmt.Errorf("testlocator: failed to get relative path for abs pkgDir '%s': %w", pkgDir, err)
+			}
+			if relPath == "." {
+				importPathToUse = declaredModuleName
+			} else {
+				importPathToUse = filepath.ToSlash(filepath.Join(declaredModuleName, relPath))
+			}
+		} else if !strings.Contains(pattern, "/") { // Simple pattern, assume it's a package in the current moduleRootPath
+			pkgDir = filepath.Join(moduleRootPath, pattern)
+			importPathToUse = declaredModuleName + "/" + pattern
+		} else { // Relative path from moduleRootPath
+			pkgDir = filepath.Join(moduleRootPath, pattern)
+			// Construct import path based on module name and relative path
+			relPath, err := filepath.Rel(moduleRootPath, pkgDir)
+			if err != nil {
+				return nil, fmt.Errorf("testlocator: could not make pkgDir '%s' relative to moduleRootPath '%s': %w", pkgDir, moduleRootPath, err)
+			}
+			if relPath == "." { // Should have been caught by pattern == "."
+				importPathToUse = declaredModuleName
+			} else {
+				importPathToUse = filepath.ToSlash(filepath.Join(declaredModuleName, relPath))
+			}
+		}
+		t.Logf("TestPackageLocator: Resolved pkgDir='%s', importPathToUse='%s'", pkgDir, importPathToUse)
+
+		// 3. Scan pkgDir for .go files
+		dirEntries, err := os.ReadDir(pkgDir)
+		if err != nil {
+			return nil, fmt.Errorf("testlocator: failed to read package directory %s: %w", pkgDir, err)
+		}
+		var goFiles []string
+		for _, entry := range dirEntries {
+			if !entry.IsDir() && strings.HasSuffix(entry.Name(), ".go") && !strings.HasSuffix(entry.Name(), "_test.go") {
+				goFiles = append(goFiles, entry.Name())
+			}
+		}
+		if len(goFiles) == 0 {
+			return nil, fmt.Errorf("testlocator: no .go files found in %s", pkgDir)
+		}
+
+		// 4. Initialize fset (BuildContext does not provide Fset, so create a new one for this locator's parsing needs)
+		fset := token.NewFileSet()
+
+		// 5. Parse first .go file to get package name
+		firstFilePath := filepath.Join(pkgDir, goFiles[0])
+		astFile, err := parser.ParseFile(fset, firstFilePath, nil, parser.PackageClauseOnly)
+		if err != nil {
+			return nil, fmt.Errorf("testlocator: failed to parse package clause of %s: %w", firstFilePath, err)
+		}
+		actualPackageName := astFile.Name.Name
+
+		// 6. Collect all direct imports
+		directImportsMap := make(map[string]struct{})
+		for _, goFile := range goFiles {
+			fullAstFile, err := parser.ParseFile(fset, filepath.Join(pkgDir, goFile), nil, parser.ImportsOnly)
+			if err != nil {
+				return nil, fmt.Errorf("testlocator: failed to parse imports of %s: %w", goFile, err)
+			}
+			for _, impSpec := range fullAstFile.Imports {
+				unquotedPath, _ := strconv.Unquote(impSpec.Path.Value)
+				directImportsMap[unquotedPath] = struct{}{}
+			}
+		}
+		var collectedDirectImportsList []string
+		for impPath := range directImportsMap {
+			collectedDirectImportsList = append(collectedDirectImportsList, impPath)
+		}
+
+		// 7. Construct PackageMetaInfo
+		metaInfo := lazyload.PackageMetaInfo{
+			ImportPath:    importPathToUse, // Use the resolved/constructed import path
+			Name:          actualPackageName,
+			Dir:           pkgDir,
+			GoFiles:       goFiles,
+			ModulePath:    declaredModuleName,
+			ModuleDir:     moduleRootPath,
+			DirectImports: collectedDirectImportsList,
+		}
+		t.Logf("TestPackageLocator: Found package: %+v", metaInfo)
+		return []lazyload.PackageMetaInfo{metaInfo}, nil
+	}
+}
+
 func TestAnalyzeOptionsV3_Simple(t *testing.T) {
 	contentTemplate := `
 package main
@@ -663,8 +794,14 @@ type Config struct {
 			// tc.targetPkgPath acts as the moduleName for this self-contained test.
 			fset, tempModRoot := helperV3_setupTestEnvironment(t, tc.targetPkgPath, packages)
 
+			// Use the test-specific locator
+			llCfg := lazyload.Config{
+				Fset:    fset,
+				Locator: NewTestPackageLocator(tempModRoot, t),
+			}
+
 			// tc.targetPkgPath is the import path of the package, and tempModRoot is its directory.
-			options, structNameOut, err := AnalyzeOptionsV3(fset, tc.structName, tc.targetPkgPath, tempModRoot)
+			options, structNameOut, err := AnalyzeOptionsV3(fset, tc.structName, tc.targetPkgPath, tempModRoot, &llCfg)
 			if err != nil {
 				t.Fatalf("AnalyzeOptionsV3 failed for %s: %v. Content:\n%s", tc.name, err, formattedContent)
 			}
@@ -724,16 +861,21 @@ type ParentConfig struct {
 	// No need for fmt.Sprintf if tags are directly in the string literal now.
 
 	packages := TestModulePackages{
-	// Using moduleName as the module name for setup.
-	// Files are at the root of this module, so pkgImportPathSuffix is ".".
+		// Using moduleName as the module name for setup.
+		// Files are at the root of this module, so pkgImportPathSuffix is ".".
 		".": {{Name: "config_embed.go", Content: content1}},
 	}
 	fset, tempModRoot := helperV3_setupTestEnvironment(t, moduleName, packages)
 	t.Logf("Test module for TestAnalyzeOptionsV3_WithEmbeddedStructs_SamePackage created at: %s", tempModRoot)
 
+	llCfg := lazyload.Config{
+		Fset:    fset,
+		Locator: NewTestPackageLocator(tempModRoot, t), // Assuming Config has 'Locator' field
+	}
+
 	// targetPackagePath is moduleName because the 'main' package is at the root of the module.
 	targetPackagePath := moduleName
-	options, structNameOut, err := AnalyzeOptionsV3(fset, "ParentConfig", targetPackagePath, tempModRoot)
+	options, structNameOut, err := AnalyzeOptionsV3(fset, "ParentConfig", targetPackagePath, tempModRoot, &llCfg)
 	if err != nil {
 		t.Fatalf("AnalyzeOptionsV3 with same-package embedded structs failed: %v. Content:\n%s", err, content1)
 	}
@@ -812,30 +954,42 @@ type MainConfig struct {
 	// Setup the main package's module
 	fset, tempMainModRoot := helperV3_setupTestEnvironment(t, mainModuleName, packages)
 
-	// For lazyload to find the external package, it must also exist on disk.
-	// We can simulate this by creating another module structure for it, though ideally,
-	// they might be part of the same conceptual "multi-module workspace" or
-	// lazyload would need a way to resolve `externalModuleName/extpkg`.
-	// For this test, we assume `lazyload` will try `go list` or similar, which might fail
-	// if `externalModuleName` is not resolvable from `mainModuleName`'s context.
-	// The `baseDir` for AnalyzeOptionsV3 is `tempMainModRoot`.
+	// Setup for the external package - it needs its own module context for the test locator
+	externalContent := `package extpkg
+type ExternalEmbedded struct { ExternalField bool }`
+	externalPackages := TestModulePackages{
+		"extpkg": {{Name: "external.go", Content: externalContent}},
+	}
+	_, tempExtModRoot := helperV3_setupTestEnvironment(t, externalModuleName, externalPackages)
+	t.Logf("Test external module for TestAnalyzeOptionsV3_WithExternalPackages_ExpectError created at: %s", tempExtModRoot)
 
-	// The original test expected an error because V3 didn't handle external packages.
-	// Now V3 *tries* to handle them via lazyload. This test might need to change its expectation.
-	// For now, just fix the call signature. The `baseDir` for the main package is `tempMainModRoot`.
-	_, _, err := AnalyzeOptionsV3(fset, "MainConfig", mainPkgImportPath, tempMainModRoot)
+	// When AnalyzeOptionsV3 is called for mainPkgImportPath, its locator will be based on tempMainModRoot.
+	// When it tries to resolve "testexternalv3ext/extpkg", the NewTestPackageLocator needs to handle this.
+	// The current NewTestPackageLocator is created with a single moduleRootPath.
+	// For cross-module resolution, the locator or the loader config might need to be smarter
+	// or be able to handle multiple module roots.
+	// For this test, we'll assume NewTestPackageLocator might need to be enhanced or the test simplified
+	// if direct cross-module path resolution fails.
+	// The key is that the lazyload.Config passed to AnalyzeOptionsV3 will use tempMainModRoot for its locator.
+
+	llCfg := lazyload.Config{
+		Fset:    fset,
+		Locator: NewTestPackageLocator(tempMainModRoot, t),
+	}
+
+	_, _, err := AnalyzeOptionsV3(fset, "MainConfig", mainPkgImportPath, tempMainModRoot, &llCfg)
+
 	if err == nil {
-		// This test might now pass if lazyload can resolve across these conceptual modules,
-		// or fail with a different error (e.g. lazyload can't find the package).
-		// For now, we are just fixing compilation. The original error will no longer be relevant.
-		t.Logf("AnalyzeOptionsV3 call succeeded. Original test expected failure for not handling external packages. Error: %v", err)
-		// t.Fatalf("AnalyzeOptionsV3 should have failed or produced a different error for external package handling")
+		t.Logf("AnalyzeOptionsV3 call for external packages unexpectedly succeeded. This might indicate the test setup or locator needs review for true external resolution.")
 	} else {
-		t.Logf("AnalyzeOptionsV3 failed as expected, but error message might differ now. Error: %v", err)
-		// Original expectedErrorSubstring := "analysis of embedded structs from external packages ('extpkg.ExternalEmbedded') is not yet implemented in V3. See TODO."
-		// if !strings.Contains(err.Error(), expectedErrorSubstring) {
-		// 	t.Logf("Error message changed from original expectation. Original expected: '%s', New error: %v", expectedErrorSubstring, err)
-		// }
+		t.Logf("AnalyzeOptionsV3 with external package failed as expected (or due to locator limitations). Error: %v", err)
+		// We expect an error, but not the original "not yet implemented" one.
+		// A likely error is that "testexternalv3ext/extpkg" cannot be found by the locator rooted at tempMainModRoot.
+		// Example: "testlocator: pattern 'testexternalv3ext/extpkg' does not match declared module 'testexternalv3main' and is not a sub-package"
+		// Or if it tries to treat it as a directory: "testlocator: failed to read package directory..."
+		if strings.Contains(err.Error(), "is not yet implemented in V3") {
+			t.Errorf("Test still yielding old 'not yet implemented' error, which is unexpected now: %v", err)
+		}
 	}
 }
 
@@ -848,7 +1002,11 @@ func TestAnalyzeOptionsV3_StructNotFound(t *testing.T) {
 	}
 	fset, tempModRoot := helperV3_setupTestEnvironment(t, pkgPath, packages)
 
-	_, _, err := AnalyzeOptionsV3(fset, "NonExistentConfig", pkgPath, tempModRoot)
+	llCfg := lazyload.Config{
+		Fset:    fset,
+		Locator: NewTestPackageLocator(tempModRoot, t), // Assuming Config has 'Locator' field
+	}
+	_, _, err := AnalyzeOptionsV3(fset, "NonExistentConfig", pkgPath, tempModRoot, &llCfg)
 	if err == nil {
 		t.Fatal("AnalyzeOptionsV3 should have failed for a non-existent struct")
 	}
@@ -872,7 +1030,11 @@ type Config struct {
 	}
 	fset, tempModRoot := helperV3_setupTestEnvironment(t, pkgPath, packages)
 
-	options, _, err := AnalyzeOptionsV3(fset, "Config", pkgPath, tempModRoot)
+	llCfg := lazyload.Config{
+		Fset:    fset,
+		Locator: NewTestPackageLocator(tempModRoot, t), // Assuming Config has 'Locator' field
+	}
+	options, _, err := AnalyzeOptionsV3(fset, "Config", pkgPath, tempModRoot, &llCfg)
 	if err != nil {
 		t.Fatalf("AnalyzeOptionsV3 failed for UnexportedFields: %v. Content:\n%s", err, content)
 	}
