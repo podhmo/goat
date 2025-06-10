@@ -1,6 +1,6 @@
 # Go Lazy Package Loader
 
-`lazyload` is a Go library designed to inspect Go source code, similar to `go/packages`, but with a focus on **lazy loading** of package information and ASTs. This approach can be beneficial for tools that only need to inspect a small subset of a large codebase or want to minimize initial loading time.
+`loader` is a Go library designed to inspect Go source code, similar to `go/packages`, but with a focus on **lazy loading** of package information and ASTs. This approach can be beneficial for tools that only need to inspect a small subset of a large codebase or want to minimize initial loading time.
 
 **Core Principles:**
 
@@ -27,17 +27,17 @@ import (
 	"fmt"
 	"log"
 
-	"example.com/path/to/lazyload" // Replace with your actual import path
+	"example.com/path/to/loader" // Replace with your actual import path
 )
 
 func main() {
-	cfg := lazyload.Config{
-		Context: lazyload.BuildContext{ /* ... configure GOOS, GOARCH, BuildTags if needed ... */ },
+	cfg := loader.Config{
+		Context: loader.BuildContext{ /* ... configure GOOS, GOARCH, BuildTags if needed ... */ },
 	}
-	loader := lazyload.NewLoader(cfg)
+	loaderInst := loader.New(cfg) // Renamed variable for clarity if 'loader' is package name
 
 	// Load initial packages (metadata only at this stage)
-	pkgs, err := loader.Load("./...") // Load all packages in the current module
+	pkgs, err := loaderInst.Load("./...") // Load all packages in the current module
 	if err != nil {
 		log.Fatalf("Failed to load packages: %v", err)
 	}
@@ -104,10 +104,10 @@ By default, the loader uses `go list -json` to find packages. You can provide a 
 
 ```go
 // Example of a custom locator (simplified)
-func myCustomLocator(pattern string, buildCtx lazyload.BuildContext) ([]lazyload.PackageMetaInfo, error) {
+func myCustomLocator(pattern string, buildCtx loader.BuildContext) ([]loader.PackageMetaInfo, error) {
     // ... your logic to find packages and their files ...
     // This might involve reading custom build files, querying a proprietary system, etc.
-    return []lazyload.PackageMetaInfo{
+    return []loader.PackageMetaInfo{
         {
             ImportPath: "custom/pkg/foo",
             Name: "foo",
@@ -120,7 +120,7 @@ func myCustomLocator(pattern string, buildCtx lazyload.BuildContext) ([]lazyload
 
 // ... in main
 // cfg.Locator = myCustomLocator
-// loader := lazyload.NewLoader(cfg)
+// loaderInst := loader.New(cfg) // Renamed variable
 ```
 
 ## How Lazy Resolution Works
@@ -128,7 +128,7 @@ func myCustomLocator(pattern string, buildCtx lazyload.BuildContext) ([]lazyload
 1.  **`loader.Load(pattern)`**:
     *   The `PackageLocator` (e.g., `GoListLocator`) is called to find packages matching the `pattern`.
     *   For each found package, it gathers metadata like import path, directory, and list of `.go` files (`PackageMetaInfo`).
-    *   A `lazyload.Package` object is created for each, but no `.go` files are parsed yet.
+    *   A `loader.Package` object is created for each, but no `.go` files are parsed yet.
 
 2.  **`pkg.GetStruct("MyType")` (or similar AST access)**:
     *   The `pkg.ensureParsed()` method is called.
@@ -144,7 +144,7 @@ func myCustomLocator(pattern string, buildCtx lazyload.BuildContext) ([]lazyload
         1.  The `pkg.loader` (the central `Loader` instance) is asked to resolve this `importPath`.
         2.  The `loader` checks its internal cache for this `importPath`.
         3.  If not cached, it calls the `PackageLocator` again, this time with the specific `importPath`.
-        4.  A new `lazyload.Package` object is created for `OtherPkg`, cached, and returned.
+        4.  A new `loader.Package` object is created for `OtherPkg`, cached, and returned.
     *   Now you have `resolvedOtherPkg`, and you can call `resolvedOtherPkg.GetStruct("OtherType")` on it.
 
 This on-demand mechanism ensures that only necessary packages and files are processed.

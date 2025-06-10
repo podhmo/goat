@@ -1,4 +1,4 @@
-package lazyload
+package loader
 
 import (
 	"fmt"
@@ -123,7 +123,7 @@ func TestLoadSimplePackage(t *testing.T) {
 		Context: BuildContext{}, // UseGoModule might not be relevant with custom locator
 		Locator: testdataLocator,
 	}
-	loader := NewLoader(cfg)
+	loader := New(cfg)
 
 	pkgs, err := loader.Load("example.com/simplepkg") // Use specific "module" path
 	if err != nil {
@@ -163,7 +163,7 @@ func TestGetStruct(t *testing.T) {
 		Context: BuildContext{},
 		Locator: testdataLocator,
 	}
-	loader := NewLoader(cfg)
+	loader := New(cfg)
 	pkgs, err := loader.Load("example.com/simplepkg") // Using custom locator
 	if err != nil {
 		t.Fatalf("Failed to load package 'example.com/simplepkg': %v", err)
@@ -234,7 +234,7 @@ func TestResolveImport(t *testing.T) {
 		Context: BuildContext{},
 		Locator: testdataLocator,
 	}
-	loader := NewLoader(cfg)
+	loader := New(cfg)
 	pkgs, err := loader.Load("example.com/simplepkg") // Use custom locator
 	if err != nil {
 		t.Fatalf("Failed to load package 'example.com/simplepkg': %v", err)
@@ -272,7 +272,7 @@ func TestLazyLoading(t *testing.T) {
 		Context: BuildContext{},
 		Locator: testdataLocator,
 	}
-	loader := NewLoader(cfg)
+	loader := New(cfg)
 	pkgs, err := loader.Load("example.com/simplepkg") // Use custom locator
 	if err != nil {
 		t.Fatalf("Failed to load package 'example.com/simplepkg': %v", err)
@@ -363,7 +363,7 @@ func TestGetStructWithEmbeddedForeignStruct(t *testing.T) {
 		Context: BuildContext{},
 		Locator: testdataLocator,
 	}
-	loader := NewLoader(cfg)
+	loader := New(cfg)
 
 	// 1. Load the userpkg package
 	pkgs, err := loader.Load("example.com/embed_foreign_pkg_user")

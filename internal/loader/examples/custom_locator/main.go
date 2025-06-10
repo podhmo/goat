@@ -6,7 +6,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/podhmo/goat/internal/loader/lazyload"
+	"github.com/podhmo/goat/internal/loader"
 )
 
 var tempDirsCreated []string // To clean up at the end
@@ -25,17 +25,17 @@ func main() {
 	// The key is that `Dir` in `PackageMetaInfo` must be valid when `Package.ensureParsed` is called.
 
 	fmt.Println("Running custom locator example...")
-	cfg := lazyload.Config{
+	cfg := loader.Config{
 		Locator: myCustomLocator,
-		Context: lazyload.BuildContext{
+		Context: loader.BuildContext{
 			GOOS:      "custom_os", // Just an example context property
 			BuildTags: []string{"custom_tag"},
 		},
 	}
-	loader := lazyload.NewLoader(cfg)
+	loaderInst := loader.New(cfg) // Renamed variable to avoid conflict if 'loader' is package name
 
 	// Use a pattern that our custom locator understands
-	pkgs, err := loader.Load("custom/pkg/one")
+	pkgs, err := loaderInst.Load("custom/pkg/one")
 	if err != nil {
 		log.Fatalf("Failed to load packages with custom locator: %v", err)
 	}
@@ -104,7 +104,7 @@ func main() {
 // myCustomLocator is a mock locator for demonstration.
 // In a real scenario, this would interact with a custom build system,
 // read a proprietary project manifest, or scan a non-standard directory structure.
-func myCustomLocator(pattern string, buildCtx lazyload.BuildContext) ([]lazyload.PackageMetaInfo, error) {
+func myCustomLocator(pattern string, buildCtx loader.BuildContext) ([]loader.PackageMetaInfo, error) {
 	fmt.Printf("CustomLocator called with pattern: %q, BuildContext: %+v\n", pattern, buildCtx)
 
 	// This locator only "knows" about a fake package "custom/pkg/one".
@@ -125,7 +125,7 @@ func myCustomLocator(pattern string, buildCtx lazyload.BuildContext) ([]lazyload
 	if err := os.MkdirAll(pkgOneDir, 0755); err != nil {
 		return nil, err
 	}
-	dummyGoFileContent := `package one 
+	dummyGoFileContent := `package one
 type CustomStruct struct { Message string ` + "`tag:\"message_tag\"`" + ` }
 // Import "another/pkg" here if you want to test import resolution
 // import _ "another/pkg"
@@ -135,7 +135,7 @@ type CustomStruct struct { Message string ` + "`tag:\"message_tag\"`" + ` }
 	}
 
 	if pattern == "custom/pkg/one" || pattern == "./..." && buildCtx.GOOS == "custom_os" { // Example specific condition
-		return []lazyload.PackageMetaInfo{
+		return []loader.PackageMetaInfo{
 			{
 				ImportPath:    "custom/pkg/one",
 				Name:          "one",                   // Package name
@@ -155,7 +155,7 @@ type CustomStruct struct { Message string ` + "`tag:\"message_tag\"`" + ` }
 		if err := os.WriteFile(filepath.Join(anotherPkgDir, "another.go"), []byte(anotherGoFileContent), 0644); err != nil {
 			return nil, err
 		}
-		return []lazyload.PackageMetaInfo{
+		return []loader.PackageMetaInfo{
 			{
 				ImportPath: "another/pkg",
 				Name:       "pkg",
@@ -166,5 +166,5 @@ type CustomStruct struct { Message string ` + "`tag:\"message_tag\"`" + ` }
 	}
 
 	// For other patterns, return "not found" or an empty list.
-	return nil, nil // Or return a specific error like lazyload.PackageNotFoundError
+	return nil, nil // Or return a specific error like loader.PackageNotFoundError
 }
