@@ -33,3 +33,6 @@ make test
 
 - 1. docs/knowledge.mdに知見を記述すること
 - 2. 知見とはこのプロジェクト固有の意思決定のことです
+
+# go/packagesについて
+`go/packages`はimportがeagerになってしまうので使わないこと。

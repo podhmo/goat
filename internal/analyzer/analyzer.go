@@ -17,8 +17,8 @@ import (
 // - runFuncName: Name of the main run function.
 // - targetPackageID: Import path of the package containing the runFuncName (e.g., "testmodule/example.com/mainpkg").
 // - moduleRootPath: Absolute path to the root of the module this package belongs to.
-// - analyzerVersion: Version of the analyzer to use (2 or 3).
-func Analyze(fset *token.FileSet, files []*ast.File, runFuncName string, targetPackageID string, moduleRootPath string, analyzerVersion int) (*metadata.CommandMetadata, string, error) {
+// - loader: Loader for lazy loading of package information.
+func Analyze(fset *token.FileSet, files []*ast.File, runFuncName string, targetPackageID string, moduleRootPath string, loader *lazyload.Loader) (*metadata.CommandMetadata, string, error) {
 	cmdMeta := &metadata.CommandMetadata{
 		Options: []*metadata.OptionMetadata{},
 	}
@@ -108,24 +108,14 @@ func Analyze(fset *token.FileSet, files []*ast.File, runFuncName string, targetP
 		var foundOptionsStructName string
 		// err is already declared in the function scope from AnalyzeRunFunc, reuse it.
 
-		if analyzerVersion == 3 {
-			slog.Debug("Goat: Using AnalyzerV3", "targetPackageID", targetPackageID, "moduleRootPath", moduleRootPath)
-			// AnalyzeOptionsV3 uses the lazyload package for dynamic parsing and type analysis.
-			// It no longer requires a map of pre-parsed AST files.
-			// Production code uses default lazyload config. Tests can inject a different one.
-			defaultLLCfg := lazyload.Config{
-				Fset: fset,
-				// No custom LocatorFactory means it uses the default (go list based).
-			}
-			options, foundOptionsStructName, err = AnalyzeOptionsV3(fset, runFuncInfo.OptionsArgType, targetPackageID, moduleRootPath, &defaultLLCfg)
-		} else { // Default to V2 (analyzerVersion == 2 or any other value)
-			slog.Debug("Goat: Using AnalyzerV2 (default)", "targetPackageID", targetPackageID, "moduleRootPath", moduleRootPath)
-			options, foundOptionsStructName, err = AnalyzeOptionsV2(fset, files, runFuncInfo.OptionsArgType, targetPackageID, moduleRootPath)
-		}
+		slog.Debug("Goat: Analyzing options", "targetPackageID", targetPackageID, "moduleRootPath", moduleRootPath)
+		// AnalyzeOptions uses the lazyload package for dynamic parsing and type analysis.
+		// It no longer requires a map of pre-parsed AST files.
+		// The loader instance (which is assumed to be *lazyload.Config) is passed directly.
+		options, foundOptionsStructName, err = AnalyzeOptions(fset, runFuncInfo.OptionsArgType, targetPackageID, moduleRootPath, loader) // loader is *lazyload.Config
 
 		if err != nil {
-			// Include analyzerVersion in the error message for better debugging
-			return nil, "", fmt.Errorf("analyzing options struct for run function '%s' in package '%s' (analyzer version %d): %w", runFuncName, targetPackageID, analyzerVersion, err)
+			return nil, "", fmt.Errorf("analyzing options struct for run function '%s' in package '%s': %w", runFuncName, targetPackageID, err)
 		}
 		cmdMeta.Options = options
 		optionsStructName = foundOptionsStructName // Assign to the variable that will be returned

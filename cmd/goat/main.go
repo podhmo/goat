@@ -5,38 +5,89 @@ import (
 	"flag"
 	"fmt"
 	"go/ast"
-	"go/build"
 	"go/token"
 	"log/slog"
 	"os"
 	"path/filepath"
-	"strings"
 
 	"github.com/podhmo/goat/internal/analyzer"
 	"github.com/podhmo/goat/internal/codegen"
 	"github.com/podhmo/goat/internal/help"
 	"github.com/podhmo/goat/internal/interpreter"
-	"github.com/podhmo/goat/internal/loader"
+	"github.com/podhmo/goat/internal/loader/lazyload"
 	"github.com/podhmo/goat/internal/metadata"
 )
 
-// Options holds the configuration for the goat tool itself,
-// typically derived from its command-line arguments.
+// Options holds the configuration for the goat tool itself.
 type Options struct {
-	RunFuncName            string // Name of the target 'run' function (e.g., "run")
-	OptionsInitializerName string // Name of the options initializer function (e.g., "NewOptions")
-	TargetFile             string // Path to the target Go file to be processed
-	AnalyzerVersion        int    // Version of the analyzer to use (2 or 3)
+	RunFuncName            string
+	OptionsInitializerName string
+	TargetFile             string
+}
+
+// findModuleRoot searches for a go.mod file starting from dir and going upwards.
+func findModuleRoot(dir string) (string, error) {
+	current := dir
+	for {
+		goModPath := filepath.Join(current, "go.mod")
+		if _, err := os.Stat(goModPath); err == nil {
+			return current, nil
+		} else if !os.IsNotExist(err) {
+			return "", fmt.Errorf("error checking for go.mod at %s: %w", goModPath, err)
+		}
+		parent := filepath.Dir(current)
+		if parent == current {
+			return "", nil
+		}
+		current = parent
+	}
+}
+
+// execDirectoryLocator is a helper struct to manage locating packages from a specific base directory.
+type execDirectoryLocator struct {
+	BaseDir        string
+	WrappedLocator lazyload.PackageLocator
+	// Fset is not used by Locate but can be stored if needed for other purposes.
+	// Fset           *token.FileSet
+}
+
+// Locate matches the lazyload.PackageLocator function signature.
+// It executes the wrapped locator from BaseDir.
+func (l *execDirectoryLocator) Locate(pattern string, buildCtx lazyload.BuildContext) ([]lazyload.PackageMetaInfo, error) {
+	if l.WrappedLocator == nil {
+		return nil, fmt.Errorf("ExecDirectoryLocator: WrappedLocator is nil")
+	}
+
+	originalWD, err := os.Getwd()
+	if err != nil {
+		return nil, fmt.Errorf("ExecDirectoryLocator: failed to get current working directory: %w", err)
+	}
+
+	if l.BaseDir != "" && l.BaseDir != "." && l.BaseDir != originalWD {
+		if err := os.Chdir(l.BaseDir); err != nil {
+			return nil, fmt.Errorf("ExecDirectoryLocator: failed to change directory to %s: %w", l.BaseDir, err)
+		}
+		slog.Debug("ExecDirectoryLocator: Changed working directory", "to", l.BaseDir)
+		defer func() {
+			if err := os.Chdir(originalWD); err != nil {
+				slog.Error("ExecDirectoryLocator: failed to restore original working directory", "originalWD", originalWD, "error", err)
+			} else {
+				slog.Debug("ExecDirectoryLocator: Restored working directory", "to", originalWD)
+			}
+		}()
+	}
+
+	// Pass the original buildCtx to the wrapped locator.
+	// The buildCtx in this struct is primarily for the wrapped locator if it needs it.
+	return l.WrappedLocator(pattern, buildCtx)
 }
 
 func main() {
-	// debug mode: if DEBUG environment variable is set, enable debug logging
 	if _, ok := os.LookupEnv("DEBUG"); ok {
 		slog.SetLogLoggerLevel(slog.LevelDebug)
 	}
 
 	if len(os.Args) < 2 {
-		// Print general usage if no subcommand is provided
 		fmt.Fprintln(os.Stderr, "Usage: goat <subcommand> [options]")
 		fmt.Fprintln(os.Stderr, "Available subcommands: init, emit, help-message, scan")
 		os.Exit(1)
@@ -44,131 +95,93 @@ func main() {
 
 	switch os.Args[1] {
 	case "init":
-		// Handle init
 		fmt.Println("TODO: init subcommand")
 	case "emit":
 		emitCmd := flag.NewFlagSet("emit", flag.ExitOnError)
-		var (
-			runFuncName            string
-			optionsInitializerName string
-			analyzerVersion        int
-		)
+		var runFuncName, optionsInitializerName string
 		emitCmd.StringVar(&runFuncName, "run", "run", "Name of the function to be treated as the entrypoint")
 		emitCmd.StringVar(&optionsInitializerName, "initializer", "", "Name of the function that initializes the options struct")
-		emitCmd.IntVar(&analyzerVersion, "analyzer-version", 2, "Version of the analyzer to use (2 or 3)")
-		// Add usage for emitCmd
 		emitCmd.Usage = func() {
 			fmt.Fprintf(os.Stderr, "Usage: goat emit [options] <target_gofile.go>\n\nOptions:\n")
 			emitCmd.PrintDefaults()
 		}
-		emitCmd.Parse(os.Args[2:]) // Parse flags for emit
-
+		emitCmd.Parse(os.Args[2:])
 		if emitCmd.NArg() < 1 {
 			fmt.Fprintln(os.Stderr, "Error: Target Go file must be specified for emit.")
 			emitCmd.Usage()
 			os.Exit(1)
 		}
-		targetFilename := emitCmd.Arg(0)
-
 		opts := &Options{
 			RunFuncName:            runFuncName,
 			OptionsInitializerName: optionsInitializerName,
-			TargetFile:             targetFilename,
-			AnalyzerVersion:        analyzerVersion,
+			TargetFile:             emitCmd.Arg(0),
 		}
 		if err := runGoat(opts); err != nil {
 			slog.Error("Error running goat (emit)", "error", err)
 			os.Exit(1)
 		}
-
 	case "help-message":
 		helpMessageCmd := flag.NewFlagSet("help-message", flag.ExitOnError)
-		var (
-			runFuncName            string
-			optionsInitializerName string
-			analyzerVersion        int
-		)
+		var runFuncName, optionsInitializerName string
 		helpMessageCmd.StringVar(&runFuncName, "run", "run", "Name of the function to be treated as the entrypoint")
 		helpMessageCmd.StringVar(&optionsInitializerName, "initializer", "", "Name of the function that initializes the options struct")
-		helpMessageCmd.IntVar(&analyzerVersion, "analyzer-version", 2, "Version of the analyzer to use (2 or 3)")
-
 		helpMessageCmd.Usage = func() {
 			fmt.Fprintf(os.Stderr, "Usage: goat help-message [options] <target_gofile.go>\n\nOptions:\n")
 			helpMessageCmd.PrintDefaults()
 		}
 		helpMessageCmd.Parse(os.Args[2:])
-
 		if helpMessageCmd.NArg() < 1 {
 			fmt.Fprintln(os.Stderr, "Error: Target Go file must be specified for help-message.")
 			helpMessageCmd.Usage()
 			os.Exit(1)
 		}
-		targetFilename := helpMessageCmd.Arg(0)
-
 		opts := &Options{
 			RunFuncName:            runFuncName,
 			OptionsInitializerName: optionsInitializerName,
-			TargetFile:             targetFilename,
-			AnalyzerVersion:        analyzerVersion,
+			TargetFile:             helpMessageCmd.Arg(0),
 		}
-
 		fset := token.NewFileSet()
-		cmdMetadata, _, err := scanMain(fset, opts) // fileAST is not needed here
+		cmdMetadata, _, err := scanMain(fset, opts)
 		if err != nil {
 			slog.Error("Error scanning main for help-message", "error", err)
 			os.Exit(1)
 		}
-
 		helpMsg := help.GenerateHelp(cmdMetadata)
-		fmt.Print(helpMsg) // Print to stdout, helpMsg likely has its own trailing newline
-
+		fmt.Print(helpMsg)
 	case "scan":
 		scanCmd := flag.NewFlagSet("scan", flag.ExitOnError)
-		var (
-			runFuncName            string
-			optionsInitializerName string
-			analyzerVersion        int
-		)
+		var runFuncName, optionsInitializerName string
 		scanCmd.StringVar(&runFuncName, "run", "run", "Name of the function to be treated as the entrypoint")
 		scanCmd.StringVar(&optionsInitializerName, "initializer", "", "Name of the function that initializes the options struct")
-		scanCmd.IntVar(&analyzerVersion, "analyzer-version", 2, "Version of the analyzer to use (2 or 3)")
-
 		scanCmd.Usage = func() {
 			fmt.Fprintf(os.Stderr, "Usage: goat scan [options] <target_gofile.go>\n\nOptions:\n")
 			scanCmd.PrintDefaults()
 		}
 		scanCmd.Parse(os.Args[2:])
-
 		if scanCmd.NArg() < 1 {
 			fmt.Fprintln(os.Stderr, "Error: Target Go file must be specified for scan.")
 			scanCmd.Usage()
 			os.Exit(1)
 		}
-		targetFilename := scanCmd.Arg(0)
-
 		opts := &Options{
 			RunFuncName:            runFuncName,
 			OptionsInitializerName: optionsInitializerName,
-			TargetFile:             targetFilename,
-			AnalyzerVersion:        analyzerVersion,
+			TargetFile:             scanCmd.Arg(0),
 		}
-
 		fset := token.NewFileSet()
-		cmdMetadata, _, err := scanMain(fset, opts) // fileAST is not needed here
+		cmdMetadata, _, err := scanMain(fset, opts)
 		if err != nil {
 			slog.Error("Error scanning main for scan", "error", err)
 			os.Exit(1)
 		}
-
 		jsonData, err := json.MarshalIndent(cmdMetadata, "", "  ")
 		if err != nil {
 			slog.Error("Error marshalling metadata to JSON for scan", "error", err)
 			os.Exit(1)
 		}
-		fmt.Println(string(jsonData)) // Print JSON to stdout
+		fmt.Println(string(jsonData))
 	default:
 		fmt.Fprintf(os.Stderr, "Error: Unknown subcommand '%s'\n", os.Args[1])
-		// Print general usage
 		fmt.Fprintln(os.Stderr, "Available subcommands: init, emit, help-message, scan")
 		os.Exit(1)
 	}
@@ -180,20 +193,16 @@ func runGoat(opts *Options) error {
 	if err != nil {
 		return fmt.Errorf("failed to scan main: %w", err)
 	}
-
 	helpMsg := help.GenerateHelp(cmdMetadata)
-
-	newMainContent, err := codegen.GenerateMain(cmdMetadata, helpMsg, false /* generateFullFile */)
+	newMainContent, err := codegen.GenerateMain(cmdMetadata, helpMsg, false)
 	if err != nil {
 		return fmt.Errorf("failed to generate new main.go content: %w", err)
 	}
-
 	err = codegen.WriteMain(opts.TargetFile, fset, fileAST, newMainContent, cmdMetadata.MainFuncPosition)
 	if err != nil {
 		return fmt.Errorf("failed to write modified main.go: %w", err)
 	}
-
-	fmt.Fprintln(os.Stdout, "Goat: Processing finished.") // Print to stdout for test capture
+	fmt.Fprintln(os.Stdout, "Goat: Processing finished.")
 	return nil
 }
 
@@ -202,121 +211,93 @@ func scanMain(fset *token.FileSet, opts *Options) (*metadata.CommandMetadata, *a
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to get absolute path for target file %s: %w", opts.TargetFile, err)
 	}
-	opts.TargetFile = absTargetFile // Update to absolute path
+	opts.TargetFile = absTargetFile
 
 	slog.Info("Goat: Analyzing file", "targetFile", opts.TargetFile, "runFunc", opts.RunFuncName, "optionsInitializer", opts.OptionsInitializerName)
 
-	targetFileAst, err := loader.LoadFile(fset, opts.TargetFile)
-	if err != nil {
-		// Still return nil for *ast.File if targetFileAst itself failed to load
-		return nil, nil, fmt.Errorf("failed to load target file %s: %w", opts.TargetFile, err)
-	}
-	currentPackageName := targetFileAst.Name.Name
-
 	targetDir := filepath.Dir(opts.TargetFile)
-	// Determine currentPackageName from the targetFileAst first.
-	if targetFileAst.Name != nil {
-		currentPackageName = targetFileAst.Name.Name
+
+	// Create an instance of our custom locator
+	customLocator := &execDirectoryLocator{
+		BaseDir:        targetDir,
+		WrappedLocator: lazyload.GoListLocator,
+		// Fset:          fset, // Fset is not part of execDirectoryLocator struct
 	}
 
-	// Use targetDir directly to load other files from the same package.
-	// This avoids relying on build.ImportDir for temporary/non-standard paths,
-	// which might default to "." (current working directory) if it can't resolve targetDir.
-	slog.Info("Loading other files from package directory", "dir", targetDir)
-	packageFiles, err := loader.LoadPackageFiles(fset, targetDir, "") // Pass targetDir directly
+	llCfg := lazyload.Config{
+		Fset:    fset,
+		Locator: customLocator.Locate, // Assign the method customLocator.Locate
+		// Context can be customized here if needed, e.g. for specific GOOS/GOARCH
+		// Context: lazyload.BuildContext{...},
+	}
+	l := lazyload.NewLoader(llCfg)
+
+	slog.Debug("Goat: Loading package", "directory", targetDir, "pattern", ".")
+	// The pattern passed to l.Load() will be handled by customLocator.Locate
+	loadedPkgs, err := l.Load(".")
 	if err != nil {
-		slog.Warn("Failed to load other package files, proceeding with only the target file.", "dir", targetDir, "error", err)
-		// Proceeding with just targetFileAst in filesForAnalysis is handled by subsequent logic.
+		return nil, nil, fmt.Errorf("failed to load package for directory %s (pattern .): %w", targetDir, err)
+	}
+	if len(loadedPkgs) == 0 {
+		return nil, nil, fmt.Errorf("no packages found for directory %s (pattern .)", targetDir)
+	}
+	currentPkg := loadedPkgs[0]
+
+	pkgFilesMap, err := currentPkg.Files()
+	if err != nil {
+		return nil, nil, fmt.Errorf("could not get AST files for package %s: %w", currentPkg.ImportPath, err)
 	}
 
-	// Ensure currentPackageName has a default if still empty (e.g. if targetFileAst.Name was nil)
-	if strings.TrimSpace(currentPackageName) == "" {
-		// Try to get package name from build context of targetDir as a fallback
-		buildPkg, buildErr := build.ImportDir(targetDir, 0)
-		if buildErr == nil && buildPkg.Name != "" {
-			currentPackageName = buildPkg.Name
-		} else {
-			slog.Warn("Could not determine package name from AST or build context, defaulting to 'main'", "targetFile", opts.TargetFile, "targetDir", targetDir)
-			currentPackageName = "main"
+	var finalFilesForAnalysis []*ast.File
+	for _, fileAst := range pkgFilesMap {
+		finalFilesForAnalysis = append(finalFilesForAnalysis, fileAst)
+	}
+
+	var targetFileAst *ast.File
+	for _, fileAstCandidate := range finalFilesForAnalysis {
+		if fset.File(fileAstCandidate.Pos()).Name() == opts.TargetFile {
+			targetFileAst = fileAstCandidate
+			break
 		}
 	}
-
-	// New logic: Ensure targetFileAst is always included and handle potential duplicates.
-	finalFilesForAnalysis := []*ast.File{targetFileAst}
-	seenFilePaths := make(map[string]bool)
-	targetFileRegisteredPath := fset.File(targetFileAst.Pos()).Name() // Absolute path from fset
-	seenFilePaths[targetFileRegisteredPath] = true
-
-	for _, f := range packageFiles {
-		tokenFile := fset.File(f.Pos())
-		if tokenFile != nil {
-			filePath := tokenFile.Name() // Absolute path from fset
-			if !seenFilePaths[filePath] {
-				finalFilesForAnalysis = append(finalFilesForAnalysis, f)
-				seenFilePaths[filePath] = true
-			}
-		}
-	}
-	if len(finalFilesForAnalysis) == 0 { // targetFileAst must have been nil if this is true
-		return nil, nil, fmt.Errorf("no Go files could be prepared for analysis (target file %s was not loaded)", opts.TargetFile)
+	if targetFileAst == nil {
+		slog.Error("Target file AST not found in loaded package files", "targetFile", opts.TargetFile, "package", currentPkg.ImportPath)
+		return nil, nil, fmt.Errorf("target file AST %s not found in loaded package %s", opts.TargetFile, currentPkg.ImportPath)
 	}
 
-	// Determine moduleRootPath and targetPackageID
-	// For tests, opts.TargetFile is like /tmp/TestXYZ.../moduleName/example.com/pkg/file.go
-	// or /tmp/TestXYZ.../file.go (if moduleName is used directly for TempDir)
-	// The go.mod would be at /tmp/TestXYZ.../go.mod or /tmp/TestXYZ.../moduleName/go.mod
-
-	moduleRootPath, err := loader.FindModuleRoot(targetFileRegisteredPath)
+	targetPackageID := currentPkg.ImportPath
+	moduleRootPath, err := findModuleRoot(currentPkg.Dir)
 	if err != nil {
-		slog.Warn("Failed to find module root, using directory of target file as root.", "target", targetFileRegisteredPath, "error", err)
-		moduleRootPath = filepath.Dir(targetFileRegisteredPath)
+		slog.Warn("Error trying to find module root", "packageDir", currentPkg.Dir, "error", err)
+		moduleRootPath = currentPkg.Dir
+	} else if moduleRootPath == "" {
+		slog.Warn("go.mod not found upwards from package directory. Using package directory as module root.", "packageDir", currentPkg.Dir)
+		moduleRootPath = currentPkg.Dir
 	}
 
-	moduleName, err := loader.GetModuleName(moduleRootPath)
-	if err != nil {
-		slog.Warn("Failed to get module name from go.mod, using fallback.", "modRoot", moduleRootPath, "error", err)
-		// Fallback: if go.mod is unparsable or module name is weird, construct a pseudo-ID.
-		// This part is tricky; robustly finding a package ID outside a module is hard.
-		// For now, many tests create a module name. If not, this will be an issue.
-		// If module name is essential, this should be a hard error.
-		// Let's assume tests provide a clear module structure.
-		// If not, use "." for packageID and moduleRootPath as Dir for packages.Load.
-		// The currentPackageName (Go package name) is already derived.
+	if moduleRootPath == "" {
+		slog.Warn("Module root path is empty after checks, defaulting to current working directory '.'")
+		moduleRootPath = "."
 	}
+	slog.Debug("Determined module root", "moduleRootPath", moduleRootPath, "packageDir", currentPkg.Dir)
 
-	// targetPackageID should be like "moduleName/path/to/pkg" or just "path/to/pkg" if moduleName is empty/unknown
-	relPathFromModRoot, err := filepath.Rel(moduleRootPath, filepath.Dir(targetFileRegisteredPath))
-	if err != nil {
-		return nil, targetFileAst, fmt.Errorf("failed to make target path relative to module root: %w", err)
-	}
-	targetPackageID := filepath.ToSlash(relPathFromModRoot)
-	if moduleName != "" {
-		if targetPackageID == "." { // File is in module root
-			targetPackageID = moduleName
-		} else {
-			targetPackageID = moduleName + "/" + targetPackageID
-		}
-	}
-	// If moduleName is empty and targetPackageID is ".", it implies a simple dir-based package.
-	// currentPackageName (the Go `package foo` name) is used by AnalyzeOptionsV2 for struct lookup within the package.
-
-	cmdMetadata, returnedOptionsStructName, err := analyzer.Analyze(fset, finalFilesForAnalysis, opts.RunFuncName, targetPackageID, moduleRootPath, opts.AnalyzerVersion)
+	cmdMetadata, returnedOptionsStructName, err := analyzer.Analyze(fset, finalFilesForAnalysis, opts.RunFuncName, targetPackageID, moduleRootPath, l)
 	if err != nil {
 		return nil, targetFileAst, fmt.Errorf("failed to analyze AST (targetPkgID: %s, modRoot: %s): %w", targetPackageID, moduleRootPath, err)
 	}
 	slog.Info("Goat: Command metadata extracted", "commandName", cmdMetadata.Name, "optionsStruct", returnedOptionsStructName)
 
-	const goatMarkersImportPath = "github.com/podhmo/goat" // Define the correct import path
-
+	const goatMarkersImportPath = "github.com/podhmo/goat"
 	if opts.OptionsInitializerName != "" && returnedOptionsStructName != "" {
-		// InterpretInitializer might need to look into multiple files if the initializer is not in the main target file.
-		// For now, it's passed targetFileAst, which might need adjustment if initializers can be in other package files.
-		// The currentPackageName is now more accurately determined.
-		err = interpreter.InterpretInitializer(targetFileAst, returnedOptionsStructName, opts.OptionsInitializerName, cmdMetadata.Options, goatMarkersImportPath)
-		if err != nil {
-			return nil, targetFileAst, fmt.Errorf("failed to interpret options initializer %s: %w", opts.OptionsInitializerName, err)
+		if targetFileAst == nil {
+			slog.Warn("Skipping options initializer interpretation as targetFileAst is not yet identified.")
+		} else {
+			err = interpreter.InterpretInitializer(targetFileAst, returnedOptionsStructName, opts.OptionsInitializerName, cmdMetadata.Options, goatMarkersImportPath)
+			if err != nil {
+				return nil, targetFileAst, fmt.Errorf("failed to interpret options initializer %s: %w", opts.OptionsInitializerName, err)
+			}
+			slog.Info("Goat: Options initializer interpreted successfully.")
 		}
-		slog.Info("Goat: Options initializer interpreted successfully.")
 	} else {
 		slog.Info("Goat: Skipping options initializer interpretation", "initializerName", opts.OptionsInitializerName, "optionsStructName", returnedOptionsStructName)
 	}

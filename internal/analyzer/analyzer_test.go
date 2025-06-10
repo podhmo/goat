@@ -7,9 +7,10 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
-
-	// "strings" // No longer used directly in the simplified parseTestFiles
 	"testing"
+
+	"github.com/podhmo/goat/internal/loader/lazyload" // Added
+	// "strings" // No longer used directly in the simplified parseTestFiles
 	// "golang.org/x/tools/go/packages" // No longer used in the simplified parseTestFiles
 )
 
@@ -196,12 +197,17 @@ func main() { RunWithoutOptions(nil) }
 				t.Logf("Warning: parseTestFiles returned multiple ASTs (%d), expected 1 for simplified tests. Using the first one.", len(astFiles))
 			}
 
-			// targetPackageID for Analyze should match the package declaration in the source.
-			// Existing tests implicitly test V2 behavior.
-			cmdMeta, _, err := Analyze(fset, astFiles, tc.runFuncName, tc.packageName, moduleRootDir, 2)
+			// targetPackageID for Analyze should be the import path of the package.
+			// In this test setup, parseTestFiles creates "module testmodule" and places "main.go" in its root.
+			// So the import path is "testmodule". tc.packageName is the `package foo` name.
+			targetPackageID := "testmodule" // Module name defined in parseTestFiles
 
-			// InitializerFunc is determined before AnalyzeOptionsV2 is called.
-			// So, we should be able to check it even if Analyze later returns an error from AnalyzeOptionsV2.
+			llCfg := lazyload.Config{Fset: fset} // Removed BaseDir from here
+			loader := lazyload.NewLoader(llCfg)
+			cmdMeta, _, err := Analyze(fset, astFiles, tc.runFuncName, targetPackageID, moduleRootDir, loader)
+
+			// InitializerFunc is determined before AnalyzeOptions is called.
+			// So, we should be able to check it even if Analyze later returns an error from AnalyzeOptions.
 			if cmdMeta == nil {
 				if tc.expectErrorInAnalyze && err != nil {
 					// This is fine, Analyze errored as expected, and cmdMeta might be nil.
