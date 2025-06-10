@@ -2,7 +2,7 @@ package lazyload
 
 import (
 	"fmt"
-	"go/ast" // Ensure this is present and uncommented
+	"go/ast"
 	"go/parser"
 	"go/token"
 	"os"

@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"go/ast"
 	"go/parser"
-	"go/token"
 	"path/filepath"
 	"strconv"
 	"sync"
@@ -56,7 +55,7 @@ func NewPackage(meta PackageMetaInfo, loader *Loader) *Package {
 // It populates p.parsedFiles and p.fileImports.
 func (p *Package) ensureParsed() error {
 	p.parseOnce.Do(func() {
-		fset := token.NewFileSet() // One fset per package for now
+		fset := p.loader.fset // Use the loader's file set
 		for _, goFile := range p.GoFiles {
 			path := filepath.Join(p.Dir, goFile)
 			// fileAST, err := parser.ParseFile(fset, path, nil, parser.ImportsOnly|parser.ParseComments) // Initially parse imports for quick access, then full parse on demand for GetStruct etc.
