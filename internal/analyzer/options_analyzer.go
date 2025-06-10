@@ -16,7 +16,7 @@ import (
 	// No longer need "bytes" or "go/format" for overlay population from ASTs
 	// "golang.org/x/tools/go/packages" // Removed unused import
 
-	"github.com/podhmo/goat/internal/loader/lazyload"
+	"github.com/podhmo/goat/internal/loader" // Changed
 	"github.com/podhmo/goat/internal/metadata"
 	"github.com/podhmo/goat/internal/utils/astutils"
 	"github.com/podhmo/goat/internal/utils/stringutils"
@@ -69,13 +69,13 @@ func init() {
 //   - optionsTypeName: Name of the options struct type (e.g., "MainConfig").
 //   - targetPackagePath: The import path of the package containing optionsTypeName.
 //   - baseDir: The base directory from which to resolve targetPackagePath (often module root).
-//   - loader: Instance of lazyload.Loader.
+//   - loader: Instance of loader.Loader.
 func AnalyzeOptions( // Renamed from AnalyzeOptionsV3
 	fset *token.FileSet, // Still needed for some astutils
 	optionsTypeName string,
 	targetPackagePath string,
 	baseDir string,
-	loader *lazyload.Loader, // Changed from llConfig *lazyload.Config
+	loader *loader.Loader, // Changed from llConfig *loader.Config
 ) ([]*metadata.OptionMetadata, string, error) {
 	// Heuristic adjustment for loadPattern based on typical test setups.
 	// If targetPackagePath is simple (no slashes, e.g., a module name) and baseDir is set,
@@ -94,10 +94,10 @@ func AnalyzeOptions( // Renamed from AnalyzeOptionsV3
 
 	loadedPkgs, err := loader.Load(loadPattern, baseDir) // Use the passed-in loader
 	if err != nil {
-		return nil, "", fmt.Errorf("error loading package '%s' (pattern '%s', baseDir '%s') with lazyload: %w", targetPackagePath, loadPattern, baseDir, err)
+		return nil, "", fmt.Errorf("error loading package '%s' (pattern '%s', baseDir '%s') with loader: %w", targetPackagePath, loadPattern, baseDir, err)
 	}
 	if len(loadedPkgs) == 0 {
-		return nil, "", fmt.Errorf("no package found for '%s' (pattern '%s', baseDir '%s') by lazyload", targetPackagePath, loadPattern, baseDir)
+		return nil, "", fmt.Errorf("no package found for '%s' (pattern '%s', baseDir '%s') by loader", targetPackagePath, loadPattern, baseDir)
 	}
 	currentPkg := loadedPkgs[0]
 
