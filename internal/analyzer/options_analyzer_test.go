@@ -801,7 +801,8 @@ type Config struct {
 			}
 
 			// tc.targetPkgPath is the import path of the package, and tempModRoot is its directory.
-			options, structNameOut, err := AnalyzeOptionsV3(fset, tc.structName, tc.targetPkgPath, tempModRoot, &llCfg)
+			loader := lazyload.NewLoader(llCfg)
+			options, structNameOut, err := AnalyzeOptionsV3(fset, tc.structName, tc.targetPkgPath, tempModRoot, loader)
 			if err != nil {
 				t.Fatalf("AnalyzeOptionsV3 failed for %s: %v. Content:\n%s", tc.name, err, formattedContent)
 			}
@@ -875,7 +876,8 @@ type ParentConfig struct {
 
 	// targetPackagePath is moduleName because the 'main' package is at the root of the module.
 	targetPackagePath := moduleName
-	options, structNameOut, err := AnalyzeOptionsV3(fset, "ParentConfig", targetPackagePath, tempModRoot, &llCfg)
+	loader := lazyload.NewLoader(llCfg)
+	options, structNameOut, err := AnalyzeOptionsV3(fset, "ParentConfig", targetPackagePath, tempModRoot, loader)
 	if err != nil {
 		t.Fatalf("AnalyzeOptionsV3 with same-package embedded structs failed: %v. Content:\n%s", err, content1)
 	}
@@ -976,8 +978,8 @@ type ExternalEmbedded struct { ExternalField bool }`
 		Fset:    fset,
 		Locator: NewTestPackageLocator(tempMainModRoot, t),
 	}
-
-	_, _, err := AnalyzeOptionsV3(fset, "MainConfig", mainPkgImportPath, tempMainModRoot, &llCfg)
+	loader := lazyload.NewLoader(llCfg)
+	_, _, err := AnalyzeOptionsV3(fset, "MainConfig", mainPkgImportPath, tempMainModRoot, loader)
 
 	if err == nil {
 		t.Logf("AnalyzeOptionsV3 call for external packages unexpectedly succeeded. This might indicate the test setup or locator needs review for true external resolution.")
@@ -1006,7 +1008,8 @@ func TestAnalyzeOptionsV3_StructNotFound(t *testing.T) {
 		Fset:    fset,
 		Locator: NewTestPackageLocator(tempModRoot, t), // Assuming Config has 'Locator' field
 	}
-	_, _, err := AnalyzeOptionsV3(fset, "NonExistentConfig", pkgPath, tempModRoot, &llCfg)
+	loader := lazyload.NewLoader(llCfg)
+	_, _, err := AnalyzeOptionsV3(fset, "NonExistentConfig", pkgPath, tempModRoot, loader)
 	if err == nil {
 		t.Fatal("AnalyzeOptionsV3 should have failed for a non-existent struct")
 	}
@@ -1034,7 +1037,8 @@ type Config struct {
 		Fset:    fset,
 		Locator: NewTestPackageLocator(tempModRoot, t), // Assuming Config has 'Locator' field
 	}
-	options, _, err := AnalyzeOptionsV3(fset, "Config", pkgPath, tempModRoot, &llCfg)
+	loader := lazyload.NewLoader(llCfg)
+	options, _, err := AnalyzeOptionsV3(fset, "Config", pkgPath, tempModRoot, loader)
 	if err != nil {
 		t.Fatalf("AnalyzeOptionsV3 failed for UnexportedFields: %v. Content:\n%s", err, content)
 	}

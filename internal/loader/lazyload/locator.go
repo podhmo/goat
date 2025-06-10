@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"os"
 	"os/exec"
 	"strings"
 )
@@ -34,9 +35,25 @@ func GoListLocator(pattern string, buildCtx BuildContext) ([]PackageMetaInfo, er
 	if len(buildCtx.BuildTags) > 0 {
 		args = append(args, "-tags", strings.Join(buildCtx.BuildTags, ","))
 	}
-	args = append(args, pattern)
+
+	// Determine effective pattern and command directory
+	effectivePattern := pattern
+	var cmdDir string
+
+	// Check if the original pattern is a directory path
+	stat, statErr := os.Stat(pattern) // Use a different var name for error
+	if statErr == nil && stat.IsDir() {
+		cmdDir = pattern       // Set cmd.Dir to the directory path
+		effectivePattern = "." // `go list .` from within that directory
+	}
+
+	args = append(args, effectivePattern)
 
 	cmd := exec.Command("go", args...)
+	if cmdDir != "" {
+		cmd.Dir = cmdDir
+	}
+
 	if buildCtx.GOOS != "" {
 		cmd.Env = append(cmd.Environ(), "GOOS="+buildCtx.GOOS)
 	}

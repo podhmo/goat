@@ -351,43 +351,67 @@ func AnalyzeOptionsV2(fset *token.FileSet, astFilesForLookup []*ast.File, option
 //   - baseDir: The base directory from which to resolve targetPackagePath (often module root).
 //   - llConfig: Configuration for the lazyload.Loader. If nil, a default will be used.
 func AnalyzeOptionsV3(
-	fset *token.FileSet, // Still needed for some astutils and if llConfig.Fset is nil
+	fset *token.FileSet, // Still needed for some astutils. Ideally, use fset from ldr.
 	optionsTypeName string,
-	targetPackagePath string,
-	baseDir string,
-	llConfig *lazyload.Config,
+	targetPackagePath string, // The expected import path of the package.
+	baseDir string, // The file system directory of the package.
+	ldr *lazyload.Loader,
 ) ([]*metadata.OptionMetadata, string, error) {
-	var currentConfig lazyload.Config
-	if llConfig != nil {
-		currentConfig = *llConfig
-	}
-	if currentConfig.Fset == nil { // Ensure Fset is always set
-		currentConfig.Fset = fset
+	if ldr == nil {
+		return nil, "", fmt.Errorf("AnalyzeOptionsV3: loader cannot be nil")
 	}
 
-	loader := lazyload.NewLoader(currentConfig)
+	// The primary way to load the package is by its directory `baseDir`.
+	// The `targetPackagePath` (import path) is used to verify we loaded the correct package.
+	loadedPkgs, err := ldr.Load(baseDir)
+	if err != nil {
+		return nil, "", fmt.Errorf("error loading package at dir '%s' with loader: %w", baseDir, err)
+	}
+	if len(loadedPkgs) == 0 {
+		return nil, "", fmt.Errorf("no package found at dir '%s' by loader", baseDir)
+	}
 
-	// Heuristic adjustment for loadPattern based on typical test setups.
-	// If targetPackagePath is simple (no slashes, e.g., a module name) and baseDir is set,
-	// it's likely a test scenario where baseDir is the module root. In this case, "." is the correct
-	// pattern for `go list` to identify the package at the root of the module.
-	loadPattern := targetPackagePath
-	if baseDir != "" && !strings.Contains(targetPackagePath, "/") {
-		// Check if go.mod exists to strengthen the heuristic, assuming module mode.
-		goModPath := filepath.Join(baseDir, "go.mod")
-		if _, statErr := os.Stat(goModPath); statErr == nil {
-			loadPattern = "." // Load package in current directory (baseDir)
+	var currentPkg *lazyload.Package
+	for _, pkg := range loadedPkgs {
+		// Verify that the loaded package's directory or import path matches expectations.
+		// The GoListLocator, when given a directory, should return a package whose Dir matches that directory
+		// and whose ImportPath matches what `go list` resolves for that directory.
+		if pkg.Dir == baseDir {
+			if pkg.ImportPath == targetPackagePath {
+				currentPkg = pkg
+				break
+			} else {
+				// If Dir matches but ImportPath doesn't, it might be a test setup where
+				// go.mod's module name doesn't align with the expected targetPackagePath structure.
+				// For tests, often targetPackagePath is just the module name (e.g., "testcmdmodule").
+				// If pkg.Name (Go package name) also matches the last part of targetPackagePath, consider it a match.
+				// This is a heuristic. A more robust check would involve comparing module paths.
+				_, pkgNameFromFile := filepath.Split(targetPackagePath)
+				if pkg.Name == pkgNameFromFile {
+					currentPkg = pkg
+					break
+				}
+			}
 		}
 	}
 
-	loadedPkgs, err := loader.Load(loadPattern, baseDir)
-	if err != nil {
-		return nil, "", fmt.Errorf("error loading package '%s' (pattern '%s', baseDir '%s') with lazyload: %w", targetPackagePath, loadPattern, baseDir, err)
+	if currentPkg == nil {
+		var availablePkgInfo []string
+		for _, pkg := range loadedPkgs {
+			availablePkgInfo = append(availablePkgInfo, fmt.Sprintf("{ImportPath: %s, Dir: %s, Name: %s}", pkg.ImportPath, pkg.Dir, pkg.Name))
+		}
+		return nil, "", fmt.Errorf("target package '%s' (expected at dir '%s') not found or matched in loaded packages: %s", targetPackagePath, baseDir, strings.Join(availablePkgInfo, ", "))
 	}
-	if len(loadedPkgs) == 0 {
-		return nil, "", fmt.Errorf("no package found for '%s' (pattern '%s', baseDir '%s') by lazyload", targetPackagePath, loadPattern, baseDir)
+
+	// Ensure the found package's import path is consistent with targetPackagePath, if possible.
+	// This helps catch cases where baseDir loaded something unexpected.
+	if currentPkg.ImportPath != targetPackagePath {
+		// This might be too strict for some test cases where module name vs import path can be tricky.
+		// For example, if targetPackagePath is "testmodule" and ImportPath is "testmodule/testcmdmodule"
+		// due to go list behavior with subdirectories.
+		// For now, we proceed if a package was found by directory.
+		// slog.Debug("AnalyzeOptionsV3: Loaded package import path mismatch", "expected", targetPackagePath, "actual", currentPkg.ImportPath, "dir", baseDir)
 	}
-	currentPkg := loadedPkgs[0]
 
 	simpleOptionsTypeName := optionsTypeName
 	if strings.Contains(optionsTypeName, ".") {
@@ -476,10 +500,10 @@ func AnalyzeOptionsV3(
 				if resolvedExternalPkg == nil {
 					return nil, actualStructName, fmt.Errorf("resolved imported package is nil for path '%s'", resolvedExternalImportPath)
 				}
-				embeddedOptions, _, embErr = AnalyzeOptionsV3(fset, typeNameInExternalPkg, resolvedExternalPkg.ImportPath, resolvedExternalPkg.Dir, &currentConfig)
+				embeddedOptions, _, embErr = AnalyzeOptionsV3(fset, typeNameInExternalPkg, resolvedExternalPkg.ImportPath, resolvedExternalPkg.Dir, ldr)
 			} else { // Embedded struct from the same package
 				cleanEmbeddedTypeName := strings.TrimPrefix(embeddedTypeName, "*")
-				embeddedOptions, _, embErr = AnalyzeOptionsV3(fset, cleanEmbeddedTypeName, targetPackagePath, baseDir, &currentConfig)
+				embeddedOptions, _, embErr = AnalyzeOptionsV3(fset, cleanEmbeddedTypeName, targetPackagePath, baseDir, ldr)
 			}
 
 			if embErr != nil {

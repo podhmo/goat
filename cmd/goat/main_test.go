@@ -482,7 +482,12 @@ func TestScanAnalyzerVersionV3(t *testing.T) {
 		t.Fatalf("Option 'MyTime' not found in metadata output. Output:\n%s", out)
 	}
 
-	if myTimeOption.IsTextUnmarshaler { // V3 currently doesn't set this
-		t.Errorf("Expected IsTextUnmarshaler to be false for MyTime with Analyzer V3, got true. Option: %+v", myTimeOption)
+	// V3 now correctly sets IsTextUnmarshaler and IsTextMarshaler
+	if !myTimeOption.IsTextUnmarshaler {
+		t.Errorf("Expected IsTextUnmarshaler to be true for MyTime with Analyzer V3, got false. Option: %+v", myTimeOption)
+	}
+	// Add a check for IsTextMarshaler as well, since the output shows it's true.
+	if !myTimeOption.IsTextMarshaler {
+		t.Errorf("Expected IsTextMarshaler to be true for MyTime with Analyzer V3, got false. Option: %+v", myTimeOption)
 	}
 }

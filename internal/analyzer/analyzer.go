@@ -7,7 +7,7 @@ import (
 	"log/slog"
 	"strings" // Added import
 
-	"github.com/podhmo/goat/internal/loader/lazyload" // Added import for lazyload.Config
+	"github.com/podhmo/goat/internal/loader/lazyload" // Ensure this import is present
 	"github.com/podhmo/goat/internal/metadata"
 )
 
@@ -18,7 +18,8 @@ import (
 // - targetPackageID: Import path of the package containing the runFuncName (e.g., "testmodule/example.com/mainpkg").
 // - moduleRootPath: Absolute path to the root of the module this package belongs to.
 // - analyzerVersion: Version of the analyzer to use (2 or 3).
-func Analyze(fset *token.FileSet, files []*ast.File, runFuncName string, targetPackageID string, moduleRootPath string, analyzerVersion int) (*metadata.CommandMetadata, string, error) {
+// - ldr: Loader for loading packages.
+func Analyze(fset *token.FileSet, files []*ast.File, runFuncName string, targetPackageID string, moduleRootPath string, analyzerVersion int, ldr *lazyload.Loader) (*metadata.CommandMetadata, string, error) {
 	cmdMeta := &metadata.CommandMetadata{
 		Options: []*metadata.OptionMetadata{},
 	}
@@ -113,11 +114,13 @@ func Analyze(fset *token.FileSet, files []*ast.File, runFuncName string, targetP
 			// AnalyzeOptionsV3 uses the lazyload package for dynamic parsing and type analysis.
 			// It no longer requires a map of pre-parsed AST files.
 			// Production code uses default lazyload config. Tests can inject a different one.
-			defaultLLCfg := lazyload.Config{
-				Fset: fset,
-				// No custom LocatorFactory means it uses the default (go list based).
+			slog.Debug("Goat: Using AnalyzerV3", "targetPackageID", targetPackageID, "moduleRootPath", moduleRootPath)
+			// Pass the loader 'ldr' received by Analyze to AnalyzeOptionsV3.
+			// Ensure ldr is not nil if analyzerVersion is 3.
+			if ldr == nil {
+				return nil, "", fmt.Errorf("loader instance is required for AnalyzerV3 but was nil")
 			}
-			options, foundOptionsStructName, err = AnalyzeOptionsV3(fset, runFuncInfo.OptionsArgType, targetPackageID, moduleRootPath, &defaultLLCfg)
+			options, foundOptionsStructName, err = AnalyzeOptionsV3(fset, runFuncInfo.OptionsArgType, targetPackageID, moduleRootPath, ldr)
 		} else { // Default to V2 (analyzerVersion == 2 or any other value)
 			slog.Debug("Goat: Using AnalyzerV2 (default)", "targetPackageID", targetPackageID, "moduleRootPath", moduleRootPath)
 			options, foundOptionsStructName, err = AnalyzeOptionsV2(fset, files, runFuncInfo.OptionsArgType, targetPackageID, moduleRootPath)
