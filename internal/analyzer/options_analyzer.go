@@ -349,17 +349,23 @@ func AnalyzeOptionsV2(fset *token.FileSet, astFilesForLookup []*ast.File, option
 //   - optionsTypeName: Name of the options struct type (e.g., "MainConfig").
 //   - targetPackagePath: The import path of the package containing optionsTypeName.
 //   - baseDir: The base directory from which to resolve targetPackagePath (often module root).
+//   - llConfig: Configuration for the lazyload.Loader. If nil, a default will be used.
 func AnalyzeOptionsV3(
-	fset *token.FileSet,
+	fset *token.FileSet, // Still needed for some astutils and if llConfig.Fset is nil
 	optionsTypeName string,
 	targetPackagePath string,
 	baseDir string,
+	llConfig *lazyload.Config,
 ) ([]*metadata.OptionMetadata, string, error) {
-	llCfg := lazyload.Config{
-		Fset: fset,
-		// TODO: Consider if BuildContext needs to be more specific for lazyload.Config
+	var currentConfig lazyload.Config
+	if llConfig != nil {
+		currentConfig = *llConfig
 	}
-	loader := lazyload.NewLoader(llCfg)
+	if currentConfig.Fset == nil { // Ensure Fset is always set
+		currentConfig.Fset = fset
+	}
+
+	loader := lazyload.NewLoader(currentConfig)
 
 	// Heuristic adjustment for loadPattern based on typical test setups.
 	// If targetPackagePath is simple (no slashes, e.g., a module name) and baseDir is set,
@@ -470,10 +476,10 @@ func AnalyzeOptionsV3(
 				if resolvedExternalPkg == nil {
 					return nil, actualStructName, fmt.Errorf("resolved imported package is nil for path '%s'", resolvedExternalImportPath)
 				}
-				embeddedOptions, _, embErr = AnalyzeOptionsV3(fset, typeNameInExternalPkg, resolvedExternalPkg.ImportPath, resolvedExternalPkg.Dir)
-			} else {
+				embeddedOptions, _, embErr = AnalyzeOptionsV3(fset, typeNameInExternalPkg, resolvedExternalPkg.ImportPath, resolvedExternalPkg.Dir, &currentConfig)
+			} else { // Embedded struct from the same package
 				cleanEmbeddedTypeName := strings.TrimPrefix(embeddedTypeName, "*")
-				embeddedOptions, _, embErr = AnalyzeOptionsV3(fset, cleanEmbeddedTypeName, targetPackagePath, baseDir)
+				embeddedOptions, _, embErr = AnalyzeOptionsV3(fset, cleanEmbeddedTypeName, targetPackagePath, baseDir, &currentConfig)
 			}
 
 			if embErr != nil {
