@@ -11,11 +11,10 @@ import (
 	// "log/slog" // Unused
 	"os"            // Re-add for ReadDir
 	"path/filepath" // Re-add for Join
-	"reflect"
 	"strings"
 
 	// No longer need "bytes" or "go/format" for overlay population from ASTs
-	"golang.org/x/tools/go/packages"
+	// "golang.org/x/tools/go/packages" // Removed unused import
 
 	"github.com/podhmo/goat/internal/loader/lazyload"
 	"github.com/podhmo/goat/internal/metadata"
@@ -63,28 +62,20 @@ func init() {
 //   - fset: Token fileset for parsing.
 //   - optionsTypeName: Name of the options struct type (e.g., "MainConfig").
 //   - targetPackagePath: The import path of the package containing optionsTypeName.
-//   - baseDir: The base directory from which to resolve targetPackagePath (often module root).
-//   - loader: The lazyload.Loader instance to use for loading package information.
-func AnalyzeOptions(
-	fset *token.FileSet, // Still needed for some astutils
-	optionsTypeName string,
-	targetPackagePath string,
-	baseDir string,
-	loader *lazyload.Loader,
-) ([]*metadata.OptionMetadata, string, error) {
+//
 // It performs type analysis for interface checking and resolving embedded structs.
 //
 //   - fset: Token fileset for parsing.
 //   - optionsTypeName: Name of the options struct type (e.g., "MainConfig").
 //   - targetPackagePath: The import path of the package containing optionsTypeName.
 //   - baseDir: The base directory from which to resolve targetPackagePath (often module root).
-//   - llConfig: Configuration for the lazyload.Loader. If nil, a default will be used.
-func AnalyzeOptionsV3(
-	fset *token.FileSet, // Still needed for some astutils and if llConfig.Fset is nil
+//   - loader: Instance of lazyload.Loader.
+func AnalyzeOptions( // Renamed from AnalyzeOptionsV3
+	fset *token.FileSet, // Still needed for some astutils
 	optionsTypeName string,
 	targetPackagePath string,
 	baseDir string,
-	llConfig *lazyload.Config,
+	loader *lazyload.Loader, // Changed from llConfig *lazyload.Config
 ) ([]*metadata.OptionMetadata, string, error) {
 	// Heuristic adjustment for loadPattern based on typical test setups.
 	// If targetPackagePath is simple (no slashes, e.g., a module name) and baseDir is set,
@@ -99,7 +90,9 @@ func AnalyzeOptionsV3(
 		}
 	}
 
-	loadedPkgs, err := loader.Load(loadPattern, baseDir)
+	// loader is now passed in directly
+
+	loadedPkgs, err := loader.Load(loadPattern, baseDir) // Use the passed-in loader
 	if err != nil {
 		return nil, "", fmt.Errorf("error loading package '%s' (pattern '%s', baseDir '%s') with lazyload: %w", targetPackagePath, loadPattern, baseDir, err)
 	}
@@ -195,9 +188,11 @@ func AnalyzeOptionsV3(
 				if resolvedExternalPkg == nil {
 					return nil, actualStructName, fmt.Errorf("resolved imported package is nil for path '%s'", resolvedExternalImportPath)
 				}
+				// Pass loader directly
 				embeddedOptions, _, embErr = AnalyzeOptions(fset, typeNameInExternalPkg, resolvedExternalPkg.ImportPath, resolvedExternalPkg.Dir, loader)
 			} else { // Embedded struct from the same package
 				cleanEmbeddedTypeName := strings.TrimPrefix(embeddedTypeName, "*")
+				// Pass loader directly
 				embeddedOptions, _, embErr = AnalyzeOptions(fset, cleanEmbeddedTypeName, targetPackagePath, baseDir, loader)
 			}
 

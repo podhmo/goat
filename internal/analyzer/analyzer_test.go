@@ -202,7 +202,7 @@ func main() { RunWithoutOptions(nil) }
 			// So the import path is "testmodule". tc.packageName is the `package foo` name.
 			targetPackageID := "testmodule" // Module name defined in parseTestFiles
 
-			llCfg := lazyload.Config{Fset: fset, BaseDir: moduleRootDir}
+			llCfg := lazyload.Config{Fset: fset} // Removed BaseDir from here
 			loader := lazyload.NewLoader(llCfg)
 			cmdMeta, _, err := Analyze(fset, astFiles, tc.runFuncName, targetPackageID, moduleRootDir, loader)
 

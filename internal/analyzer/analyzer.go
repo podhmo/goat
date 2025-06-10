@@ -111,8 +111,8 @@ func Analyze(fset *token.FileSet, files []*ast.File, runFuncName string, targetP
 		slog.Debug("Goat: Analyzing options", "targetPackageID", targetPackageID, "moduleRootPath", moduleRootPath)
 		// AnalyzeOptions uses the lazyload package for dynamic parsing and type analysis.
 		// It no longer requires a map of pre-parsed AST files.
-		// The loader instance is passed directly.
-		options, foundOptionsStructName, err = AnalyzeOptions(fset, runFuncInfo.OptionsArgType, targetPackageID, moduleRootPath, loader)
+		// The loader instance (which is assumed to be *lazyload.Config) is passed directly.
+		options, foundOptionsStructName, err = AnalyzeOptions(fset, runFuncInfo.OptionsArgType, targetPackageID, moduleRootPath, loader) // loader is *lazyload.Config
 
 		if err != nil {
 			return nil, "", fmt.Errorf("analyzing options struct for run function '%s' in package '%s': %w", runFuncName, targetPackageID, err)
