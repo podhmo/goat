@@ -113,15 +113,19 @@ func setupTestEnvironmentForLazyLoad(t *testing.T, moduleName string, packages T
 }
 
 // NewTestPackageLocator creates a PackageLocator specifically for tests using temporary modules.
+// The moduleRootPath parameter is captured by the closure and used as the base directory for locating packages.
 func NewTestPackageLocator(moduleRootPath string, t *testing.T) lazyload.PackageLocator {
-	return func(pattern string, buildCtx lazyload.BuildContext) ([]lazyload.PackageMetaInfo, error) {
-		t.Logf("TestPackageLocator: Locating pattern='%s', moduleRootPath='%s'", pattern, moduleRootPath)
+	return func(pattern string, baseDir string, buildCtx lazyload.BuildContext) ([]lazyload.PackageMetaInfo, error) {
+		// baseDir is the directory of the importing package (ResolveImport) or initial Load() baseDir.
+		// moduleRootPath is the captured root of the *current test's primary module*.
+		t.Logf("TestPackageLocator: Locating pattern='%s', baseDirFromLoaderArgument='%s', capturedModuleRootPathForThisLocator='%s'", pattern, baseDir, moduleRootPath)
 
-		// 1. Read and parse go.mod to find the declared module name
+		// 1. Read and parse go.mod from the captured moduleRootPath to find its declared module name.
+		// This assumes the locator is configured for a specific module context.
 		goModPath := filepath.Join(moduleRootPath, "go.mod")
 		goModBytes, err := os.ReadFile(goModPath)
 		if err != nil {
-			return nil, fmt.Errorf("testlocator: failed to read go.mod at %s: %w", goModPath, err)
+			return nil, fmt.Errorf("testlocator: failed to read go.mod at %s (capturedModuleRootPath): %w", goModPath, err)
 		}
 
 		var declaredModuleName string
@@ -135,53 +139,50 @@ func NewTestPackageLocator(moduleRootPath string, t *testing.T) lazyload.Package
 		if declaredModuleName == "" {
 			return nil, fmt.Errorf("testlocator: could not find module declaration in %s", goModPath)
 		}
-		t.Logf("TestPackageLocator: Declared module name='%s'", declaredModuleName)
+		t.Logf("TestPackageLocator: Declared module name='%s' from capturedModuleRootPath='%s'", declaredModuleName, moduleRootPath)
 
-		// 2. Determine the actual directory of the package
+		// 2. Determine the actual directory of the package.
+		// All package resolutions are relative to the captured moduleRootPath.
 		var pkgDir string
 		var importPathToUse string
 
-		// buildCtx.Dir is not available. All path resolutions must be relative to moduleRootPath or absolute.
-		if pattern == "." || pattern == declaredModuleName {
+		if pattern == "." || pattern == declaredModuleName { // Pattern refers to the root of this module
 			pkgDir = moduleRootPath
 			importPathToUse = declaredModuleName
-		} else if strings.HasPrefix(pattern, declaredModuleName+"/") {
+		} else if strings.HasPrefix(pattern, declaredModuleName+"/") { // Pattern is "module/subpackage"
 			pkgDir = filepath.Join(moduleRootPath, strings.TrimPrefix(pattern, declaredModuleName+"/"))
 			importPathToUse = pattern
 		} else if filepath.IsAbs(pattern) {
-			// If an absolute path is given, use it. This might occur if a resolved import from another module points here.
-			// We need to ensure it's within the conceptual test setup.
-			if !strings.HasPrefix(pattern, moduleRootPath) {
-				return nil, fmt.Errorf("testlocator: absolute pattern '%s' is outside the module root '%s'", pattern, moduleRootPath)
-			}
+			// If an absolute path is given, use it. This is tricky for a test locator tied to one module.
+			// It might be a path to a package within the same conceptual module, or a different one.
+			// For now, assume it's still related to the current module's structure if possible.
+			// This part might need refinement if testing complex multi-module setups.
 			pkgDir = pattern
-			// Attempt to derive an import path relative to moduleRootPath
-			relPath, err := filepath.Rel(moduleRootPath, pkgDir)
-			if err != nil {
-				return nil, fmt.Errorf("testlocator: failed to get relative path for abs pkgDir '%s': %w", pkgDir, err)
+			relPath, errRel := filepath.Rel(moduleRootPath, pkgDir)
+			if errRel != nil || strings.HasPrefix(relPath, "..") { // If not within the moduleRootPath
+				// If the pattern is an absolute path outside the current module, this locator might not be the right one,
+				// or it needs to handle it as a "foreign" module.
+				// For this test setup, we'll assume absolute paths are still resolvable relative to moduleRootPath
+				// or it's an error/unsupported case for this simple locator.
+				return nil, fmt.Errorf("testlocator: absolute pattern '%s' is not within the captured module root '%s'", pattern, moduleRootPath)
 			}
 			if relPath == "." {
 				importPathToUse = declaredModuleName
 			} else {
 				importPathToUse = filepath.ToSlash(filepath.Join(declaredModuleName, relPath))
 			}
-		} else if !strings.Contains(pattern, "/") { // Simple pattern, assume it's a package in the current moduleRootPath
+		} else if !strings.Contains(pattern, "/") { // Simple pattern (e.g. "subpkg"), assume it's a direct subdir of moduleRootPath
 			pkgDir = filepath.Join(moduleRootPath, pattern)
 			importPathToUse = declaredModuleName + "/" + pattern
-		} else { // Relative path from moduleRootPath
+		} else { // Relative path pattern (e.g. "subpkg/another"), resolve from moduleRootPath
 			pkgDir = filepath.Join(moduleRootPath, pattern)
-			// Construct import path based on module name and relative path
-			relPath, err := filepath.Rel(moduleRootPath, pkgDir)
-			if err != nil {
-				return nil, fmt.Errorf("testlocator: could not make pkgDir '%s' relative to moduleRootPath '%s': %w", pkgDir, moduleRootPath, err)
+			relPath, errRel := filepath.Rel(moduleRootPath, pkgDir) // Should just be `pattern` if already relative
+			if errRel != nil {
+				return nil, fmt.Errorf("testlocator: could not make pkgDir '%s' relative to moduleRootPath '%s': %w", pkgDir, moduleRootPath, errRel)
 			}
-			if relPath == "." { // Should have been caught by pattern == "."
-				importPathToUse = declaredModuleName
-			} else {
-				importPathToUse = filepath.ToSlash(filepath.Join(declaredModuleName, relPath))
-			}
+			importPathToUse = filepath.ToSlash(filepath.Join(declaredModuleName, relPath))
 		}
-		t.Logf("TestPackageLocator: Resolved pkgDir='%s', importPathToUse='%s'", pkgDir, importPathToUse)
+		t.Logf("TestPackageLocator: Resolved pkgDir='%s' (from moduleRootPath) for pattern '%s', effective importPath='%s'", pkgDir, pattern, importPathToUse)
 
 		// 3. Scan pkgDir for .go files
 		dirEntries, err := os.ReadDir(pkgDir)

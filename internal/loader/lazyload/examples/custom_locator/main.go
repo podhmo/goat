@@ -104,24 +104,25 @@ func main() {
 // myCustomLocator is a mock locator for demonstration.
 // In a real scenario, this would interact with a custom build system,
 // read a proprietary project manifest, or scan a non-standard directory structure.
-func myCustomLocator(pattern string, buildCtx lazyload.BuildContext) ([]lazyload.PackageMetaInfo, error) {
-	fmt.Printf("CustomLocator called with pattern: %q, BuildContext: %+v\n", pattern, buildCtx)
+func myCustomLocator(pattern string, locatorBaseDir string, buildCtx lazyload.BuildContext) ([]lazyload.PackageMetaInfo, error) {
+	// locatorBaseDir is the directory context provided by the loader.
+	// This mock locator creates its own isolated temp environment for simplicity,
+	// so it doesn't strictly use locatorBaseDir but logs it.
+	fmt.Printf("CustomLocator called with pattern: %q, locatorBaseDir: %q, BuildContext: %+v\n", pattern, locatorBaseDir, buildCtx)
 
 	// This locator only "knows" about a fake package "custom/pkg/one".
-	// It assumes a flat file structure in a predefined base directory.
-	// For simplicity, we'll use a temporary directory for this example.
-
-	baseDir, err := os.MkdirTemp("", "custom-locator-pkgs-")
+	// It creates its own temporary base directory for this example.
+	baseDirForLocator, err := os.MkdirTemp("", "custom-locator-pkgs-")
 	if err != nil {
 		return nil, fmt.Errorf("custom_locator: failed to create temp dir: %w", err)
 	}
-	// We'll clean this up later, but in a real test, manage temp dirs carefully.
-	// defer os.RemoveAll(baseDir) // This defer won't work as baseDir is local to this call.
-	// For this example, the main function will clean up. This is just for demonstration.
-	// This temporary directory needs to exist when ParseFile is called by the Package object.
-	// So, the actual file creation should happen here, or the path should be predictable.
-	// Let's create dummy files for "custom/pkg/one".
-	pkgOneDir := filepath.Join(baseDir, "custom", "pkg", "one")
+	// The main function will manage cleanup of tempDirsCreated based on Package.Dir.
+	// This temp dir (baseDirForLocator) needs to be added to tempDirsCreated in main IF a package from it is returned and used.
+	// However, the logic in main currently derives the cleanup path from pkgOne.Dir.
+	// Ensure that pkgOne.Dir is set correctly relative to what main expects for cleanup.
+
+	// Let's create dummy files for "custom/pkg/one" inside baseDirForLocator.
+	pkgOneDir := filepath.Join(baseDirForLocator, "custom", "pkg", "one")
 	if err := os.MkdirAll(pkgOneDir, 0755); err != nil {
 		return nil, err
 	}
@@ -142,12 +143,13 @@ type CustomStruct struct { Message string ` + "`tag:\"message_tag\"`" + ` }
 				Dir:           pkgOneDir,               // Absolute path to the package directory
 				GoFiles:       []string{"one.go"},      // File names relative to Dir
 				DirectImports: []string{"another/pkg"}, // Example direct import
-				// ModulePath, ModuleDir can be set if applicable
+				// ModulePath, ModuleDir can be set if applicable, relative to baseDirForLocator
+				ModuleDir: baseDirForLocator, // Example of setting module dir
 			},
 		}, nil
 	}
 	if pattern == "another/pkg" { // So ResolveImport can find it
-		anotherPkgDir := filepath.Join(baseDir, "another", "pkg")
+		anotherPkgDir := filepath.Join(baseDirForLocator, "another", "pkg")
 		if err := os.MkdirAll(anotherPkgDir, 0755); err != nil {
 			return nil, err
 		}

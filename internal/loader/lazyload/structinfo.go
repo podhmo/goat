@@ -146,8 +146,8 @@ func (fi *FieldInfo) ImplementsInterface(targetInterfacePackagePath string, targ
 		interfaceDefPkg = actualPkg
 	} else {
 		// Resolve the interface's package using the loader from the struct's package context.
-		// The loader needs a 'from' path for context, using currentPackage.ImportPath.
-		resolvedInterfacePkg, err := currentPackage.loader.resolveImport(currentPackage.ImportPath, targetInterfacePackagePath)
+		// The loader needs a 'from' path for context, using currentPackage.ImportPath and currentPackage.Dir.
+		resolvedInterfacePkg, err := currentPackage.loader.resolveImport(currentPackage.Dir, currentPackage.ImportPath, targetInterfacePackagePath)
 		if err != nil {
 			return false, fmt.Errorf("failed to resolve interface package '%s': %w", targetInterfacePackagePath, err)
 		}

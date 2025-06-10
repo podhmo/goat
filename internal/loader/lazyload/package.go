@@ -145,7 +145,7 @@ func (p *Package) ResolveImport(importPath string) (*Package, error) {
 	}
 
 	// Ask the loader to resolve it
-	resolvedPkg, err := p.loader.resolveImport(p.ImportPath, importPath)
+	resolvedPkg, err := p.loader.resolveImport(p.Dir, p.ImportPath, importPath)
 	if err != nil {
 		return nil, err // Error already includes context
 	}

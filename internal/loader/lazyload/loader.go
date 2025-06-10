@@ -53,17 +53,17 @@ func NewLoader(cfg Config) *Loader {
 	}
 }
 
-// Load loads the packages matching the given patterns.
+// Load loads the packages matching the given patterns, using baseDir as the context for the locator.
 // It only loads the metadata for the top-level packages.
 // Dependent packages are loaded lazily when accessed.
-func (l *Loader) Load(patterns ...string) ([]*Package, error) {
+func (l *Loader) Load(baseDir string, patterns ...string) ([]*Package, error) {
 	var pkgs []*Package
 	var errs []error
 
 	for _, pattern := range patterns {
-		metaInfos, err := l.cfg.Locator(pattern, l.cfg.Context)
+		metaInfos, err := l.cfg.Locator(pattern, baseDir, l.cfg.Context)
 		if err != nil {
-			errs = append(errs, fmt.Errorf("error locating package for pattern %q: %w", pattern, err))
+			errs = append(errs, fmt.Errorf("error locating package for pattern %q in dir %q: %w", pattern, baseDir, err))
 			continue
 		}
 
@@ -98,7 +98,8 @@ func (l *Loader) Load(patterns ...string) ([]*Package, error) {
 
 // resolveImport is called by a Package to resolve one of its imports.
 // It ensures that the imported package is loaded and returns it.
-func (l *Loader) resolveImport(importerPath string, importPath string) (*Package, error) {
+// The importerDir is the directory of the package that is importing, used as context if needed.
+func (l *Loader) resolveImport(importerDir string, importerPath string, importPath string) (*Package, error) {
 	l.mu.Lock()
 	if pkg, ok := l.cache[importPath]; ok {
 		l.mu.Unlock()
@@ -108,9 +109,10 @@ func (l *Loader) resolveImport(importerPath string, importPath string) (*Package
 
 	// If not in cache, try to locate and load it.
 	// The locator should be able to handle an absolute import path.
-	metaInfos, err := l.cfg.Locator(importPath, l.cfg.Context)
+	// Use importerDir as the baseDir for resolving the import.
+	metaInfos, err := l.cfg.Locator(importPath, importerDir, l.cfg.Context)
 	if err != nil {
-		return nil, fmt.Errorf("loader: failed to locate imported package %q (imported by %q): %w", importPath, importerPath, err)
+		return nil, fmt.Errorf("loader: failed to locate imported package %q (imported by %q from dir %q): %w", importPath, importerPath, importerDir, err)
 	}
 
 	if len(metaInfos) == 0 {

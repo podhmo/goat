@@ -10,7 +10,6 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
-	"strings"
 
 	"github.com/podhmo/goat/internal/analyzer"
 	"github.com/podhmo/goat/internal/codegen"
@@ -202,8 +201,6 @@ func scanMain(fset *token.FileSet, opts *Options) (*metadata.CommandMetadata, *a
 	// finalFilesForAnalysis, targetPackageID, moduleRootPath, currentPackageName (partially)
 	// are removed here. They will be replaced by logic using lazyload.Loader.
 
-	// Placeholder for currentPackageName, will be derived from lazyload.Package
-	var currentPackageName string
 	// Placeholder for finalFilesForAnalysis, will be derived from lazyload.Package
 	var finalFilesForAnalysis []*ast.File
 	// Placeholder for targetFileAst, will be found among finalFilesForAnalysis
@@ -217,10 +214,11 @@ func scanMain(fset *token.FileSet, opts *Options) (*metadata.CommandMetadata, *a
 	l := lazyload.NewLoader(llCfg)
 
 	targetDir := filepath.Dir(opts.TargetFile) // opts.TargetFile is already an absolute path
-	slog.Debug("Goat: Loading package", "directory", targetDir)
-	loadedPkgs, err := l.Load(targetDir) // Using targetDir as the load pattern
+	slog.Debug("Goat: Loading package", "directory", targetDir, "pattern", "./...")
+	// Use "./..." as the pattern since loader's baseDir is already targetDir.
+	loadedPkgs, err := l.Load(targetDir, "./...")
 	if err != nil {
-		return nil, nil, fmt.Errorf("failed to load package for directory %s: %w", targetDir, err)
+		return nil, nil, fmt.Errorf("failed to load package for directory %s (pattern './...'): %w", targetDir, err)
 	}
 	if len(loadedPkgs) == 0 {
 		return nil, nil, fmt.Errorf("no packages found for directory %s", targetDir)
@@ -229,7 +227,7 @@ func scanMain(fset *token.FileSet, opts *Options) (*metadata.CommandMetadata, *a
 
 	pkgFilesMap, err := currentPkg.Files()
 	if err != nil {
-		return nil, nil, fmt.Errorf("could not get AST files for package %s: %w", currentPkg.ImportPath(), err)
+		return nil, nil, fmt.Errorf("could not get AST files for package %s: %w", currentPkg.ImportPath, err)
 	}
 
 	finalFilesForAnalysis = make([]*ast.File, 0, len(pkgFilesMap))
@@ -248,30 +246,44 @@ func scanMain(fset *token.FileSet, opts *Options) (*metadata.CommandMetadata, *a
 	if targetFileAst == nil {
 		// This might happen if opts.TargetFile is not part of the loaded package's files,
 		// or if the path matching is incorrect.
-		slog.Error("Target file AST not found in loaded package files", "targetFile", opts.TargetFile, "package", currentPkg.ImportPath())
+		slog.Error("Target file AST not found in loaded package files", "targetFile", opts.TargetFile, "package", currentPkg.ImportPath)
 		// Log available files for debugging
 		for _, f := range finalFilesForAnalysis {
 			slog.Debug("Available file in package", "path", fset.File(f.Pos()).Name())
 		}
-		return nil, nil, fmt.Errorf("target file AST %s not found in loaded package %s", opts.TargetFile, currentPkg.ImportPath())
+		return nil, nil, fmt.Errorf("target file AST %s not found in loaded package %s", opts.TargetFile, currentPkg.ImportPath)
 	}
 
-	targetPackageID = currentPkg.ImportPath()
-	if mi := currentPkg.Module(); mi != nil {
-		moduleRootPath = mi.Dir
+	targetPackageID = currentPkg.ImportPath
+	// Access Module information via RawMeta
+	if currentPkg.RawMeta.ModulePath != "" {
+		moduleRootPath = currentPkg.RawMeta.ModuleDir
 	} else {
 		// If not part of a module (e.g. GOPATH mode or single file),
 		// use the package's directory as a fallback for moduleRootPath.
 		// This might not be strictly a "module root" but is a sensible root for package context.
-		moduleRootPath = currentPkg.Dir()
+		moduleRootPath = currentPkg.Dir
 		slog.Debug("Goat: No module information found for package, using package directory as effective root.", "packageDir", moduleRootPath)
 	}
-	currentPackageName = currentPkg.Name()
+	// currentPackageName is currentPkg.Name, no longer a separate variable
 
 	// Ensure moduleRootPath is non-empty; default to current directory if all else fails.
 	if moduleRootPath == "" {
 		slog.Warn("Module root path is empty, defaulting to current working directory '.'")
 		moduleRootPath = "." // Or handle as an error if a module context is strictly required
+	}
+
+	// Workaround for temporary test modules where `go list` might misreport ModuleDir.
+	// If moduleRootPath resolved to "." but targetDir is absolute (should be, as per earlier logic)
+	// and targetDir was the basis for the initial package load, prefer targetDir.
+	if moduleRootPath == "." && filepath.IsAbs(targetDir) {
+		// Further check: ensure targetDir was indeed the directory used for the initial load of currentPkg.
+		// currentPkg.Dir should be targetDir if the load was successful and `go list` reported Dir correctly.
+		// This is more of a sanity check for the workaround.
+		// If currentPkg.Dir is also ".", then `go list` is very confused or we are not in a temp module.
+		// However, the primary condition is moduleRootPath being "." when we expect it to be targetDir.
+		slog.Debug("Goat: Applying workaround for moduleRootPath", "originalModuleRootPath", moduleRootPath, "newModuleRootPath", targetDir, "currentPkgDir", currentPkg.Dir, "currentPkgModuleDir", currentPkg.RawMeta.ModuleDir)
+		moduleRootPath = targetDir
 	}
 
 	cmdMetadata, returnedOptionsStructName, err := analyzer.Analyze(fset, finalFilesForAnalysis, opts.RunFuncName, targetPackageID, moduleRootPath, l)

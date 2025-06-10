@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"os" // Added for os.Environ()
 	"os/exec"
 	"strings"
 )
@@ -26,10 +27,11 @@ type PackageMetaInfo struct {
 // PackageLocator is a function type that locates packages based on a pattern
 // and returns their metadata.
 // The build context provides parameters like GOOS, GOARCH, and build tags.
-type PackageLocator func(pattern string, buildCtx BuildContext) ([]PackageMetaInfo, error)
+// The baseDir specifies the working directory for the locator.
+type PackageLocator func(pattern string, baseDir string, buildCtx BuildContext) ([]PackageMetaInfo, error)
 
 // GoListLocator is a PackageLocator that uses `go list` command.
-func GoListLocator(pattern string, buildCtx BuildContext) ([]PackageMetaInfo, error) {
+func GoListLocator(pattern string, baseDir string, buildCtx BuildContext) ([]PackageMetaInfo, error) {
 	args := []string{"list", "-json"}
 	if len(buildCtx.BuildTags) > 0 {
 		args = append(args, "-tags", strings.Join(buildCtx.BuildTags, ","))
@@ -37,12 +39,28 @@ func GoListLocator(pattern string, buildCtx BuildContext) ([]PackageMetaInfo, er
 	args = append(args, pattern)
 
 	cmd := exec.Command("go", args...)
+	if baseDir != "" {
+		cmd.Dir = baseDir
+	}
+
+	// Build the environment for the command
+	env := os.Environ()
+	cleanEnv := make([]string, 0, len(env)+2) // +2 for GOWORK and GO111MODULE
+	for _, e := range env {
+		if !strings.HasPrefix(e, "GOPATH=") {
+			cleanEnv = append(cleanEnv, e)
+		}
+	}
+	cleanEnv = append(cleanEnv, "GOWORK=off")
+	cleanEnv = append(cleanEnv, "GO111MODULE=on")
+
 	if buildCtx.GOOS != "" {
-		cmd.Env = append(cmd.Environ(), "GOOS="+buildCtx.GOOS)
+		cleanEnv = append(cleanEnv, "GOOS="+buildCtx.GOOS)
 	}
 	if buildCtx.GOARCH != "" {
-		cmd.Env = append(cmd.Environ(), "GOARCH="+buildCtx.GOARCH)
+		cleanEnv = append(cleanEnv, "GOARCH="+buildCtx.GOARCH)
 	}
+	cmd.Env = cleanEnv
 	// TODO: Consider GOPATH, GOMODCACHE, etc. if not running in a module-aware dir.
 	// For module mode, `go list` typically works well from within the module or by specifying full import paths.
 
