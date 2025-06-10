@@ -9,7 +9,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/podhmo/goat/internal/loader/lazyload" // Added
+	"github.com/podhmo/goat/internal/loader" // Changed
 	// "strings" // No longer used directly in the simplified parseTestFiles
 	// "golang.org/x/tools/go/packages" // No longer used in the simplified parseTestFiles
 )
@@ -202,8 +202,8 @@ func main() { RunWithoutOptions(nil) }
 			// So the import path is "testmodule". tc.packageName is the `package foo` name.
 			targetPackageID := "testmodule" // Module name defined in parseTestFiles
 
-			llCfg := lazyload.Config{Fset: fset} // Removed BaseDir from here
-			loader := lazyload.NewLoader(llCfg)
+			llCfg := loader.Config{Fset: fset} // Removed BaseDir from here
+			loader := loader.New(llCfg)
 			cmdMeta, _, err := Analyze(fset, astFiles, tc.runFuncName, targetPackageID, moduleRootDir, loader)
 
 			// InitializerFunc is determined before AnalyzeOptions is called.

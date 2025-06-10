@@ -57,4 +57,9 @@ To simplify package structure and naming conventions, the package for lazy loadi
 -   **Constructor**: The constructor function is `loader.New`.
 
 This restructuring streamlines access to the loader functionality. The core lazy-loading strategy remains consistent.
+
+## Refactoring and Renaming in `internal/loader`
+
+- The package `internal/loader/lazyload` was consolidated into the `internal/loader` package. This change necessitated updates to import statements in files that previously imported `lazyload`.
+- The constructor function `loader.NewLoader` within the `internal/loader` package was renamed to `loader.New`. All instances where `NewLoader` was called needed to be updated to use `New`.
 [end of docs/knowledge.md]

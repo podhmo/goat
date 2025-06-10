@@ -7,7 +7,7 @@ import (
 	"log/slog"
 	"strings" // Added import
 
-	"github.com/podhmo/goat/internal/loader/lazyload" // Added import for lazyload.Config
+	"github.com/podhmo/goat/internal/loader" // Changed import for lazyload.Config
 	"github.com/podhmo/goat/internal/metadata"
 )
 
@@ -18,7 +18,7 @@ import (
 // - targetPackageID: Import path of the package containing the runFuncName (e.g., "testmodule/example.com/mainpkg").
 // - moduleRootPath: Absolute path to the root of the module this package belongs to.
 // - loader: Loader for lazy loading of package information.
-func Analyze(fset *token.FileSet, files []*ast.File, runFuncName string, targetPackageID string, moduleRootPath string, loader *lazyload.Loader) (*metadata.CommandMetadata, string, error) {
+func Analyze(fset *token.FileSet, files []*ast.File, runFuncName string, targetPackageID string, moduleRootPath string, loader *loader.Loader) (*metadata.CommandMetadata, string, error) {
 	cmdMeta := &metadata.CommandMetadata{
 		Options: []*metadata.OptionMetadata{},
 	}
@@ -109,10 +109,10 @@ func Analyze(fset *token.FileSet, files []*ast.File, runFuncName string, targetP
 		// err is already declared in the function scope from AnalyzeRunFunc, reuse it.
 
 		slog.Debug("Goat: Analyzing options", "targetPackageID", targetPackageID, "moduleRootPath", moduleRootPath)
-		// AnalyzeOptions uses the lazyload package for dynamic parsing and type analysis.
+		// AnalyzeOptions uses the loader package for dynamic parsing and type analysis.
 		// It no longer requires a map of pre-parsed AST files.
-		// The loader instance (which is assumed to be *lazyload.Config) is passed directly.
-		options, foundOptionsStructName, err = AnalyzeOptions(fset, runFuncInfo.OptionsArgType, targetPackageID, moduleRootPath, loader) // loader is *lazyload.Config
+		// The loader instance (which is assumed to be *loader.Config) is passed directly.
+		options, foundOptionsStructName, err = AnalyzeOptions(fset, runFuncInfo.OptionsArgType, targetPackageID, moduleRootPath, loader) // loader is *loader.Config
 
 		if err != nil {
 			return nil, "", fmt.Errorf("analyzing options struct for run function '%s' in package '%s': %w", runFuncName, targetPackageID, err)
