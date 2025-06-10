@@ -17,7 +17,7 @@ import (
 	// No longer need "bytes" or "go/format" for overlay population from ASTs
 	"golang.org/x/tools/go/packages"
 
-	// "github.com/podhmo/goat/internal/loader" // Unused in V2, recursive calls use AnalyzeOptionsV2
+	"github.com/podhmo/goat/internal/loader/lazyload"
 	"github.com/podhmo/goat/internal/metadata"
 	"github.com/podhmo/goat/internal/utils/astutils"
 	"github.com/podhmo/goat/internal/utils/stringutils"
@@ -342,48 +342,46 @@ func AnalyzeOptionsV2(fset *token.FileSet, astFilesForLookup []*ast.File, option
 	return extractedOptions, actualStructName, nil
 }
 
-// AnalyzeOptionsV3 finds the Options struct definition without using go/packages.
-// It was created to address issues with `go/packages`'s eager evaluation of all imports
-// (as used in AnalyzeOptionsV2), which can be slow and resource-intensive for large codebases
-// or when only a specific struct's definition is needed without full dependency resolution.
-// IMPORTANT: AnalyzeOptionsV3 does not currently perform type checking. As such, metadata fields
-// that depend on type information (like IsTextUnmarshaler or IsTextMarshaler) are initialized to false
-// and not accurately populated. Placeholders and TODO comments exist for future type checking
-// implementation to enable these features.
-// The function primarily relies on AST parsing to extract option metadata.
+// AnalyzeOptionsV3 finds the Options struct definition using the lazyload package.
+// It performs type analysis for interface checking and resolving embedded structs.
 //
 //   - fset: Token fileset for parsing.
-//   - parsedFiles: A map of package import path to a list of already parsed AST files for that package.
-//     This allows V3 to potentially use pre-parsed files.
 //   - optionsTypeName: Name of the options struct type (e.g., "MainConfig").
-//   - targetPackagePath: The import path of the package containing optionsTypeName (e.g., "testmodule/example.com/mainpkg").
-//     This path should be resolvable to a directory on disk relative to some base (e.g., GOPATH/GOROOT).
-//   - baseDir: The base directory from which to resolve targetPackagePath. If empty, attempts to use GOROOT/GOPATH.
+//   - targetPackagePath: The import path of the package containing optionsTypeName.
+//   - baseDir: The base directory from which to resolve targetPackagePath (often module root).
 func AnalyzeOptionsV3(
 	fset *token.FileSet,
-	parsedFiles map[string][]*ast.File, // Keyed by package import path
 	optionsTypeName string,
 	targetPackagePath string,
-	baseDir string, // Base directory to resolve targetPackagePath, can be module root or GOPATH/src etc.
+	baseDir string,
 ) ([]*metadata.OptionMetadata, string, error) {
-	// TODO: Implement logic to locate and parse Go files for targetPackagePath if not in parsedFiles.
-	//       This involves:
-	//       1. Resolving targetPackagePath to an actual directory path.
-	//          - Consider GOROOT, GOPATH, and vendor directories if baseDir is not sufficient.
-	//          - This is non-trivial due to module support and different project layouts.
-	//       2. Reading directory contents and parsing .go files (excluding _test.go).
+	llCfg := lazyload.Config{
+		Fset: fset,
+		// TODO: Consider if BuildContext needs to be more specific for lazyload.Config
+	}
+	loader := lazyload.NewLoader(llCfg)
 
-	var astFilesForLookup []*ast.File
-	var ok bool
-	if astFilesForLookup, ok = parsedFiles[targetPackagePath]; !ok {
-		// TODO: Parse files for targetPackagePath if not provided
-		// For now, assume they are provided or handle error
-		return nil, "", fmt.Errorf("files for package '%s' not found in parsedFiles and dynamic parsing not yet implemented", targetPackagePath)
+	// Heuristic adjustment for loadPattern based on typical test setups.
+	// If targetPackagePath is simple (no slashes, e.g., a module name) and baseDir is set,
+	// it's likely a test scenario where baseDir is the module root. In this case, "." is the correct
+	// pattern for `go list` to identify the package at the root of the module.
+	loadPattern := targetPackagePath
+	if baseDir != "" && !strings.Contains(targetPackagePath, "/") {
+		// Check if go.mod exists to strengthen the heuristic, assuming module mode.
+		goModPath := filepath.Join(baseDir, "go.mod")
+		if _, statErr := os.Stat(goModPath); statErr == nil {
+			loadPattern = "." // Load package in current directory (baseDir)
+		}
 	}
 
-	if len(astFilesForLookup) == 0 {
-		return nil, "", fmt.Errorf("no AST files found for package '%s'", targetPackagePath)
+	loadedPkgs, err := loader.Load(loadPattern, baseDir)
+	if err != nil {
+		return nil, "", fmt.Errorf("error loading package '%s' (pattern '%s', baseDir '%s') with lazyload: %w", targetPackagePath, loadPattern, baseDir, err)
 	}
+	if len(loadedPkgs) == 0 {
+		return nil, "", fmt.Errorf("no package found for '%s' (pattern '%s', baseDir '%s') by lazyload", targetPackagePath, loadPattern, baseDir)
+	}
+	currentPkg := loadedPkgs[0]
 
 	simpleOptionsTypeName := optionsTypeName
 	if strings.Contains(optionsTypeName, ".") {
@@ -394,132 +392,172 @@ func AnalyzeOptionsV3(
 		simpleOptionsTypeName = simpleOptionsTypeName[1:]
 	}
 
-	var optionsStruct *ast.TypeSpec
-	var actualStructName string
-	var fileContainingOptionsStruct *ast.File
+	actualStructName := simpleOptionsTypeName // Default if not found, GetStruct will confirm.
+	optionsStructInfo, err := currentPkg.GetStruct(simpleOptionsTypeName)
+	if err != nil {
+		return nil, "", fmt.Errorf("options struct type '%s' (simple name '%s') not found in package '%s': %w", optionsTypeName, simpleOptionsTypeName, currentPkg.ImportPath, err)
+	}
+	actualStructName = optionsStructInfo.Name
 
-	for _, fileAst := range astFilesForLookup {
-		ast.Inspect(fileAst, func(n ast.Node) bool {
-			if ts, ok := n.(*ast.TypeSpec); ok {
-				if ts.Name.Name == simpleOptionsTypeName {
-					if _, isStruct := ts.Type.(*ast.StructType); isStruct {
-						optionsStruct = ts
-						actualStructName = ts.Name.Name
-						fileContainingOptionsStruct = fileAst
-						return false // Stop searching
-					}
-				}
+	var fileContainingOptionsStruct *ast.File
+	filesMap, errFiles := currentPkg.Files()
+	if errFiles != nil {
+		return nil, actualStructName, fmt.Errorf("could not get AST files for package '%s': %w", currentPkg.ImportPath, errFiles)
+	}
+	for _, astFile := range filesMap {
+		ast.Inspect(astFile, func(n ast.Node) bool {
+			if n == optionsStructInfo.Node {
+				fileContainingOptionsStruct = astFile
+				return false
 			}
 			return true
 		})
-		if optionsStruct != nil {
+		if fileContainingOptionsStruct != nil {
 			break
 		}
 	}
-
-	if optionsStruct == nil {
-		return nil, "", fmt.Errorf("options struct type '%s' (simple name '%s') not found in package '%s'", optionsTypeName, simpleOptionsTypeName, targetPackagePath)
-	}
 	if fileContainingOptionsStruct == nil {
-		return nil, "", fmt.Errorf("internal error: options struct '%s' found but its containing AST was not identified", actualStructName)
-	}
-
-	structType, ok := optionsStruct.Type.(*ast.StructType)
-	if !ok {
-		return nil, actualStructName, fmt.Errorf("type '%s' is not a struct type", actualStructName)
+		return nil, actualStructName, fmt.Errorf("could not find AST file for options struct '%s' in package '%s'", actualStructName, currentPkg.ImportPath)
 	}
 
 	var extractedOptions []*metadata.OptionMetadata
-	for _, field := range structType.Fields.List {
-		if len(field.Names) == 0 { // Embedded struct
-			embeddedTypeName := astutils.ExprToTypeName(field.Type)
+	for _, fieldInfo := range optionsStructInfo.Fields {
+		if fieldInfo.Embedded {
+			embeddedTypeName := astutils.ExprToTypeName(fieldInfo.TypeExpr)
 			var embeddedOptions []*metadata.OptionMetadata
-			var err error
+			var embErr error
 
-			// TODO: Handle embedded structs. This is complex without go/packages because it requires:
-			//       1. Resolving the import path of the embedded type if it's from an external package.
-			//          - AST nodes for selectors (e.g., `pkg.Type`) only give the selector name (`pkg`).
-			//          - Need to map this selector to a full import path using the `import` declarations in the file.
-			//       2. Recursively calling AnalyzeOptionsV3 with the correct package path and files.
-			//          - This means the `parsedFiles` map needs to be populated for dependencies, or dynamic loading needs to work.
+			var externalPkgSelector string
+			var typeNameInExternalPkg string
+			isExternal := false
 
-			// Placeholder for current package name, true resolution is needed.
-			currentPkgIdentForRecursion := targetPackagePath
-			_ = currentPkgIdentForRecursion // avoid unused error for now
-
-			selParts := strings.SplitN(strings.TrimPrefix(embeddedTypeName, "*"), ".", 2)
-			if len(selParts) == 2 { // External package selector found
-				// pkgSelectorInAST := selParts[0] // e.g., "pkg"
-				// typeNameInExternalPkg := selParts[1] // e.g., "Type"
-
-				// TODO (external-embed-todo): Implement handling for embedded structs from external packages.
-				// This will require:
-				//   1. Resolving the package selector (e.g., `pkg`) to a full import path using
-				//      `fileContainingOptionsStruct.Imports`.
-				//   2. Ensuring the ASTs for the external package are loaded/available in `parsedFiles`.
-				//      This might involve enhancing `parsedFiles` population or adding dynamic parsing logic
-				//      for missing packages.
-				//   3. Recursively calling AnalyzeOptionsV3 with the context of the external package:
-				//      `AnalyzeOptionsV3(fset, parsedFiles, typeNameInExternalPkg, resolvedExternalImportPath, baseDir)`
-				return nil, actualStructName, fmt.Errorf("analysis of embedded structs from external packages ('%s') is not yet implemented in V3. See TODO.", embeddedTypeName)
-
-			} else { // Embedded struct from the same package
-				cleanEmbeddedTypeName := strings.TrimPrefix(embeddedTypeName, "*")
-				embeddedOptions, _, err = AnalyzeOptionsV3(fset, parsedFiles, cleanEmbeddedTypeName, targetPackagePath, baseDir)
+			typeExpr := fieldInfo.TypeExpr
+			if starExpr, ok := typeExpr.(*ast.StarExpr); ok {
+				typeExpr = starExpr.X
+			}
+			if selExpr, ok := typeExpr.(*ast.SelectorExpr); ok {
+				if ident, ok := selExpr.X.(*ast.Ident); ok {
+					externalPkgSelector = ident.Name
+					typeNameInExternalPkg = selExpr.Sel.Name
+					isExternal = true
+				}
 			}
 
-			if err != nil {
-				return nil, actualStructName, fmt.Errorf("error analyzing embedded struct '%s' (from type %s): %w", embeddedTypeName, targetPackagePath, err)
+			if isExternal {
+				resolvedExternalImportPath := ""
+				for _, importSpec := range fileContainingOptionsStruct.Imports {
+					path := strings.Trim(importSpec.Path.Value, "\"")
+					if importSpec.Name != nil {
+						if importSpec.Name.Name == externalPkgSelector {
+							resolvedExternalImportPath = path
+							break
+						}
+					} else {
+						tempResolvedPkg, errTmpResolve := currentPkg.ResolveImport(path)
+						if errTmpResolve == nil && tempResolvedPkg != nil && tempResolvedPkg.Name == externalPkgSelector {
+							resolvedExternalImportPath = path
+							break
+						}
+					}
+				}
+				if resolvedExternalImportPath == "" {
+					return nil, actualStructName, fmt.Errorf("unable to resolve import path for selector '%s' in embedded type '%s'", externalPkgSelector, embeddedTypeName)
+				}
+				resolvedExternalPkg, errResolve := currentPkg.ResolveImport(resolvedExternalImportPath)
+				if errResolve != nil {
+					return nil, actualStructName, fmt.Errorf("could not resolve imported package for path '%s': %w", resolvedExternalImportPath, errResolve)
+				}
+				if resolvedExternalPkg == nil {
+					return nil, actualStructName, fmt.Errorf("resolved imported package is nil for path '%s'", resolvedExternalImportPath)
+				}
+				embeddedOptions, _, embErr = AnalyzeOptionsV3(fset, typeNameInExternalPkg, resolvedExternalPkg.ImportPath, resolvedExternalPkg.Dir)
+			} else {
+				cleanEmbeddedTypeName := strings.TrimPrefix(embeddedTypeName, "*")
+				embeddedOptions, _, embErr = AnalyzeOptionsV3(fset, cleanEmbeddedTypeName, targetPackagePath, baseDir)
+			}
+
+			if embErr != nil {
+				return nil, actualStructName, fmt.Errorf("error analyzing embedded struct '%s': %w", embeddedTypeName, embErr)
 			}
 			extractedOptions = append(extractedOptions, embeddedOptions...)
 			continue
 		}
 
-		fieldName := field.Names[0].Name
+		fieldName := fieldInfo.Name
 		if !ast.IsExported(fieldName) {
 			continue
 		}
 
 		opt := &metadata.OptionMetadata{
-			Name:              fieldName,
-			CliName:           stringutils.ToKebabCase(fieldName),
-			TypeName:          astutils.ExprToTypeName(field.Type),
-			IsPointer:         astutils.IsPointerType(field.Type),
-			IsRequired:        !astutils.IsPointerType(field.Type),
-			IsTextUnmarshaler: false,
-			IsTextMarshaler:   false,
+			Name:       fieldName,
+			CliName:    stringutils.ToKebabCase(fieldName),
+			TypeName:   astutils.ExprToTypeName(fieldInfo.TypeExpr),
+			IsPointer:  astutils.IsPointerType(fieldInfo.TypeExpr),
+			IsRequired: !astutils.IsPointerType(fieldInfo.TypeExpr),
 		}
 
-		// TODO: Implement type checking for TextUnmarshaler/Marshaler detection.
-
-		if field.Doc != nil {
-			opt.HelpText = strings.TrimSpace(field.Doc.Text())
+		isUnmarshaler, errUnmarshaler := fieldInfo.ImplementsInterface("encoding", "TextUnmarshaler")
+		if errUnmarshaler != nil {
+			fmt.Println(fmt.Sprintf("analyzer: warning: error checking TextUnmarshaler for field %s type %s: %v", fieldInfo.Name, opt.TypeName, errUnmarshaler))
+			opt.IsTextUnmarshaler = false
+		} else {
+			opt.IsTextUnmarshaler = isUnmarshaler
 		}
-		if field.Comment != nil {
-			if opt.HelpText != "" {
-				opt.HelpText += "\n"
+
+		isMarshaler, errMarshaler := fieldInfo.ImplementsInterface("encoding", "TextMarshaler")
+		if errMarshaler != nil {
+			fmt.Println(fmt.Sprintf("analyzer: warning: error checking TextMarshaler for field %s type %s: %v", fieldInfo.Name, opt.TypeName, errMarshaler))
+			opt.IsTextMarshaler = false
+		} else {
+			opt.IsTextMarshaler = isMarshaler
+		}
+
+		var fieldASTNode *ast.Field
+		structTypeSpec := optionsStructInfo.Node
+		if structType, okType := structTypeSpec.Type.(*ast.StructType); okType {
+			for _, astField := range structType.Fields.List {
+				for _, nameIdent := range astField.Names {
+					if nameIdent.Name == fieldName {
+						fieldASTNode = astField
+						break
+					}
+				}
+				if fieldASTNode != nil {
+					break
+				}
 			}
-			opt.HelpText += strings.TrimSpace(field.Comment.Text())
+		}
+
+		if fieldASTNode != nil {
+			if fieldASTNode.Doc != nil {
+				opt.HelpText = strings.TrimSpace(fieldASTNode.Doc.Text())
+			}
+			if fieldASTNode.Comment != nil {
+				if opt.HelpText != "" {
+					opt.HelpText += "\n"
+				}
+				opt.HelpText += strings.TrimSpace(fieldASTNode.Comment.Text())
+			}
 			opt.HelpText = strings.TrimSpace(opt.HelpText)
 		}
 
-		if field.Tag != nil {
-			tagStr := strings.Trim(field.Tag.Value, "`")
-			tag := reflect.StructTag(tagStr)
-			if envVar, ok := tag.Lookup("env"); ok {
-				opt.EnvVar = envVar
-			}
+		if tagVal := fieldInfo.GetTag("env"); tagVal != "" {
+			opt.EnvVar = tagVal
 		}
 		extractedOptions = append(extractedOptions, opt)
 	}
 	return extractedOptions, actualStructName, nil
 }
 
+/*
 // Original AnalyzeOptions - keep for now if other parts of the codebase use it,
 // or remove if AnalyzeOptionsV2 is a direct replacement.
 // For this refactoring, we assume it's being replaced.
-/*
-func AnalyzeOptions(fset *token.FileSet, files []*ast.File, optionsTypeName string, currentPackageName string) ([]*metadata.OptionMetadata, string, error) {
-	// ... original content ...
+func AnalyzeOptions_Original(fset *token.FileSet, files []*ast.File, optionsTypeName string, currentPackageName string) ([]*metadata.OptionMetadata, string, error) {
+	// This is a placeholder for the original AnalyzeOptions function's content.
+	// To make it a valid, non-interfering comment, ensure it's properly commented out.
+	// For example, if it contained block comments, ensure they are nested correctly or removed.
+	return nil, "", nil // Placeholder return
 }
 */
+// Ensure there's a newline at the very end of the file.

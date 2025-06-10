@@ -4,8 +4,10 @@ import (
 	"fmt"
 	"go/ast"
 	"go/parser"
+	"go/token"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"sync"
 )
 
@@ -18,7 +20,8 @@ type Package struct {
 	GoFiles    []string        // Go source files (non-test) relative to Dir
 	RawMeta    PackageMetaInfo // Raw metadata from locator
 
-	loader *Loader // The loader that loaded this package
+	loader *Loader        // The loader that loaded this package
+	fset   *token.FileSet // Reference to the loader's FileSet, primarily for parsing.
 
 	parseOnce   sync.Once
 	parsedFiles map[string]*ast.File // filename -> AST, parsed lazily
@@ -45,6 +48,7 @@ func NewPackage(meta PackageMetaInfo, loader *Loader) *Package {
 		GoFiles:         meta.GoFiles,
 		RawMeta:         meta, // Keep original meta
 		loader:          loader,
+		fset:            loader.fset, // Store fset from loader
 		parsedFiles:     make(map[string]*ast.File),
 		resolvedImports: make(map[string]*Package),
 		fileImports:     make(map[string][]*ast.ImportSpec),
@@ -55,12 +59,14 @@ func NewPackage(meta PackageMetaInfo, loader *Loader) *Package {
 // It populates p.parsedFiles and p.fileImports.
 func (p *Package) ensureParsed() error {
 	p.parseOnce.Do(func() {
-		fset := p.loader.fset // Use the loader's file set
+		// p.fset should be used here, taken from loader at construction
+		if p.fset == nil {
+			p.parseErr = fmt.Errorf("FileSet is nil in package %s, cannot parse", p.ImportPath)
+			return
+		}
 		for _, goFile := range p.GoFiles {
 			path := filepath.Join(p.Dir, goFile)
-			// fileAST, err := parser.ParseFile(fset, path, nil, parser.ImportsOnly|parser.ParseComments) // Initially parse imports for quick access, then full parse on demand for GetStruct etc.
-			// For full functionality, we'd need a full parse:
-			fileAST, err := parser.ParseFile(fset, path, nil, parser.ParseComments)
+			fileAST, err := parser.ParseFile(p.fset, path, nil, parser.ParseComments)
 			if err != nil {
 				p.parseErr = fmt.Errorf("failed to parse %s: %w", path, err)
 				return
@@ -182,16 +188,18 @@ func (p *Package) GetStruct(name string) (*StructInfo, error) {
 			structInfo := &StructInfo{
 				PackagePath: p.ImportPath,
 				Name:        name,
-				Node:        foundSpec, // Store TypeSpec for comments, etc.
-				Fields:      []FieldInfo{},
-				pkg:         p, // Store reference to current package for resolving field types
+				Node:        foundSpec,            // Store TypeSpec for comments, etc.
+				Fields:      make([]FieldInfo, 0), // Initialize to empty slice
+				pkg:         p,                    // Store reference to current package
 			}
+			// Set ParentStruct for FieldInfos after structInfo is initialized.
 			if foundStruct.Fields != nil {
 				for _, field := range foundStruct.Fields.List {
 					for _, fieldName := range field.Names {
 						fi := FieldInfo{
-							Name:     fieldName.Name,
-							TypeExpr: field.Type,
+							Name:         fieldName.Name,
+							TypeExpr:     field.Type,
+							ParentStruct: structInfo, // Set ParentStruct
 						}
 						if field.Tag != nil {
 							fi.Tag = field.Tag.Value
@@ -201,9 +209,10 @@ func (p *Package) GetStruct(name string) (*StructInfo, error) {
 					// Handle embedded fields (Names is nil)
 					if len(field.Names) == 0 && field.Type != nil {
 						fi := FieldInfo{
-							Name:     "", // Embedded field
-							TypeExpr: field.Type,
-							Embedded: true,
+							Name:         "", // Embedded field
+							TypeExpr:     field.Type,
+							Embedded:     true,
+							ParentStruct: structInfo, // Set ParentStruct
 						}
 						if field.Tag != nil {
 							fi.Tag = field.Tag.Value
@@ -216,4 +225,113 @@ func (p *Package) GetStruct(name string) (*StructInfo, error) {
 		}
 	}
 	return nil, fmt.Errorf("struct %q not found in package %q", name, p.Name)
+}
+
+// FindTypeSpec searches for an *ast.TypeSpec by name within the package.
+// It returns the found TypeSpec, the package it belongs to (p), and an error if not found.
+func (p *Package) FindTypeSpec(typeName string) (*ast.TypeSpec, *Package, error) {
+	if err := p.ensureParsed(); err != nil {
+		return nil, nil, fmt.Errorf("error ensuring package %s is parsed: %w", p.ImportPath, err)
+	}
+
+	for _, fileAST := range p.parsedFiles {
+		var foundSpec *ast.TypeSpec
+		ast.Inspect(fileAST, func(n ast.Node) bool {
+			if ts, ok := n.(*ast.TypeSpec); ok {
+				if ts.Name.Name == typeName {
+					foundSpec = ts
+					return false // Stop inspection for this file
+				}
+			}
+			return true
+		})
+		if foundSpec != nil {
+			return foundSpec, p, nil
+		}
+	}
+	return nil, nil, fmt.Errorf("typespec %q not found in package %q", typeName, p.ImportPath)
+}
+
+// FindInterface searches for an interface type by name within the package.
+// It returns the *ast.InterfaceType, its parent *ast.TypeSpec, and an error if not found.
+func (p *Package) FindInterface(interfaceName string) (*ast.InterfaceType, *ast.TypeSpec, error) {
+	typeSpec, _, err := p.FindTypeSpec(interfaceName)
+	if err != nil {
+		return nil, nil, err // Error already specifies typeName and package
+	}
+	if typeSpec == nil { // Should be covered by error from FindTypeSpec, but defensive
+		return nil, nil, fmt.Errorf("typespec %q not found in package %q for interface search", interfaceName, p.ImportPath)
+	}
+
+	if interfaceType, ok := typeSpec.Type.(*ast.InterfaceType); ok {
+		return interfaceType, typeSpec, nil
+	}
+
+	return nil, nil, fmt.Errorf("type %q in package %q is not an interface", interfaceName, p.ImportPath)
+}
+
+// GetMethodsForType collects all *ast.FuncDecl that have typeName or *typeName as their receiver.
+func (p *Package) GetMethodsForType(typeName string) ([]*ast.FuncDecl, error) {
+	if err := p.ensureParsed(); err != nil {
+		return nil, fmt.Errorf("error ensuring package %s is parsed for GetMethodsForType: %w", p.ImportPath, err)
+	}
+
+	var methods []*ast.FuncDecl
+	starTypeName := "*" + typeName
+
+	for _, fileAST := range p.parsedFiles {
+		for _, decl := range fileAST.Decls {
+			if fn, ok := decl.(*ast.FuncDecl); ok {
+				if fn.Recv != nil && len(fn.Recv.List) > 0 {
+					recvField := fn.Recv.List[0]
+					// Convert receiver type to string for comparison
+					var recvTypeName string
+					switch t := recvField.Type.(type) {
+					case *ast.Ident:
+						recvTypeName = t.Name
+					case *ast.StarExpr:
+						if ident, ok := t.X.(*ast.Ident); ok {
+							recvTypeName = "*" + ident.Name
+						}
+					}
+
+					if recvTypeName == typeName || recvTypeName == starTypeName {
+						methods = append(methods, fn)
+					}
+				}
+			}
+		}
+	}
+	return methods, nil
+}
+
+// GetImportPathBySelector resolves a package selector (e.g., "json" from json.Marshal)
+// used in a given astFile to its full import path and the resolved *Package.
+// It uses the package's own resolved imports.
+func (p *Package) GetImportPathBySelector(selectorName string, astFile *ast.File) (string, *Package, error) {
+	if astFile == nil {
+		return "", nil, fmt.Errorf("astFile cannot be nil for GetImportPathBySelector in package %s", p.ImportPath)
+	}
+
+	for _, importSpec := range astFile.Imports {
+		importPath := strings.Trim(importSpec.Path.Value, "\"")
+		// Resolve the import using the package's context to ensure it's loaded/cached.
+		resolvedPkg, err := p.ResolveImport(importPath)
+		if err != nil {
+			// Could log this error or collect, but for now, if one import fails to resolve,
+			// it might not be the one we're looking for anyway.
+			continue
+		}
+
+		if importSpec.Name != nil { // Aliased import
+			if importSpec.Name.Name == selectorName {
+				return resolvedPkg.ImportPath, resolvedPkg, nil
+			}
+		} else { // Standard import (name derived from package's actual name)
+			if resolvedPkg.Name == selectorName {
+				return resolvedPkg.ImportPath, resolvedPkg, nil
+			}
+		}
+	}
+	return "", nil, fmt.Errorf("selector %q not found or resolved in imports of file belonging to package %q", selectorName, p.ImportPath)
 }
