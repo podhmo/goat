@@ -1,4 +1,4 @@
-package lazyload
+package loader
 
 import (
 	"fmt"

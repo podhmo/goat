@@ -14,7 +14,7 @@ import (
 	"github.com/podhmo/goat/internal/codegen"
 	"github.com/podhmo/goat/internal/help"
 	"github.com/podhmo/goat/internal/interpreter"
-	"github.com/podhmo/goat/internal/loader/lazyload"
+	"github.com/podhmo/goat/internal/loader"
 	"github.com/podhmo/goat/internal/metadata"
 )
 
@@ -46,14 +46,14 @@ func findModuleRoot(dir string) (string, error) {
 // execDirectoryLocator is a helper struct to manage locating packages from a specific base directory.
 type execDirectoryLocator struct {
 	BaseDir        string
-	WrappedLocator lazyload.PackageLocator
+	WrappedLocator loader.PackageLocator
 	// Fset is not used by Locate but can be stored if needed for other purposes.
 	// Fset           *token.FileSet
 }
 
-// Locate matches the lazyload.PackageLocator function signature.
+// Locate matches the loader.PackageLocator function signature.
 // It executes the wrapped locator from BaseDir.
-func (l *execDirectoryLocator) Locate(pattern string, buildCtx lazyload.BuildContext) ([]lazyload.PackageMetaInfo, error) {
+func (l *execDirectoryLocator) Locate(pattern string, buildCtx loader.BuildContext) ([]loader.PackageMetaInfo, error) {
 	if l.WrappedLocator == nil {
 		return nil, fmt.Errorf("ExecDirectoryLocator: WrappedLocator is nil")
 	}
@@ -220,17 +220,17 @@ func scanMain(fset *token.FileSet, opts *Options) (*metadata.CommandMetadata, *a
 	// Create an instance of our custom locator
 	customLocator := &execDirectoryLocator{
 		BaseDir:        targetDir,
-		WrappedLocator: lazyload.GoListLocator,
+		WrappedLocator: loader.GoListLocator,
 		// Fset:          fset, // Fset is not part of execDirectoryLocator struct
 	}
 
-	llCfg := lazyload.Config{
+	llCfg := loader.Config{
 		Fset:    fset,
 		Locator: customLocator.Locate, // Assign the method customLocator.Locate
 		// Context can be customized here if needed, e.g. for specific GOOS/GOARCH
-		// Context: lazyload.BuildContext{...},
+		// Context: loader.BuildContext{...},
 	}
-	l := lazyload.NewLoader(llCfg)
+	l := loader.New(llCfg)
 
 	slog.Debug("Goat: Loading package", "directory", targetDir, "pattern", ".")
 	// The pattern passed to l.Load() will be handled by customLocator.Locate

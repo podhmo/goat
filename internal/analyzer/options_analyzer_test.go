@@ -11,7 +11,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/podhmo/goat/internal/loader/lazyload" // Added for lazyload types
+	"github.com/podhmo/goat/internal/loader" // Changed for loader types
 	"github.com/podhmo/goat/internal/metadata"
 )
 
@@ -113,8 +113,8 @@ func setupTestEnvironmentForLazyLoad(t *testing.T, moduleName string, packages T
 }
 
 // NewTestPackageLocator creates a PackageLocator specifically for tests using temporary modules.
-func NewTestPackageLocator(moduleRootPath string, t *testing.T) lazyload.PackageLocator {
-	return func(pattern string, buildCtx lazyload.BuildContext) ([]lazyload.PackageMetaInfo, error) {
+func NewTestPackageLocator(moduleRootPath string, t *testing.T) loader.PackageLocator {
+	return func(pattern string, buildCtx loader.BuildContext) ([]loader.PackageMetaInfo, error) {
 		t.Logf("TestPackageLocator: Locating pattern='%s', moduleRootPath='%s'", pattern, moduleRootPath)
 
 		// 1. Read and parse go.mod to find the declared module name
@@ -227,7 +227,7 @@ func NewTestPackageLocator(moduleRootPath string, t *testing.T) lazyload.Package
 		}
 
 		// 7. Construct PackageMetaInfo
-		metaInfo := lazyload.PackageMetaInfo{
+		metaInfo := loader.PackageMetaInfo{
 			ImportPath:    importPathToUse, // Use the resolved/constructed import path
 			Name:          actualPackageName,
 			Dir:           pkgDir,
@@ -237,7 +237,7 @@ func NewTestPackageLocator(moduleRootPath string, t *testing.T) lazyload.Package
 			DirectImports: collectedDirectImportsList,
 		}
 		t.Logf("TestPackageLocator: Found package: %+v", metaInfo)
-		return []lazyload.PackageMetaInfo{metaInfo}, nil
+		return []loader.PackageMetaInfo{metaInfo}, nil
 	}
 }
 
@@ -299,13 +299,13 @@ type Config struct {
 			fset, tempModRoot := setupTestEnvironmentForLazyLoad(t, tc.targetPkgPath, packages)
 
 			// Use the test-specific locator
-			llCfg := lazyload.Config{
+			llCfg := loader.Config{
 				Fset:    fset,
 				Locator: NewTestPackageLocator(tempModRoot, t),
 			}
 
 			// tc.targetPkgPath is the import path of the package, and tempModRoot is its directory.
-			loader := lazyload.NewLoader(llCfg)
+			loader := loader.New(llCfg)
 			options, structNameOut, err := AnalyzeOptions(fset, tc.structName, tc.targetPkgPath, tempModRoot, loader)
 			if err != nil {
 				t.Fatalf("AnalyzeOptions failed for %s: %v. Content:\n%s", tc.name, err, formattedContent)
@@ -373,14 +373,14 @@ type ParentConfig struct {
 	fset, tempModRoot := setupTestEnvironmentForLazyLoad(t, moduleName, packages)
 	t.Logf("Test module for TestAnalyzeOptions_WithEmbeddedStructs_SamePackage_LazyLoad created at: %s", tempModRoot)
 
-	llCfg := lazyload.Config{
+	llCfg := loader.Config{
 		Fset:    fset,
 		Locator: NewTestPackageLocator(tempModRoot, t), // Assuming Config has 'Locator' field
 	}
 
 	// targetPackagePath is moduleName because the 'main' package is at the root of the module.
 	targetPackagePath := moduleName
-	loader := lazyload.NewLoader(llCfg)
+	loader := loader.New(llCfg)
 	options, structNameOut, err := AnalyzeOptions(fset, "ParentConfig", targetPackagePath, tempModRoot, loader)
 	if err != nil {
 		t.Fatalf("AnalyzeOptions with same-package embedded structs failed: %v. Content:\n%s", err, content1)
@@ -476,13 +476,13 @@ type ExternalEmbedded struct { ExternalField bool }`
 	// or be able to handle multiple module roots.
 	// For this test, we'll assume NewTestPackageLocator might need to be enhanced or the test simplified
 	// if direct cross-module path resolution fails.
-	// The key is that the lazyload.Config passed to AnalyzeOptionsV3 will use tempMainModRoot for its locator.
+	// The key is that the loader.Config passed to AnalyzeOptionsV3 will use tempMainModRoot for its locator.
 
-	llCfg := lazyload.Config{
+	llCfg := loader.Config{
 		Fset:    fset,
 		Locator: NewTestPackageLocator(tempMainModRoot, t),
 	}
-	loader := lazyload.NewLoader(llCfg)
+	loader := loader.New(llCfg)
 	_, _, err := AnalyzeOptions(fset, "MainConfig", mainPkgImportPath, tempMainModRoot, loader)
 
 	if err == nil {
@@ -508,11 +508,11 @@ func TestAnalyzeOptions_StructNotFound_LazyLoad(t *testing.T) {
 	}
 	fset, tempModRoot := setupTestEnvironmentForLazyLoad(t, pkgPath, packages)
 
-	llCfg := lazyload.Config{
+	llCfg := loader.Config{
 		Fset:    fset,
 		Locator: NewTestPackageLocator(tempModRoot, t), // Assuming Config has 'Locator' field
 	}
-	loader := lazyload.NewLoader(llCfg)
+	loader := loader.New(llCfg)
 	_, _, err := AnalyzeOptions(fset, "NonExistentConfig", pkgPath, tempModRoot, loader)
 	if err == nil {
 		t.Fatal("AnalyzeOptions should have failed for a non-existent struct")
@@ -537,11 +537,11 @@ type Config struct {
 	}
 	fset, tempModRoot := setupTestEnvironmentForLazyLoad(t, pkgPath, packages)
 
-	llCfg := lazyload.Config{
+	llCfg := loader.Config{
 		Fset:    fset,
 		Locator: NewTestPackageLocator(tempModRoot, t), // Assuming Config has 'Locator' field
 	}
-	loader := lazyload.NewLoader(llCfg)
+	loader := loader.New(llCfg)
 	options, _, err := AnalyzeOptions(fset, "Config", pkgPath, tempModRoot, loader)
 	if err != nil {
 		t.Fatalf("AnalyzeOptions failed for UnexportedFields: %v. Content:\n%s", err, content)

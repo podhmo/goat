@@ -1,4 +1,4 @@
-package lazyload
+package loader
 
 import (
 	"fmt"
@@ -37,8 +37,8 @@ type Loader struct {
 	cache map[string]*Package // cache of loaded packages by import path
 }
 
-// NewLoader creates a new Loader with the given configuration.
-func NewLoader(cfg Config) *Loader {
+// New creates a new Loader with the given configuration.
+func New(cfg Config) *Loader {
 	if cfg.Locator == nil {
 		cfg.Locator = GoListLocator // Default locator
 	}
