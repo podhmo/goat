@@ -2,6 +2,7 @@ package lazyload
 
 import (
 	"fmt"
+	"go/token"
 	"sync"
 )
 
@@ -18,6 +19,10 @@ type BuildContext struct {
 type Config struct {
 	// Context specifies the build context.
 	Context BuildContext
+
+	// Fset is the file set used for parsing files.
+	Fset *token.FileSet
+
 	// Locator is a function that finds packages based on a pattern.
 	// If nil, a default locator (e.g., using `go list`) will be used.
 	Locator PackageLocator
@@ -26,6 +31,7 @@ type Config struct {
 
 // Loader is responsible for loading packages.
 type Loader struct {
+	fset  *token.FileSet
 	cfg   Config
 	mu    sync.Mutex
 	cache map[string]*Package // cache of loaded packages by import path
@@ -36,7 +42,12 @@ func NewLoader(cfg Config) *Loader {
 	if cfg.Locator == nil {
 		cfg.Locator = GoListLocator // Default locator
 	}
+	fset := cfg.Fset
+	if fset == nil {
+		fset = token.NewFileSet()
+	}
 	return &Loader{
+		fset:  fset,
 		cfg:   cfg,
 		cache: make(map[string]*Package),
 	}
