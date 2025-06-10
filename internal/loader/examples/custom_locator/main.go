@@ -6,7 +6,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/podhmo/goat/internal/loader/loader"
+	"github.com/podhmo/goat/internal/loader"
 )
 
 var tempDirsCreated []string // To clean up at the end
