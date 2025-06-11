@@ -18,7 +18,7 @@ func stringPtr(s string) *string {
 	return &s
 }
 
-//go:generate goat emit -run FullsetRun -initializer NewFullsetOptions main.go
+//go:generate goat emit -run run -initializer NewOptions main.go
 
 // Options defines the command line options for this simple example tool.
 // This tool demonstrates the basic capabilities of goat for CLI generation.
@@ -61,9 +61,9 @@ type Options struct {
 	ExistingFieldToMakeOptional *string `env:"FULLSET_OPTIONAL_EXISTING"`
 }
 
-// NewFullsetOptions initializes Options with default values and enum constraints.
+// NewOptions initializes Options with default values and enum constraints.
 // This function will be "interpreted" by the goat tool.
-func NewFullsetOptions() *Options {
+func NewOptions() *Options {
 	return &Options{
 		// Existing fields from original
 		Name:      goat.Default("World"),
@@ -90,10 +90,10 @@ func NewFullsetOptions() *Options {
 	}
 }
 
-// FullsetRun is the core logic for this CLI tool.
+// run is the core logic for this CLI tool.
 // It receives the parsed and validated options.
 // This function's doc comment is used as the main help text for the command.
-func FullsetRun(opts Options) error {
+func run(opts Options) error {
 	fmt.Printf("Hello, %s!\n", opts.Name)
 
 	if opts.Age != nil {
@@ -143,7 +143,7 @@ func main() {
 	isFlagExplicitlySet := make(map[string]bool)
 
 	flag.Usage = func() {
-		fmt.Fprint(os.Stderr, `github.com/podhmo/goat/examples/fullset - FullsetRun is the core logic for this CLI tool.
+		fmt.Fprint(os.Stderr, `github.com/podhmo/goat/examples/fullset - run is the core logic for this CLI tool.
          It receives the parsed and validated options.
          This function`+"`"+`s doc comment is used as the main help text for the command.
 
@@ -175,7 +175,7 @@ Flags:
 	var options *Options
 
 	// 1. Create Options using the initializer function.
-	options = NewFullsetOptions()
+	options = NewOptions()
 	// End of if/else .RunFunc.InitializerFunc for options assignment
 
 	// 2. Override with environment variable values.
@@ -439,7 +439,7 @@ Defaults to "output" if not specified by the user.` /* Original Default: output,
 	var err error
 
 	// Run function expects an options argument
-	err = FullsetRun(*options)
+	err = run(*options)
 
 	if err != nil {
 		slog.Error("Runtime error", "error", err)

@@ -16,6 +16,11 @@ type Options struct {
 	ConfigFile string // Path to the configuration file
 }
 
+// run is the actual command logic.
+func run(opts Options) error { // Parameter type changed to Options, name to opts
+	return json.NewEncoder(os.Stdout).Encode(opts)
+}
+
 func main() {
 	isFlagExplicitlySet := make(map[string]bool)
 
@@ -99,9 +104,4 @@ Flags:
 		slog.Error("Runtime error", "error", err)
 		os.Exit(1)
 	}
-}
-
-// run is the actual command logic.
-func run(opts Options) error { // Parameter type changed to Options, name to opts
-	return json.NewEncoder(os.Stdout).Encode(opts)
 }
