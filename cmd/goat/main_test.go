@@ -216,14 +216,6 @@ func TestHelpGenerateHelpOutput(t *testing.T) {
 	}
 }
 
-func TestInitSubcommand(t *testing.T) {
-	out := runMainWithArgs(t, "init")
-	expected := "TODO: init subcommand\n"
-	if out != expected {
-		t.Errorf("Expected output %q, got %q", expected, out)
-	}
-}
-
 func TestHelpMessageSubcommand(t *testing.T) {
 	tmpFile := setupTestAppWithGoMod(t, testGoFileContent)
 
