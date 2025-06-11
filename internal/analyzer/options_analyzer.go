@@ -92,12 +92,14 @@ func AnalyzeOptions( // Renamed from AnalyzeOptionsV3
 
 	// loader is now passed in directly
 
-	loadedPkgs, err := loader.Load(loadPattern, baseDir) // Use the passed-in loader
+	loadedPkgs, err := loader.Load(loadPattern) // Use the passed-in loader. baseDir is handled by the locator if necessary.
 	if err != nil {
-		return nil, "", fmt.Errorf("error loading package '%s' (pattern '%s', baseDir '%s') with loader: %w", targetPackagePath, loadPattern, baseDir, err)
+		// Updated error message to reflect that baseDir is not directly used by Load() here.
+		return nil, "", fmt.Errorf("error loading package '%s' (derived load pattern '%s') with loader: %w", targetPackagePath, loadPattern, err)
 	}
 	if len(loadedPkgs) == 0 {
-		return nil, "", fmt.Errorf("no package found for '%s' (pattern '%s', baseDir '%s') by loader", targetPackagePath, loadPattern, baseDir)
+		// Updated error message
+		return nil, "", fmt.Errorf("no package found for '%s' (derived load pattern '%s') by loader", targetPackagePath, loadPattern)
 	}
 	currentPkg := loadedPkgs[0]
 
