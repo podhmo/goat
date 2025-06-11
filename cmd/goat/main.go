@@ -5,11 +5,12 @@ import (
 	"flag"
 	"fmt"
 	"go/ast"
-	"go/parser" // Ensure this is imported
+	"go/parser"
 	"go/token"
 	"log/slog"
 	"os"
 	"path/filepath"
+	"text/template"
 
 	"github.com/podhmo/goat/internal/analyzer"
 	"github.com/podhmo/goat/internal/codegen"
@@ -39,7 +40,16 @@ func main() {
 
 	switch os.Args[1] {
 	case "init":
-		fmt.Println("TODO: init subcommand")
+		initCmd := flag.NewFlagSet("init", flag.ExitOnError)
+		initCmd.Usage = func() {
+			fmt.Fprintf(os.Stderr, "Usage: goat init\n\nGenerates a basic main.go file in the current directory.\n")
+		}
+		initCmd.Parse(os.Args[2:])
+		if err := initMain(); err != nil {
+			slog.Error("Error running goat (init)", "error", err)
+			os.Exit(1)
+		}
+		slog.Info("Goat: init command finished successfully.") // Updated
 	case "emit":
 		emitCmd := flag.NewFlagSet("emit", flag.ExitOnError)
 		var runFuncName, optionsInitializerName string
@@ -147,6 +157,69 @@ func runGoat(opts *Options) error {
 		return fmt.Errorf("failed to write modified main.go: %w", err)
 	}
 	fmt.Fprintln(os.Stdout, "Goat: Processing finished.")
+	return nil
+}
+
+const mainGoTemplate = `package main
+
+import (
+	"flag"
+	"fmt"
+	"os"
+)
+
+// Options defines the command line options.
+type Options struct {
+	Message string // Message to print
+}
+
+// run is the actual command logic.
+func run(opts Options) error {
+	fmt.Println(opts.Message)
+	return nil
+}
+
+//go:generate go run github.com/podhmo/goat/cmd/goat emit -run run -initializer "" main.go
+func main() {
+	options := Options{}
+	flag.StringVar(&options.Message, "message", "Hello, world!", "Message to print")
+	flag.Parse()
+
+	if err := run(options); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
+}
+`
+
+// initMain initializes a basic main.go file in the current directory.
+func initMain() error {
+	slog.Info("Goat: Initializing main.go in current directory.")
+
+	// Create main.go in current directory
+	mainGoPath := "main.go"
+	f, err := os.Create(mainGoPath)
+	if err != nil {
+		return fmt.Errorf("failed to create %s: %w", mainGoPath, err)
+	}
+	defer f.Close()
+
+	// Data for template execution
+	templateData := map[string]string{
+		"Name": "main", // Package name for main.go in current directory
+	}
+
+	// Parse and execute template
+	tmpl, err := template.New("main.go").Parse(mainGoTemplate)
+	if err != nil {
+		return fmt.Errorf("failed to parse main.go template: %w", err)
+	}
+	if err := tmpl.Execute(f, templateData); err != nil {
+		return fmt.Errorf("failed to execute main.go template: %w", err)
+	}
+
+	slog.Info("Goat: Created main.go in current directory", "path", mainGoPath)
+	fmt.Fprintln(os.Stdout, "Goat: main.go initialized successfully in current directory.")
 	return nil
 }
 
