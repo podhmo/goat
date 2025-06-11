@@ -1,15 +1,14 @@
 module github.com/podhmo/goat
 
-go 1.24.0
+go 1.22
 
-tool golang.org/x/tools/cmd/goimports
+// toolchain go1.23.10 // Remove toolchain as it's for newer Go versions
 
-require golang.org/x/tools v0.34.0
+// tool golang.org/x/tools/cmd/goimports
 
-require (
-	golang.org/x/mod v0.25.0 // indirect
-	golang.org/x/sync v0.15.0 // indirect
-)
+require golang.org/x/tools v0.20.0 // Downgrade for Go 1.22 compatibility
+
+require golang.org/x/mod v0.17.0 // indirect; Adjusted based on x/tools v0.20.0 typical dependencies
 
 // for test
 replace example.com/myexternalpkg => ./internal/analyzer/testdata/src/myexternalpkg

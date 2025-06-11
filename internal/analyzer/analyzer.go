@@ -18,7 +18,8 @@ import (
 // - targetPackageID: Import path of the package containing the runFuncName (e.g., "testmodule/example.com/mainpkg").
 // - moduleRootPath: Absolute path to the root of the module this package belongs to.
 // - loader: Loader for lazy loading of package information.
-func Analyze(fset *token.FileSet, files []*ast.File, runFuncName string, targetPackageID string, moduleRootPath string, loader *loader.Loader) (*metadata.CommandMetadata, string, error) {
+// - initializerFuncNameOption: User-specified name for the options initializer function.
+func Analyze(fset *token.FileSet, files []*ast.File, runFuncName string, initializerFuncNameOption string, targetPackageID string, moduleRootPath string, loader *loader.Loader) (*metadata.CommandMetadata, string, error) {
 	cmdMeta := &metadata.CommandMetadata{
 		Options: []*metadata.OptionMetadata{},
 	}
@@ -57,8 +58,14 @@ func Analyze(fset *token.FileSet, files []*ast.File, runFuncName string, targetP
 
 	// After runFuncInfo is populated, try to find an initializer function for the options struct
 	if runFuncInfo.OptionsArgTypeNameStripped != "" {
-		initializerFuncName := "New" + runFuncInfo.OptionsArgTypeNameStripped
-		slog.Debug("Goat: Looking for conventional options initializer function", "expectedName", initializerFuncName)
+		var initializerFuncName string
+		if initializerFuncNameOption != "" {
+			initializerFuncName = initializerFuncNameOption
+			slog.Debug("Goat: Looking for user-specified options initializer function", "specifiedName", initializerFuncName)
+		} else {
+			initializerFuncName = "New" + runFuncInfo.OptionsArgTypeNameStripped
+			slog.Debug("Goat: Looking for conventional options initializer function", "expectedName", initializerFuncName)
+		}
 		initializerFuncFoundInAst := false // Flag to track if we found any function with the name
 
 		for _, file := range files {
@@ -94,12 +101,21 @@ func Analyze(fset *token.FileSet, files []*ast.File, runFuncName string, targetP
 		}
 
 		if runFuncInfo.InitializerFunc == "" && !initializerFuncFoundInAst {
-			// This log refers to searching in "package main" files implicitly due to the loop structure
-			slog.Info("Goat: No conventional initializer function found with the expected name in package main", "expectedName", initializerFuncName)
+			if initializerFuncNameOption != "" {
+				slog.Info("Goat: User-specified initializer function not found", "specifiedName", initializerFuncNameOption)
+			} else {
+				slog.Info("Goat: No conventional initializer function found with the expected name in package main", "expectedName", initializerFuncName)
+			}
 		} else if runFuncInfo.InitializerFunc == "" && initializerFuncFoundInAst {
 			// This case means a function was found by name in a "main" package file, but it had the wrong signature (and a warning was logged).
 			// No additional general message needed here, the specific warning is sufficient.
-			slog.Debug("Goat: A function matching conventional initializer name was found in package main but ignored due to signature.", "expectedName", initializerFuncName)
+			// The logging for this specific case (found but wrong signature) is handled where the signature check occurs.
+			// We can add a debug log here if needed, but the existing warning for wrong signature should be prominent.
+			if initializerFuncNameOption != "" {
+				slog.Debug("Goat: A function matching user-specified initializer name was found in package main but ignored due to signature.", "specifiedName", initializerFuncNameOption)
+			} else {
+				slog.Debug("Goat: A function matching conventional initializer name was found in package main but ignored due to signature.", "expectedName", initializerFuncName)
+			}
 		}
 	}
 

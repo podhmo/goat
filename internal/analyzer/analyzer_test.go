@@ -88,15 +88,15 @@ func NewMyOpts() *MyOpts { return &MyOpts{Name: "Default"} }
 func Run(ctx context.Context, opts *MyOpts) error { return nil }
 func main() { Run(nil, nil) } // Adjusted dummy main
 `,
-			packageName:          "command",
+			packageName:          "main", // Changed to main
 			runFuncName:          "Run",
 			expectedInitFuncName: "NewMyOpts",
-			expectErrorInAnalyze: true, // Expect AnalyzeOptionsV2 to fail
+			expectErrorInAnalyze: true,
 		},
 		{
 			name: "Initializer Function Present with Parameters (Invalid Signature)",
 			sourceContent: `
-package command
+package main // Changed to main
 import "context"
 type MyOpts struct { Name string }
 func NewMyOpts(i int) *MyOpts { return &MyOpts{Name: "Default"} }
@@ -104,30 +104,30 @@ func NewMyOpts(i int) *MyOpts { return &MyOpts{Name: "Default"} }
 func Run(ctx context.Context, opts *MyOpts) error { return nil }
 func main() { Run(nil, nil) }
 `,
-			packageName:          "command",
+			packageName:          "main", // Changed to main
 			runFuncName:          "Run",
 			expectedInitFuncName: "",
-			expectErrorInAnalyze: true, // Expect AnalyzeOptionsV2 to fail
+			expectErrorInAnalyze: true,
 		},
 		{
 			name: "No Initializer Function Present",
 			sourceContent: `
-package command
+package main // Changed to main
 import "context"
 type MyOpts struct { Name string }
 // goat:run
 func Run(ctx context.Context, opts *MyOpts) error { return nil }
 func main() { Run(nil, nil) }
 `,
-			packageName:          "command",
+			packageName:          "main", // Changed to main
 			runFuncName:          "Run",
 			expectedInitFuncName: "",
-			expectErrorInAnalyze: true, // Expect AnalyzeOptionsV2 to fail
+			expectErrorInAnalyze: true,
 		},
 		{
 			name: "Initializer Function Name Mismatch",
 			sourceContent: `
-package command
+package main // Changed to main
 import "context"
 type MyOpts struct { Name string }
 func NewMyOptionsWrong() *MyOpts { return &MyOpts{Name: "Default"} }
@@ -135,15 +135,15 @@ func NewMyOptionsWrong() *MyOpts { return &MyOpts{Name: "Default"} }
 func Run(ctx context.Context, opts *MyOpts) error { return nil }
 func main() { Run(nil, nil) }
 `,
-			packageName:          "command",
+			packageName:          "main", // Changed to main
 			runFuncName:          "Run",
 			expectedInitFuncName: "",
-			expectErrorInAnalyze: true, // Expect AnalyzeOptionsV2 to fail
+			expectErrorInAnalyze: true,
 		},
 		{
 			name: "Initializer Function Returns Value Type (Still Valid for Discovery)",
 			sourceContent: `
-package command
+package main // Changed to main
 import "context"
 type MyOpts struct { Name string }
 func NewMyOpts() MyOpts { return MyOpts{Name: "Default"} }
@@ -151,10 +151,10 @@ func NewMyOpts() MyOpts { return MyOpts{Name: "Default"} }
 func Run(ctx context.Context, opts *MyOpts) error { return nil }
 func main() { Run(nil, nil) }
 `,
-			packageName:          "command",
+			packageName:          "main", // Changed to main
 			runFuncName:          "Run",
 			expectedInitFuncName: "NewMyOpts",
-			expectErrorInAnalyze: true, // Expect AnalyzeOptionsV2 to fail
+			expectErrorInAnalyze: true,
 		},
 		// This test is simplified; multi-file analysis is harder with this parseTestFiles.
 		// To test across files, parseTestFiles would need to handle multiple entries in `sources`.
@@ -166,16 +166,16 @@ func main() { Run(nil, nil) }
 		{
 			name: "Run function has no options, no initializer expected",
 			sourceContent: `
-package command
+package main // Changed to main
 import "context"
 // goat:run
 func RunWithoutOptions(ctx context.Context) error { return nil }
 func main() { RunWithoutOptions(nil) }
 `,
-			packageName:          "command",
+			packageName:          "main", // Changed to main
 			runFuncName:          "RunWithoutOptions",
 			expectedInitFuncName: "",
-			expectErrorInAnalyze: true, // Analyze will error as it can't treat context.Context as Options
+			expectErrorInAnalyze: true,
 		},
 		// Simplified: This test no longer involves multiple packages for this focused pass.
 		// {
@@ -202,9 +202,10 @@ func main() { RunWithoutOptions(nil) }
 			// So the import path is "testmodule". tc.packageName is the `package foo` name.
 			targetPackageID := "testmodule" // Module name defined in parseTestFiles
 
-			llCfg := loader.Config{Fset: fset} // Removed BaseDir from here
+			llCfg := loader.Config{Fset: fset}
 			loader := loader.New(llCfg)
-			cmdMeta, _, err := Analyze(fset, astFiles, tc.runFuncName, targetPackageID, moduleRootDir, loader)
+			// Pass "" for initializerFuncNameOption for existing tests (conventional lookup)
+			cmdMeta, _, err := Analyze(fset, astFiles, tc.runFuncName, "", targetPackageID, moduleRootDir, loader)
 
 			// InitializerFunc is determined before AnalyzeOptions is called.
 			// So, we should be able to check it even if Analyze later returns an error from AnalyzeOptions.
@@ -246,6 +247,152 @@ func main() { RunWithoutOptions(nil) }
 					// Only fail here if the error was NOT related to options struct parsing,
 					// as we are focusing on initializer discovery which happens before that.
 					// However, a general error from Analyze is still a failure for the test if not expected.
+					t.Errorf("Analyze() returned an unexpected error: %v", err)
+				}
+			}
+		})
+	}
+}
+
+func TestAnalyzeWithInitializerVariations(t *testing.T) {
+	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelDebug}))
+	slog.SetDefault(logger)
+
+	testCases := []struct {
+		name                      string
+		sourceContent             string
+		runFuncName               string
+		initializerFuncNameOption string
+		expectedInitializerFunc   string
+		expectErrorInAnalyze      bool // If Analyze() itself is expected to error (e.g. options parsing)
+	}{
+		{
+			name: "User-specified initializer, exists",
+			sourceContent: `
+package main
+type Opts struct { Name string }
+func MyInit() *Opts { return &Opts{Name:"custom"} }
+func run(o Opts) error { return nil }
+func main() { run(Opts{}) } // Dummy main
+`,
+			runFuncName:               "run",
+			initializerFuncNameOption: "MyInit",
+			expectedInitializerFunc:   "MyInit",
+			expectErrorInAnalyze:      true, // AnalyzeOptions likely to fail on simple Opts
+		},
+		{
+			name: "User-specified initializer, not exists",
+			sourceContent: `
+package main
+type Opts struct { Name string }
+func run(o Opts) error { return nil }
+func main() { run(Opts{}) }
+`,
+			runFuncName:               "run",
+			initializerFuncNameOption: "NonExistentInit",
+			expectedInitializerFunc:   "",
+			expectErrorInAnalyze:      true,
+		},
+		{
+			name: "Conventional initializer, exists",
+			sourceContent: `
+package main
+type Opts struct { Name string }
+func NewOpts() *Opts { return &Opts{Name:"conventional"} }
+func run(o Opts) error { return nil }
+func main() { run(Opts{}) }
+`,
+			runFuncName:               "run",
+			initializerFuncNameOption: "", // Conventional lookup
+			expectedInitializerFunc:   "NewOpts",
+			expectErrorInAnalyze:      true,
+		},
+		{
+			name: "No initializer exists (conventional or specified)",
+			sourceContent: `
+package main
+type Opts struct { Name string }
+func run(o Opts) error { return nil }
+func main() { run(Opts{}) }
+`,
+			runFuncName:               "run",
+			initializerFuncNameOption: "", // Conventional lookup
+			expectedInitializerFunc:   "",
+			expectErrorInAnalyze:      true,
+		},
+		{
+			name: "User-specified initializer, wrong signature",
+			sourceContent: `
+package main
+type Opts struct { Name string }
+func MyInitWithParam(p int) *Opts { return &Opts{Name:"custom"} }
+func run(o Opts) error { return nil }
+func main() { run(Opts{}) }
+`,
+			runFuncName:               "run",
+			initializerFuncNameOption: "MyInitWithParam",
+			expectedInitializerFunc:   "", // Should not be found due to wrong signature
+			expectErrorInAnalyze:      true,
+		},
+		{
+			name: "Conventional initializer, wrong signature",
+			sourceContent: `
+package main
+type Opts struct { Name string }
+func NewOpts(p int) *Opts { return &Opts{Name:"conventional"} }
+func run(o Opts) error { return nil }
+func main() { run(Opts{}) }
+`,
+			runFuncName:               "run",
+			initializerFuncNameOption: "", // Conventional lookup
+			expectedInitializerFunc:   "", // Should not be found due to wrong signature
+			expectErrorInAnalyze:      true,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			fset, astFiles, moduleRootDir := parseTestFiles(t, map[string]string{"main.go": tc.sourceContent})
+			defer os.RemoveAll(moduleRootDir)
+
+			if len(astFiles) == 0 {
+				t.Fatal("No AST files loaded by parseTestFiles.")
+			}
+			targetPackageID := "testmodule"
+
+			llCfg := loader.Config{Fset: fset}
+			loader := loader.New(llCfg)
+			cmdMeta, _, err := Analyze(fset, astFiles, tc.runFuncName, tc.initializerFuncNameOption, targetPackageID, moduleRootDir, loader)
+
+			if cmdMeta == nil {
+				if tc.expectErrorInAnalyze && err != nil {
+					return // Analyze errored as expected, cmdMeta might be nil.
+				}
+				t.Fatalf("Analyze() returned nil CommandMetadata, error: %v", err)
+			}
+			if cmdMeta.RunFunc == nil {
+				if tc.expectedInitializerFunc != "" {
+					t.Fatalf("RunFuncInfo is nil, but expected InitializerFunc %q. Analyze error: %v", tc.expectedInitializerFunc, err)
+				}
+				if tc.expectErrorInAnalyze && err != nil {
+					return
+				}
+				if !tc.expectErrorInAnalyze {
+					t.Fatalf("RunFuncInfo is nil. Analyze error: %v", err)
+				}
+				return
+			}
+
+			if cmdMeta.RunFunc.InitializerFunc != tc.expectedInitializerFunc {
+				t.Errorf("Expected InitializerFunc %q, got %q. Analyze error: %v", tc.expectedInitializerFunc, cmdMeta.RunFunc.InitializerFunc, err)
+			}
+
+			if tc.expectErrorInAnalyze {
+				if err == nil {
+					t.Errorf("Analyze() was expected to return an error, but did not.")
+				}
+			} else {
+				if err != nil {
 					t.Errorf("Analyze() returned an unexpected error: %v", err)
 				}
 			}

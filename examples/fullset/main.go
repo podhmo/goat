@@ -174,35 +174,8 @@ Flags:
 
 	var options *Options
 
-	// 1. Create Options with default values (no initializer function provided).
-	options = new(Options) // options is now a valid pointer to a zeroed struct
-
-	// The following block populates the fields of the options struct.
-	// This logic is only executed if no InitializerFunc is provided.
-
-	options.Name = "World"
-
-	options.Age = new(int)
-
-	options.LogLevel = "info"
-
-	options.OutputDir = "output"
-
-	options.Mode = "standard"
-
-	options.SuperVerbose = false
-
-	options.OptionalToggle = new(bool)
-
-	options.ConfigFile = "config.json"
-
-	options.Pattern = "*.go"
-
-	options.EnableFeatureX = true
-
-	options.ExistingFieldToMakeOptional = new(string)
-
-	// End of range .Options (for non-initializer case)
+	// 1. Create Options using the initializer function.
+	options = NewFullsetOptions()
 	// End of if/else .RunFunc.InitializerFunc for options assignment
 
 	// 2. Override with environment variable values.
