@@ -179,6 +179,7 @@ func run(opts Options) error {
 	return nil
 }
 
+//go:generate go run github.com/podhmo/goat/cmd/goat emit -run run -initializer "" main.go
 func main() {
 	options := Options{}
 	flag.StringVar(&options.Message, "message", "Hello, world!", "Message to print")
