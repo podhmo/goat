@@ -213,7 +213,7 @@ func scanMain(fset *token.FileSet, opts *Options) (*metadata.CommandMetadata, *a
 	// However, analyzer.Analyze expects a slice.
 	filesForAnalysis := []*ast.File{targetFileAst}
 
-	cmdMetadata, returnedOptionsStructName, err := analyzer.Analyze(fset, filesForAnalysis, opts.RunFuncName, targetPackageID, moduleRootPath, l)
+	cmdMetadata, returnedOptionsStructName, err := analyzer.Analyze(fset, filesForAnalysis, opts.RunFuncName, opts.OptionsInitializerName, targetPackageID, moduleRootPath, l)
 	if err != nil {
 		return nil, targetFileAst, fmt.Errorf("failed to analyze AST (targetPkgID: %s, modRoot: %s): %w", targetPackageID, moduleRootPath, err)
 	}
