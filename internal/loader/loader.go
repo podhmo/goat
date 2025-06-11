@@ -3,6 +3,7 @@ package loader
 import (
 	"fmt"
 	"go/token"
+	"os" // New import for os.Getwd()
 	"sync"
 )
 
@@ -40,7 +41,16 @@ type Loader struct {
 // New creates a new Loader with the given configuration.
 func New(cfg Config) *Loader {
 	if cfg.Locator == nil {
-		cfg.Locator = GoListLocator // Default locator
+		// Default to GoModLocator
+		wd, err := os.Getwd()
+		if err != nil {
+			// This is a fallback or error handling strategy.
+			// For now, let panic, as a valid working dir is crucial.
+			// Alternatively, could return an error from New.
+			panic(fmt.Sprintf("failed to get working directory for GoModLocator: %v", err))
+		}
+		gml := &GoModLocator{workingDir: wd}
+		cfg.Locator = gml.Locate // Use the method from the instance
 	}
 	fset := cfg.Fset
 	if fset == nil {
