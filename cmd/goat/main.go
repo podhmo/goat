@@ -25,63 +25,6 @@ type Options struct {
 	TargetFile             string
 }
 
-// findModuleRoot searches for a go.mod file starting from dir and going upwards.
-func findModuleRoot(dir string) (string, error) {
-	current := dir
-	for {
-		goModPath := filepath.Join(current, "go.mod")
-		if _, err := os.Stat(goModPath); err == nil {
-			return current, nil
-		} else if !os.IsNotExist(err) {
-			return "", fmt.Errorf("error checking for go.mod at %s: %w", goModPath, err)
-		}
-		parent := filepath.Dir(current)
-		if parent == current {
-			return "", nil
-		}
-		current = parent
-	}
-}
-
-// execDirectoryLocator is a helper struct to manage locating packages from a specific base directory.
-type execDirectoryLocator struct {
-	BaseDir        string
-	WrappedLocator loader.PackageLocator
-	// Fset is not used by Locate but can be stored if needed for other purposes.
-	// Fset           *token.FileSet
-}
-
-// Locate matches the loader.PackageLocator function signature.
-// It executes the wrapped locator from BaseDir.
-func (l *execDirectoryLocator) Locate(pattern string, buildCtx loader.BuildContext) ([]loader.PackageMetaInfo, error) {
-	if l.WrappedLocator == nil {
-		return nil, fmt.Errorf("ExecDirectoryLocator: WrappedLocator is nil")
-	}
-
-	originalWD, err := os.Getwd()
-	if err != nil {
-		return nil, fmt.Errorf("ExecDirectoryLocator: failed to get current working directory: %w", err)
-	}
-
-	if l.BaseDir != "" && l.BaseDir != "." && l.BaseDir != originalWD {
-		if err := os.Chdir(l.BaseDir); err != nil {
-			return nil, fmt.Errorf("ExecDirectoryLocator: failed to change directory to %s: %w", l.BaseDir, err)
-		}
-		slog.Debug("ExecDirectoryLocator: Changed working directory", "to", l.BaseDir)
-		defer func() {
-			if err := os.Chdir(originalWD); err != nil {
-				slog.Error("ExecDirectoryLocator: failed to restore original working directory", "originalWD", originalWD, "error", err)
-			} else {
-				slog.Debug("ExecDirectoryLocator: Restored working directory", "to", originalWD)
-			}
-		}()
-	}
-
-	// Pass the original buildCtx to the wrapped locator.
-	// The buildCtx in this struct is primarily for the wrapped locator if it needs it.
-	return l.WrappedLocator(pattern, buildCtx)
-}
-
 func main() {
 	if _, ok := os.LookupEnv("DEBUG"); ok {
 		slog.SetLogLoggerLevel(slog.LevelDebug)
@@ -302,4 +245,61 @@ func scanMain(fset *token.FileSet, opts *Options) (*metadata.CommandMetadata, *a
 		slog.Info("Goat: Skipping options initializer interpretation", "initializerName", opts.OptionsInitializerName, "optionsStructName", returnedOptionsStructName)
 	}
 	return cmdMetadata, targetFileAst, nil
+}
+
+// findModuleRoot searches for a go.mod file starting from dir and going upwards.
+func findModuleRoot(dir string) (string, error) {
+	current := dir
+	for {
+		goModPath := filepath.Join(current, "go.mod")
+		if _, err := os.Stat(goModPath); err == nil {
+			return current, nil
+		} else if !os.IsNotExist(err) {
+			return "", fmt.Errorf("error checking for go.mod at %s: %w", goModPath, err)
+		}
+		parent := filepath.Dir(current)
+		if parent == current {
+			return "", nil
+		}
+		current = parent
+	}
+}
+
+// execDirectoryLocator is a helper struct to manage locating packages from a specific base directory.
+type execDirectoryLocator struct {
+	BaseDir        string
+	WrappedLocator loader.PackageLocator
+	// Fset is not used by Locate but can be stored if needed for other purposes.
+	// Fset           *token.FileSet
+}
+
+// Locate matches the loader.PackageLocator function signature.
+// It executes the wrapped locator from BaseDir.
+func (l *execDirectoryLocator) Locate(pattern string, buildCtx loader.BuildContext) ([]loader.PackageMetaInfo, error) {
+	if l.WrappedLocator == nil {
+		return nil, fmt.Errorf("ExecDirectoryLocator: WrappedLocator is nil")
+	}
+
+	originalWD, err := os.Getwd()
+	if err != nil {
+		return nil, fmt.Errorf("ExecDirectoryLocator: failed to get current working directory: %w", err)
+	}
+
+	if l.BaseDir != "" && l.BaseDir != "." && l.BaseDir != originalWD {
+		if err := os.Chdir(l.BaseDir); err != nil {
+			return nil, fmt.Errorf("ExecDirectoryLocator: failed to change directory to %s: %w", l.BaseDir, err)
+		}
+		slog.Debug("ExecDirectoryLocator: Changed working directory", "to", l.BaseDir)
+		defer func() {
+			if err := os.Chdir(originalWD); err != nil {
+				slog.Error("ExecDirectoryLocator: failed to restore original working directory", "originalWD", originalWD, "error", err)
+			} else {
+				slog.Debug("ExecDirectoryLocator: Restored working directory", "to", originalWD)
+			}
+		}()
+	}
+
+	// Pass the original buildCtx to the wrapped locator.
+	// The buildCtx in this struct is primarily for the wrapped locator if it needs it.
+	return l.WrappedLocator(pattern, buildCtx)
 }
