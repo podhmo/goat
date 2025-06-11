@@ -5,7 +5,7 @@ import (
 	"flag"
 	"fmt"
 	"go/ast"
-	"go/parser" // Ensure this is imported
+	"go/parser"
 	"go/token"
 	"log/slog"
 	"os"
@@ -27,10 +27,6 @@ type Options struct {
 	TargetFile             string
 }
 
-// InitOptions holds the configuration for the init subcommand.
-type InitOptions struct {
-}
-
 func main() {
 	if _, ok := os.LookupEnv("DEBUG"); ok {
 		slog.SetLogLoggerLevel(slog.LevelDebug)
@@ -45,22 +41,11 @@ func main() {
 	switch os.Args[1] {
 	case "init":
 		initCmd := flag.NewFlagSet("init", flag.ExitOnError)
-		// var name string // Removed
-		// initCmd.StringVar(&name, "name", "", "Name of the new project") // Removed
 		initCmd.Usage = func() {
-			// fmt.Fprintf(os.Stderr, "Usage: goat init -name <project_name>\n\nOptions:\n") // Removed
-			// initCmd.PrintDefaults() // Removed
 			fmt.Fprintf(os.Stderr, "Usage: goat init\n\nGenerates a basic main.go file in the current directory.\n")
 		}
 		initCmd.Parse(os.Args[2:])
-
-		// if name == "" { // Removed
-		// 	fmt.Fprintln(os.Stderr, "Error: Project name must be specified for init.") // Removed
-		// 	initCmd.Usage() // Removed
-		// 	os.Exit(1) // Removed
-		// } // Removed
-		initOpts := &InitOptions{} // Updated
-		if err := runInit(initOpts); err != nil {
+		if err := initMain(); err != nil {
 			slog.Error("Error running goat (init)", "error", err)
 			os.Exit(1)
 		}
@@ -206,7 +191,8 @@ func main() {
 }
 `
 
-func runInit(opts *InitOptions) error {
+// initMain initializes a basic main.go file in the current directory.
+func initMain() error {
 	slog.Info("Goat: Initializing main.go in current directory.")
 
 	// Create main.go in current directory
