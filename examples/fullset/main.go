@@ -143,32 +143,42 @@ func main() {
 	isFlagExplicitlySet := make(map[string]bool)
 
 	flag.Usage = func() {
-		fmt.Fprint(os.Stderr, `main - run is the core logic for this simple CLI tool.
+		fmt.Fprint(os.Stderr, `github.com/podhmo/goat/examples/fullset - FullsetRun is the core logic for this CLI tool.
          It receives the parsed and validated options.
          This function`+"`"+`s doc comment is used as the main help text for the command.
 
 Usage:
-  main [flags]
+  github.com/podhmo/goat/examples/fullset [flags]
 
 Flags:
-  --name          string   Name of the person to greet. This is a mandatory field. (default: "World") (env: SIMPLE_NAME)
-  --age           int      Age of the person. This is an optional field. (env: SIMPLE_AGE)
-  --log-level     string   LogLevel for the application output.
-                         It can be one of: debug, info, warning, error. (default: "info") (env: SIMPLE_LOG_LEVEL) (allowed: "debug", "info", "warning", "error")
-  --features      strings  Features to enable, provided as a comma-separated list.
-                         Example: --features feat1,feat2 (required) (env: SIMPLE_FEATURES)
-  --output-dir    string   OutputDir for any generated files or reports.
-                         Defaults to "output" if not specified by the user. (default: "output")
-  --mode          string   Mode of operation for the tool, affecting its behavior. (required) (env: SIMPLE_MODE) (allowed: "standard", "turbo", "eco")
-  --super-verbose bool     Enable extra verbose output. (env: SIMPLE_SUPER_VERBOSE)
+  --name                            string   Name of the person to greet. This is a mandatory field. (default: "World") (env: SIMPLE_NAME)
+  --age                             int      Age of the person. This is an optional field. (env: SIMPLE_AGE)
+  --log-level                       string   LogLevel for the application output.
+                                           It can be one of: debug, info, warning, error. (default: "info") (env: SIMPLE_LOG_LEVEL) (allowed: "debug", "info", "warning", "error")
+  --features                        strings  Features to enable, provided as a comma-separated list.
+                                           Example: --features feat1,feat2 (required) (env: SIMPLE_FEATURES)
+  --output-dir                      string   OutputDir for any generated files or reports.
+                                           Defaults to "output" if not specified by the user. (default: "output")
+  --mode                            string   Mode of operation for the tool, affecting its behavior. (default: "standard") (env: SIMPLE_MODE) (allowed: "standard", "turbo", "eco")
+  --super-verbose                   bool     Enable extra verbose output. (env: SIMPLE_SUPER_VERBOSE)
+  --optional-toggle                 bool     An optional boolean flag with no default, should be nil if not set.
+  --config-file                     string   Path to a configuration file. Must exist. (env:"FULLSET_CONFIG_FILE") (default: "config.json") (env: FULLSET_CONFIG_FILE)
+  --pattern                         string   A glob pattern for input files. (env:"FULLSET_PATTERN") (default: "*.go") (env: FULLSET_PATTERN)
+  --no-enable-feature-x             bool     Enable Feature X by default. Use --no-enable-feature-x to disable. (env:"FULLSET_FEATURE_X") (env: FULLSET_FEATURE_X)
+  --host-ip                         ip       The host IP address for the service. (env:"FULLSET_HOST_IP") (required) (env: FULLSET_HOST_IP)
+  --existing-field-to-make-optional string   Example of an existing field made optional. (env:"FULLSET_OPTIONAL_EXISTING") (env: FULLSET_OPTIONAL_EXISTING)
 
-  -h, --help              Show this help message and exit
+  -h, --help                                Show this help message and exit
 `)
 	}
 
-	var options = &Options{}
+	var options *Options
 
-	// 1. Create Options with default values.
+	// 1. Create Options with default values (no initializer function provided).
+	options = new(Options) // options is now a valid pointer to a zeroed struct
+
+	// The following block populates the fields of the options struct.
+	// This logic is only executed if no InitializerFunc is provided.
 
 	options.Name = "World"
 
@@ -178,11 +188,25 @@ Flags:
 
 	options.OutputDir = "output"
 
-	options.Mode = ""
+	options.Mode = "standard"
 
 	options.SuperVerbose = false
 
+	options.OptionalToggle = new(bool)
+
+	options.ConfigFile = "config.json"
+
+	options.Pattern = "*.go"
+
+	options.EnableFeatureX = true
+
+	options.ExistingFieldToMakeOptional = new(string)
+
+	// End of range .Options (for non-initializer case)
+	// End of if/else .RunFunc.InitializerFunc for options assignment
+
 	// 2. Override with environment variable values.
+	// This section assumes 'options' is already initialized.
 
 	if val, ok := os.LookupEnv("SIMPLE_NAME"); ok {
 
@@ -210,7 +234,9 @@ Flags:
 	}
 
 	if val, ok := os.LookupEnv("SIMPLE_FEATURES"); ok {
+
 		options.Features = strings.Split(val, ",")
+
 	}
 
 	if val, ok := os.LookupEnv("SIMPLE_MODE"); ok {
@@ -228,6 +254,48 @@ Flags:
 		}
 
 	}
+
+	if val, ok := os.LookupEnv("FULLSET_CONFIG_FILE"); ok {
+
+		options.ConfigFile = val
+
+	}
+
+	if val, ok := os.LookupEnv("FULLSET_PATTERN"); ok {
+
+		options.Pattern = val
+
+	}
+
+	if val, ok := os.LookupEnv("FULLSET_FEATURE_X"); ok {
+
+		if v, err := strconv.ParseBool(val); err == nil {
+			options.EnableFeatureX = v
+		} else {
+			slog.Warn("Could not parse environment variable as bool for option", "envVar", "FULLSET_FEATURE_X", "option", "EnableFeatureX", "value", val, "error", err)
+		}
+
+	}
+
+	if val, ok := os.LookupEnv("FULLSET_HOST_IP"); ok {
+
+		err := (&options.HostIP).UnmarshalText([]byte(val))
+		if err != nil {
+			slog.Warn("Could not parse environment variable for TextUnmarshaler option; using default or previously set value.", "envVar", "FULLSET_HOST_IP", "option", "host-ip", "value", val, "error", err)
+		}
+
+	}
+
+	if val, ok := os.LookupEnv("FULLSET_OPTIONAL_EXISTING"); ok {
+
+		if options.ExistingFieldToMakeOptional == nil {
+			options.ExistingFieldToMakeOptional = new(string)
+		}
+		*options.ExistingFieldToMakeOptional = val
+
+	}
+
+	// End of range .Options for env vars
 
 	// 3. Set flags.
 
@@ -248,9 +316,38 @@ It can be one of: debug, info, warning, error.` /* Original Default: info, Env: 
 	flag.StringVar(&options.OutputDir, "output-dir", options.OutputDir, `OutputDir for any generated files or reports.
 Defaults to "output" if not specified by the user.` /* Original Default: output, Env:  */)
 
-	flag.StringVar(&options.Mode, "mode", options.Mode, "Mode of operation for the tool, affecting its behavior." /* Env: SIMPLE_MODE */)
+	flag.StringVar(&options.Mode, "mode", options.Mode, "Mode of operation for the tool, affecting its behavior." /* Original Default: standard, Env: SIMPLE_MODE */)
 
 	flag.BoolVar(&options.SuperVerbose, "super-verbose", options.SuperVerbose, "Enable extra verbose output." /* Env: SIMPLE_SUPER_VERBOSE */)
+
+	var defaultOptionalToggleValForFlag bool
+	if options.OptionalToggle != nil {
+		defaultOptionalToggleValForFlag = *options.OptionalToggle
+	}
+	if options.OptionalToggle == nil {
+		options.OptionalToggle = new(bool)
+	}
+	flag.BoolVar(options.OptionalToggle, "optional-toggle", defaultOptionalToggleValForFlag, "An optional boolean flag with no default, should be nil if not set.")
+
+	flag.StringVar(&options.ConfigFile, "config-file", options.ConfigFile, "Path to a configuration file. Must exist. (env:\"FULLSET_CONFIG_FILE\")" /* Original Default: config.json, Env: FULLSET_CONFIG_FILE */)
+
+	flag.StringVar(&options.Pattern, "pattern", options.Pattern, "A glob pattern for input files. (env:\"FULLSET_PATTERN\")" /* Original Default: *.go, Env: FULLSET_PATTERN */)
+
+	var EnableFeatureX_NoFlagIsPresent bool
+	flag.BoolVar(&EnableFeatureX_NoFlagIsPresent, "no-enable-feature-x", false, "Set enable-feature-x to false")
+
+	flag.TextVar(&options.HostIP, "host-ip", options.HostIP, "The host IP address for the service. (env:\"FULLSET_HOST_IP\")" /* Env: FULLSET_HOST_IP */)
+
+	var defaultExistingFieldToMakeOptionalValForFlag string
+	if options.ExistingFieldToMakeOptional != nil {
+		defaultExistingFieldToMakeOptionalValForFlag = *options.ExistingFieldToMakeOptional
+	}
+	if options.ExistingFieldToMakeOptional == nil {
+		options.ExistingFieldToMakeOptional = new(string)
+	}
+	flag.StringVar(options.ExistingFieldToMakeOptional, "existing-field-to-make-optional", defaultExistingFieldToMakeOptionalValForFlag, "Example of an existing field made optional. (env:\"FULLSET_OPTIONAL_EXISTING\")" /* Env: FULLSET_OPTIONAL_EXISTING */)
+
+	// End of range .Options for flags
 
 	// 4. Parse.
 	flag.Parse()
@@ -258,11 +355,12 @@ Defaults to "output" if not specified by the user.` /* Original Default: output,
 
 	// Handle special case for required bools defaulting to true with 'no-<flag>'
 
+	if EnableFeatureX_NoFlagIsPresent {
+		options.EnableFeatureX = false
+	}
+
 	// 5. Perform required checks (excluding booleans).
 
-	// A string is required. It must not be its original default if the flag wasn't set and env var wasn't set.
-	// If default was empty: must not be empty.
-	// If default was non-empty: must not be that specific non-empty value.
 	initialDefaultName := "World"
 	envNameWasSet := false
 
@@ -275,9 +373,6 @@ Defaults to "output" if not specified by the user.` /* Original Default: output,
 		os.Exit(1)
 	}
 
-	// A string is required. It must not be its original default if the flag wasn't set and env var wasn't set.
-	// If default was empty: must not be empty.
-	// If default was non-empty: must not be that specific non-empty value.
 	initialDefaultLogLevel := "info"
 	envLogLevelWasSet := false
 
@@ -293,7 +388,6 @@ Defaults to "output" if not specified by the user.` /* Original Default: output,
 	isValidChoice_LogLevel := false
 	allowedChoices_LogLevel := []string{"debug", "info", "warning", "error"}
 
-	// Handle non-pointer types for enum
 	currentValue_LogLevelStr := fmt.Sprintf("%v", options.LogLevel)
 	isValidChoice_LogLevel = slices.Contains(allowedChoices_LogLevel, currentValue_LogLevelStr)
 
@@ -304,9 +398,6 @@ Defaults to "output" if not specified by the user.` /* Original Default: output,
 		os.Exit(1)
 	}
 
-	// A string is required. It must not be its original default if the flag wasn't set and env var wasn't set.
-	// If default was empty: must not be empty.
-	// If default was non-empty: must not be that specific non-empty value.
 	initialDefaultOutputDir := "output"
 	envOutputDirWasSet := false
 
@@ -315,10 +406,7 @@ Defaults to "output" if not specified by the user.` /* Original Default: output,
 		os.Exit(1)
 	}
 
-	// A string is required. It must not be its original default if the flag wasn't set and env var wasn't set.
-	// If default was empty: must not be empty.
-	// If default was non-empty: must not be that specific non-empty value.
-	initialDefaultMode := ""
+	initialDefaultMode := "standard"
 	envModeWasSet := false
 
 	if _, ok := os.LookupEnv("SIMPLE_MODE"); ok {
@@ -333,7 +421,6 @@ Defaults to "output" if not specified by the user.` /* Original Default: output,
 	isValidChoice_Mode := false
 	allowedChoices_Mode := []string{"standard", "turbo", "eco"}
 
-	// Handle non-pointer types for enum
 	currentValue_ModeStr := fmt.Sprintf("%v", options.Mode)
 	isValidChoice_Mode = slices.Contains(allowedChoices_Mode, currentValue_ModeStr)
 
@@ -344,10 +431,42 @@ Defaults to "output" if not specified by the user.` /* Original Default: output,
 		os.Exit(1)
 	}
 
-	// End of range .Options for required checks
-	// End of if .HasOptions
+	initialDefaultConfigFile := "config.json"
+	envConfigFileWasSet := false
 
-	err := FullsetRun(*options)
+	if _, ok := os.LookupEnv("FULLSET_CONFIG_FILE"); ok {
+		envConfigFileWasSet = true
+	}
+
+	if options.ConfigFile == initialDefaultConfigFile && !isFlagExplicitlySet["config-file"] && !envConfigFileWasSet {
+		slog.Error("Missing required flag or environment variable not set", "flag", "config-file", "envVar", "FULLSET_CONFIG_FILE", "option", "ConfigFile")
+		os.Exit(1)
+	}
+
+	initialDefaultPattern := "*.go"
+	envPatternWasSet := false
+
+	if _, ok := os.LookupEnv("FULLSET_PATTERN"); ok {
+		envPatternWasSet = true
+	}
+
+	if options.Pattern == initialDefaultPattern && !isFlagExplicitlySet["pattern"] && !envPatternWasSet {
+		slog.Error("Missing required flag or environment variable not set", "flag", "pattern", "envVar", "FULLSET_PATTERN", "option", "Pattern")
+		os.Exit(1)
+	}
+
+	// End of range .Options for required checks
+
+	// TODO: Implement runtime validation for file options based on metadata:
+	// - Check for opt.FileMustExist (e.g., using os.Stat)
+	// - Handle opt.FileGlobPattern (e.g., using filepath.Glob)
+	// Currently, these attributes are parsed but not enforced at runtime by the generated CLI.
+	// End of if .RunFunc.OptionsArgTypeNameStripped (options handling block)
+
+	var err error
+
+	// Run function expects an options argument
+	err = FullsetRun(*options)
 
 	if err != nil {
 		slog.Error("Runtime error", "error", err)
