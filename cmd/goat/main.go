@@ -29,7 +29,6 @@ type Options struct {
 
 // InitOptions holds the configuration for the init subcommand.
 type InitOptions struct {
-	Name string
 }
 
 func main() {
@@ -46,25 +45,26 @@ func main() {
 	switch os.Args[1] {
 	case "init":
 		initCmd := flag.NewFlagSet("init", flag.ExitOnError)
-		var name string
-		initCmd.StringVar(&name, "name", "", "Name of the new project")
+		// var name string // Removed
+		// initCmd.StringVar(&name, "name", "", "Name of the new project") // Removed
 		initCmd.Usage = func() {
-			fmt.Fprintf(os.Stderr, "Usage: goat init -name <project_name>\n\nOptions:\n")
-			initCmd.PrintDefaults()
+			// fmt.Fprintf(os.Stderr, "Usage: goat init -name <project_name>\n\nOptions:\n") // Removed
+			// initCmd.PrintDefaults() // Removed
+			fmt.Fprintf(os.Stderr, "Usage: goat init\n\nGenerates a basic main.go file in the current directory.\n")
 		}
 		initCmd.Parse(os.Args[2:])
 
-		if name == "" {
-			fmt.Fprintln(os.Stderr, "Error: Project name must be specified for init.")
-			initCmd.Usage()
-			os.Exit(1)
-		}
-		initOpts := &InitOptions{Name: name}
+		// if name == "" { // Removed
+		// 	fmt.Fprintln(os.Stderr, "Error: Project name must be specified for init.") // Removed
+		// 	initCmd.Usage() // Removed
+		// 	os.Exit(1) // Removed
+		// } // Removed
+		initOpts := &InitOptions{} // Updated
 		if err := runInit(initOpts); err != nil {
 			slog.Error("Error running goat (init)", "error", err)
 			os.Exit(1)
 		}
-		slog.Info("Goat: init command finished successfully.", "projectName", name)
+		slog.Info("Goat: init command finished successfully.") // Updated
 	case "emit":
 		emitCmd := flag.NewFlagSet("emit", flag.ExitOnError)
 		var runFuncName, optionsInitializerName string
@@ -175,7 +175,7 @@ func runGoat(opts *Options) error {
 	return nil
 }
 
-const mainGoTemplate = `package {{.Name}}
+const mainGoTemplate = `package main
 
 import (
 	"flag"
@@ -196,7 +196,7 @@ func run(opts Options) error {
 
 func main() {
 	options := Options{}
-	flag.StringVar(&options.Message, "message", "Hello, {{.Name}}!", "Message to print")
+	flag.StringVar(&options.Message, "message", "Hello, world!", "Message to print")
 	flag.Parse()
 
 	if err := run(options); err != nil {
@@ -207,33 +207,32 @@ func main() {
 `
 
 func runInit(opts *InitOptions) error {
-	slog.Info("Goat: Initializing new project", "name", opts.Name)
+	slog.Info("Goat: Initializing main.go in current directory.")
 
-	// Create directory
-	if err := os.Mkdir(opts.Name, 0755); err != nil {
-		return fmt.Errorf("failed to create directory %s: %w", opts.Name, err)
-	}
-	slog.Info("Goat: Created directory", "path", opts.Name)
-
-	// Create main.go
-	mainGoPath := filepath.Join(opts.Name, "main.go")
+	// Create main.go in current directory
+	mainGoPath := "main.go"
 	f, err := os.Create(mainGoPath)
 	if err != nil {
 		return fmt.Errorf("failed to create %s: %w", mainGoPath, err)
 	}
 	defer f.Close()
 
+	// Data for template execution
+	templateData := map[string]string{
+		"Name": "main", // Package name for main.go in current directory
+	}
+
 	// Parse and execute template
 	tmpl, err := template.New("main.go").Parse(mainGoTemplate)
 	if err != nil {
 		return fmt.Errorf("failed to parse main.go template: %w", err)
 	}
-	if err := tmpl.Execute(f, opts); err != nil {
+	if err := tmpl.Execute(f, templateData); err != nil {
 		return fmt.Errorf("failed to execute main.go template: %w", err)
 	}
 
-	slog.Info("Goat: Created main.go", "path", mainGoPath)
-	fmt.Fprintf(os.Stdout, "Goat: Project '%s' initialized successfully.\n", opts.Name)
+	slog.Info("Goat: Created main.go in current directory", "path", mainGoPath)
+	fmt.Fprintln(os.Stdout, "Goat: main.go initialized successfully in current directory.")
 	return nil
 }
 
