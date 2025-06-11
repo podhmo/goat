@@ -1,5 +1,5 @@
 
-EXAMPLES_DIRS := examples/hello examples/enum examples/fullset examples/noinit
+EXAMPLES_DIRS := examples/hello examples/enum examples/fullset
 
 examples-check:
 #	go run ./cmd/goat/ help-message examples/fullset/main.go
