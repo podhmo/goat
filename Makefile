@@ -5,8 +5,8 @@ examples-check:
 
 examples-emit:
 	go run ./cmd/goat/ emit examples/hello/main.go
-	go run ./cmd/goat/ emit examples/enum/main.go --initializer NewOptions -run Run
-	go run ./cmd/goat/ emit examples/fullset/main.go --initializer NewOptions --run run
+	go run ./cmd/goat/ emit --initializer NewOptions -run Run examples/enum/main.go
+	go run ./cmd/goat/ emit --initializer NewOptions --run run examples/fullset/main.go
 	
 .PHONY: examples-emit
 
