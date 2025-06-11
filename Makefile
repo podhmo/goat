@@ -10,7 +10,7 @@ examples-check:
 examples-emit:
 	go build -o .gobin/goat ./cmd/goat
 	$(GOAT) emit examples/hello/main.go
-	$(GOAT) emit --initializer NewOptions -run Run examples/enum/main.go
+	$(GOAT) emit --initializer NewOptions -run run examples/enum/main.go
 	$(GOAT) emit --initializer NewOptions --run run examples/fullset/main.go
 
 .PHONY: examples-emit

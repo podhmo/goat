@@ -10,7 +10,7 @@ import (
 	"github.com/podhmo/goat/examples/enum/customtypes"
 )
 
-//go:generate goat emit -run Run -initializer NewOptions main.go
+//go:generate goat emit -run run -initializer NewOptions main.go
 
 // MyLocalEnum is a locally defined enum type.
 type MyLocalEnum string
@@ -50,9 +50,9 @@ func NewOptions() *Options {
 	}
 }
 
-// Run is the main execution logic for the enum example CLI.
+// run is the main execution logic for the enum example CLI.
 // It prints the selected enum values.
-func Run(opts Options) error {
+func run(opts Options) error {
 	fmt.Printf("Selected Local Enum: %s\n", opts.LocalEnumField)
 	fmt.Printf("Selected Imported Enum: %s\n", opts.ImportedEnumField)
 
@@ -79,7 +79,7 @@ func main() {
 	isFlagExplicitlySet := make(map[string]bool)
 
 	flag.Usage = func() {
-		fmt.Fprint(os.Stderr, `github.com/podhmo/goat/examples/enum - Run is the main execution logic for the enum example CLI.
+		fmt.Fprint(os.Stderr, `github.com/podhmo/goat/examples/enum - run is the main execution logic for the enum example CLI.
          It prints the selected enum values.
 
 Usage:
@@ -141,7 +141,7 @@ Flags:
 	var err error
 
 	// Run function expects an options argument
-	err = Run(*options)
+	err = run(*options)
 
 	if err != nil {
 		slog.Error("Runtime error", "error", err)
