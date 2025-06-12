@@ -4,44 +4,63 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"os" // Required for os.ReadFile
+	"go/build" // Added this import
+	"os"       // Required for os.ReadFile
 	"os/exec"
 	"path/filepath" // New import
 	"strings"
+	"go/token" // For parsing package name
+	"go/parser" // For parsing package name
+
 
 	"errors"
+
 	"golang.org/x/mod/modfile"
 	"golang.org/x/mod/module"
 )
 
 // getGoModCacheDir attempts to find the Go module cache directory.
-// It checks GOMODCACHE env var, then defaults to $GOPATH/pkg/mod or $HOME/go/pkg/mod.
-func getGoModCacheDir() (string, error) {
-	if cacheDir := os.Getenv("GOMODCACHE"); cacheDir != "" {
-		absCacheDir, err := filepath.Abs(cacheDir)
-		if err != nil {
-			return "", fmt.Errorf("GOMODCACHE path %s could not be made absolute: %w", cacheDir, err)
-		}
-		return absCacheDir, nil
+// It checks GOMODCACHE env var, then build.Default.GOPATH, and finally $HOME/go/pkg/mod.
+func getGoModCacheDir() string { // Modified to return only string, error handling can be internal or adapted
+	// Prioritize GOMODCACHE environment variable
+	if gomodcache, exists := os.LookupEnv("GOMODCACHE"); exists {
+		return gomodcache
 	}
 
-	gopath := os.Getenv("GOPATH")
-	if gopath != "" {
-		gopaths := filepath.SplitList(gopath)
-		if len(gopaths) > 0 && gopaths[0] != "" {
-			absGoPath, err := filepath.Abs(gopaths[0])
-			if err != nil {
-				return "", fmt.Errorf("GOPATH element %s could not be made absolute: %w", gopaths[0], err)
-			}
-			return filepath.Join(absGoPath, "pkg", "mod"), nil
-		}
+	// Infer from build.Default.GOPATH
+	if build.Default.GOPATH != "" {
+		return filepath.Join(build.Default.GOPATH, "pkg", "mod")
 	}
 
-	homeDir, err := os.UserHomeDir()
+	// Fallback to $HOME/go/pkg/mod
+	home, err := os.UserHomeDir()
 	if err != nil {
-		return "", errors.New("could not determine GOMODCACHE: UserHomeDir error and GOPATH not suitable")
+		// This case should be rare. If UserHomeDir fails, it implies a very unusual setup.
+		// Returning an empty string indicates failure to determine the path.
+		// The caller should handle this appropriately (e.g., by erroring out or using a default).
+		return ""
 	}
-	return filepath.Join(homeDir, "go", "pkg", "mod"), nil
+	return filepath.Join(home, "go", "pkg", "mod")
+}
+
+// getPackageNameFromFiles tries to parse the package name from the first available Go file.
+func getPackageNameFromFiles(dir string, goFiles []string) (string, error) {
+	if len(goFiles) == 0 {
+		return "", errors.New("no go files to parse package name from")
+	}
+	// Try to parse the first non-test Go file to get the package name.
+	// This is a common approach for tools that need to determine package name without `go list`.
+	filePath := filepath.Join(dir, goFiles[0])
+	fset := token.NewFileSet()
+	// parser.PackageClauseOnly is efficient as it stops after the package clause.
+	astFile, err := parser.ParseFile(fset, filePath, nil, parser.PackageClauseOnly)
+	if err != nil {
+		return "", fmt.Errorf("failed to parse package clause from %s: %w", filePath, err)
+	}
+	if astFile.Name == nil {
+		return "", fmt.Errorf("could not find package name in %s", filePath)
+	}
+	return astFile.Name.Name, nil
 }
 
 // PackageMetaInfo holds basic information about a Go package,
@@ -73,6 +92,7 @@ type GoModLocator struct {
 // Locate implements the PackageLocator interface for GoModLocator.
 // It resolves package paths without using `go list`.
 func (gml *GoModLocator) Locate(pattern string, buildCtx BuildContext) ([]PackageMetaInfo, error) {
+	var pkgName string // Declare pkgName
 	// Handle vendor paths (placeholder)
 	if strings.Contains(pattern, "/vendor/") || strings.HasPrefix(pattern, "vendor/") {
 		return nil, errors.New("GoModLocator.Locate: vendor directory handling is not yet implemented")
@@ -87,11 +107,24 @@ func (gml *GoModLocator) Locate(pattern string, buildCtx BuildContext) ([]Packag
 		}
 		pkgDir = absPkgDir
 
-		// Get package name (e.g., directory name)
-		pkgName := filepath.Base(pkgDir)
+		// Get package name
+		pkgName = filepath.Base(pkgDir) // Default to directory name
 
-		pkgName := filepath.Base(pkgDir)
 		goFiles, testGoFiles, xTestGoFiles, errList := gml.listGoFiles(pkgDir)
+		if errList == nil && len(goFiles) > 0 {
+			// If pkgDir is the same as workingDir (pattern is ./) or it's a root of a relative path
+			// that might be a main package, try to get name from source.
+			// A simple heuristic: if the pattern is just "." or ".." or if pkgDir is the workingDir.
+			isRootLike := pattern == "." || pattern == ".." || filepath.Clean(pkgDir) == filepath.Clean(gml.workingDir)
+			if isRootLike {
+				parsedName, parseErr := getPackageNameFromFiles(pkgDir, goFiles)
+				if parseErr == nil {
+					pkgName = parsedName
+				}
+				// If parsing fails, we stick with pkgName = filepath.Base(pkgDir)
+				// This might happen if goFiles contains only non-parsable files or other edge cases
+			}
+		}
 		if errList != nil {
 			return nil, fmt.Errorf("error listing go files in %s (from pattern %s): %w", pkgDir, pattern, errList)
 		}
@@ -99,7 +132,7 @@ func (gml *GoModLocator) Locate(pattern string, buildCtx BuildContext) ([]Packag
 			return nil, fmt.Errorf("no Go files found in relative path %s (resolved to %s)", pattern, pkgDir)
 		}
 		importPath := pattern
-		moduleDir, _ := gml.findModuleRoot(pkgDir)  // findModuleRoot returns absolute path or ""
+		moduleDir, _ := gml.findModuleRoot(pkgDir) // findModuleRoot returns absolute path or ""
 		var modulePath string
 		if moduleDir != "" {
 			modFile, errMod := gml.parseGoMod(filepath.Join(moduleDir, "go.mod"))
@@ -116,18 +149,25 @@ func (gml *GoModLocator) Locate(pattern string, buildCtx BuildContext) ([]Packag
 			}
 		}
 		meta := PackageMetaInfo{
-			ImportPath:    importPath, Name: pkgName, Dir: pkgDir,
-			GoFiles:      goFiles,
+			ImportPath: importPath, Name: pkgName, Dir: pkgDir,
 			GoFiles: goFiles, TestGoFiles: testGoFiles, XTestGoFiles: xTestGoFiles,
 			ModulePath: modulePath, ModuleDir: moduleDir,
 			DirectImports: []string{},
 		}
 		// Ensure slices are non-nil (already done by listGoFiles for xTestGoFiles, and by var init for others if empty)
 		// but DirectImports and others if they were nil conceptually.
-		if meta.GoFiles == nil { meta.GoFiles = []string{} }
-		if meta.TestGoFiles == nil { meta.TestGoFiles = []string{} }
-		if meta.XTestGoFiles == nil { meta.XTestGoFiles = []string{} }
-		if meta.DirectImports == nil { meta.DirectImports = []string{} }
+		if meta.GoFiles == nil {
+			meta.GoFiles = []string{}
+		}
+		if meta.TestGoFiles == nil {
+			meta.TestGoFiles = []string{}
+		}
+		if meta.XTestGoFiles == nil {
+			meta.XTestGoFiles = []string{}
+		}
+		if meta.DirectImports == nil {
+			meta.DirectImports = []string{}
+		}
 		return []PackageMetaInfo{meta}, nil
 	}
 
@@ -148,16 +188,37 @@ func (gml *GoModLocator) Locate(pattern string, buildCtx BuildContext) ([]Packag
 				// pkgDir is absolute because currentModuleRoot is absolute
 
 				if stat, statErr := os.Stat(pkgDir); statErr == nil && stat.IsDir() {
-					pkgName := filepath.Base(pkgDir)
+					determinedPkgName := filepath.Base(pkgDir) // Default
 					goFiles, testGoFiles, xTestGoFiles, listErr := gml.listGoFiles(pkgDir)
 
-					if goFiles == nil { goFiles = []string{} }
-					if testGoFiles == nil { testGoFiles = []string{} }
-					if xTestGoFiles == nil { xTestGoFiles = []string{} }
+					if listErr == nil && len(goFiles) > 0 && (relativePathInModule == "" || relativePathInModule == ".") {
+						// If it's the root of the module, try to parse package name from a file
+						parsedName, parseErr := getPackageNameFromFiles(pkgDir, goFiles)
+						if parseErr == nil {
+							determinedPkgName = parsedName
+						}
+					}
+
+					// Assign to the outer scope pkgName if this path is taken, or use local if preferred.
+					// For now, let's ensure pkgName is set for the meta object.
+					// The original code used a locally scoped pkgName here with `:=`. We need to ensure the correct
+					// name is used in PackageMetaInfo.
+					// Let's stick to a local variable for clarity in this block.
+					// pkgName = determinedPkgName // This would assign to outer scope, not what `pkgName :=` did.
+
+					if goFiles == nil {
+						goFiles = []string{}
+					}
+					if testGoFiles == nil {
+						testGoFiles = []string{}
+					}
+					if xTestGoFiles == nil {
+						xTestGoFiles = []string{}
+					}
 
 					if listErr == nil && (len(goFiles) > 0 || len(testGoFiles) > 0 || len(xTestGoFiles) > 0) {
 						meta := PackageMetaInfo{
-							ImportPath: pattern, Name: pkgName, Dir: pkgDir,
+							ImportPath: pattern, Name: determinedPkgName, Dir: pkgDir, // Use determinedPkgName
 							GoFiles: goFiles, TestGoFiles: testGoFiles, XTestGoFiles: xTestGoFiles,
 							ModulePath: currentModulePath, ModuleDir: currentModuleRoot,
 							DirectImports: []string{},
@@ -175,7 +236,9 @@ func (gml *GoModLocator) Locate(pattern string, buildCtx BuildContext) ([]Packag
 
 		// Find the longest matching prefix among requirements
 		for _, req := range currentModFile.Require {
-			if req.Mod.Path == "" { continue } // Should not happen with valid go.mod
+			if req.Mod.Path == "" {
+				continue
+			} // Should not happen with valid go.mod
 			if strings.HasPrefix(pattern, req.Mod.Path) {
 				// Check if this is a longer (more specific) match
 				if len(req.Mod.Path) > len(depModPath) {
@@ -186,9 +249,9 @@ func (gml *GoModLocator) Locate(pattern string, buildCtx BuildContext) ([]Packag
 		}
 
 		if depModPath != "" {
-			goModCache, cacheErr := getGoModCacheDir() // getGoModCacheDir returns absolute path
-			if cacheErr != nil {
-				return nil, fmt.Errorf("GoModLocator: failed to get module cache directory: %w", cacheErr)
+			goModCache := getGoModCacheDir() // getGoModCacheDir returns absolute path
+			if goModCache == "" {            // Check if the path is empty, indicating an error or inability to find the cache
+				return nil, fmt.Errorf("GoModLocator: failed to get module cache directory, GOMODCACHE may not be set or detectable")
 			}
 
 			// module.EscapePath deals with replacing uppercase letters with !lower case
@@ -197,25 +260,39 @@ func (gml *GoModLocator) Locate(pattern string, buildCtx BuildContext) ([]Packag
 				return nil, fmt.Errorf("GoModLocator: failed to escape module path %s: %w", depModPath, escErr)
 			}
 			// Path in cache: $GOMODCACHE/escapedModPath@version/subPath
-			depModDirPrefix = filepath.Join(goModCache, escapedModPath + "@" + depModVersion) // depModDirPrefix is absolute
+			depModDirPrefix = filepath.Join(goModCache, escapedModPath+"@"+depModVersion) // depModDirPrefix is absolute
 
 			subPath := strings.TrimPrefix(pattern, depModPath)
 			subPath = strings.TrimPrefix(subPath, "/")
 			pkgDir := filepath.Join(depModDirPrefix, subPath) // pkgDir is absolute
 
 			if stat, statErr := os.Stat(pkgDir); statErr == nil && stat.IsDir() {
-				pkgName := filepath.Base(pkgDir)
+					determinedPkgName := filepath.Base(pkgDir) // Default
 				goFiles, testGoFiles, xTestGoFiles, listErr := gml.listGoFiles(pkgDir)
 
-				if goFiles == nil { goFiles = []string{} }
-				if testGoFiles == nil { testGoFiles = []string{} }
-				if xTestGoFiles == nil { xTestGoFiles = []string{} }
+					if listErr == nil && len(goFiles) > 0 && (strings.TrimPrefix(subPath, "/") == "" || subPath == ".") {
+                         // If it's the root of the dependency, try to parse package name
+                        parsedName, parseErr := getPackageNameFromFiles(pkgDir, goFiles)
+                        if parseErr == nil {
+                            determinedPkgName = parsedName
+                        }
+                    }
+
+				if goFiles == nil {
+					goFiles = []string{}
+				}
+				if testGoFiles == nil {
+					testGoFiles = []string{}
+				}
+				if xTestGoFiles == nil {
+					xTestGoFiles = []string{}
+				}
 
 				if listErr == nil && (len(goFiles) > 0 || len(testGoFiles) > 0 || len(xTestGoFiles) > 0) {
 					meta := PackageMetaInfo{
-						ImportPath:    pattern, Name: pkgName, Dir: pkgDir,
-						GoFiles:       goFiles, TestGoFiles:   testGoFiles, XTestGoFiles:  xTestGoFiles,
-						ModulePath:    depModPath,     // The module path of the dependency
+							ImportPath: pattern, Name: determinedPkgName, Dir: pkgDir, // Use determinedPkgName
+						GoFiles: goFiles, TestGoFiles: testGoFiles, XTestGoFiles: xTestGoFiles,
+						ModulePath:    depModPath,      // The module path of the dependency
 						ModuleDir:     depModDirPrefix, // The root directory of the dependency in the cache
 						DirectImports: []string{},
 					}

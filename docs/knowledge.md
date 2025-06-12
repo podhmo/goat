@@ -62,4 +62,22 @@ This restructuring streamlines access to the loader functionality. The core lazy
 
 - The package `internal/loader/lazyload` was consolidated into the `internal/loader` package. This change necessitated updates to import statements in files that previously imported `lazyload`.
 - The constructor function `loader.NewLoader` within the `internal/loader` package was renamed to `loader.New`. All instances where `NewLoader` was called needed to be updated to use `New`.
-[end of docs/knowledge.md]
+
+## Determining Package Name in `internal/loader/locator.go`
+
+When locating Go packages, especially for packages at the root of a module or a directory specified by a relative path, relying solely on the directory name for the package name can be incorrect. The actual package name is defined by the `package` clause in the Go source files.
+
+To address this, the `GoModLocator.Locate` function was enhanced. A new helper function, `getPackageNameFromFiles(dir string, goFiles []string) (string, error)`, was introduced in `internal/loader/locator.go`.
+
+This function:
+- Takes the directory path and a list of Go files within that directory.
+- Parses the first available Go file from the list to read its `package` declaration.
+- Returns the declared package name.
+- Requires imports: `go/parser` and `go/token`.
+
+`GoModLocator.Locate` now calls `getPackageNameFromFiles` in the following scenarios to ensure the `PackageMetaInfo.Name` field is accurate:
+- When resolving relative paths (e.g., `./pkg`, `../anotherpkg`).
+- When the import path refers to the root of the current module.
+- When the import path refers to the root of an external dependency module.
+
+This change ensures more accurate package metadata collection, which is crucial for dependent tools and analysis.
