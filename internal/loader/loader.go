@@ -1,6 +1,7 @@
 package loader
 
 import (
+	"context"
 	"fmt"
 	"go/token"
 	"os" // New import for os.Getwd()

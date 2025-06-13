@@ -315,8 +315,7 @@ func scanMain(ctx context.Context, fset *token.FileSet, opts *Options) (*metadat
 	// However, analyzer.Analyze expects a slice.
 	filesForAnalysis := []*ast.File{targetFileAst}
 
-	// TODO: Pass ctx to analyzer.Analyze
-	cmdMetadata, returnedOptionsStructName, err := analyzer.Analyze(fset, filesForAnalysis, opts.RunFuncName, opts.OptionsInitializerName, targetPackageID, moduleRootPath, l)
+	cmdMetadata, returnedOptionsStructName, err := analyzer.Analyze(ctx, fset, filesForAnalysis, opts.RunFuncName, opts.OptionsInitializerName, targetPackageID, moduleRootPath, l)
 	if err != nil {
 		return nil, targetFileAst, fmt.Errorf("failed to analyze AST (targetPkgID: %s, modRoot: %s): %w", targetPackageID, moduleRootPath, err)
 	}
@@ -326,8 +325,7 @@ func scanMain(ctx context.Context, fset *token.FileSet, opts *Options) (*metadat
 	if opts.OptionsInitializerName != "" && returnedOptionsStructName != "" {
 		// targetFileAst is already available and is the correct AST to interpret the initializer from.
 		// Pass targetPackageID as currentPkgPath and the loader instance 'l'.
-		// TODO: Pass ctx to interpreter.InterpretInitializer
-		err = interpreter.InterpretInitializer(targetFileAst, returnedOptionsStructName, opts.OptionsInitializerName, cmdMetadata.Options, goatMarkersImportPath, targetPackageID, l)
+		err = interpreter.InterpretInitializer(ctx, targetFileAst, returnedOptionsStructName, opts.OptionsInitializerName, cmdMetadata.Options, goatMarkersImportPath, targetPackageID, l)
 		if err != nil {
 			return nil, targetFileAst, fmt.Errorf("failed to interpret options initializer %s: %w", opts.OptionsInitializerName, err)
 		}
@@ -392,5 +390,6 @@ func (l *execDirectoryLocator) Locate(ctx context.Context, pattern string, build
 
 	// Pass the original buildCtx to the wrapped locator.
 	// The buildCtx in this struct is primarily for the wrapped locator if it needs it.
-	return l.WrappedLocator(pattern, buildCtx)
+	// The `ctx` passed to Locate is also passed to WrappedLocator.
+	return l.WrappedLocator(ctx, pattern, buildCtx)
 }

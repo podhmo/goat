@@ -2,6 +2,7 @@ package loader
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"go/build"  // Added this import

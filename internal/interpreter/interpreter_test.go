@@ -1,6 +1,7 @@
 package interpreter
 
 import (
+	"context"
 	"go/ast"
 	"go/parser"
 	"go/token"

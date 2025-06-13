@@ -529,7 +529,7 @@ func TestGenerateMain_RequiredIntWithEnvVar(t *testing.T) {
 	assertCodeContains(t, actualCode, "var options *UserData")
 	assertCodeContains(t, actualCode, "options = new(UserData)")
 	assertCodeContains(t, actualCode, `options.UserId = 0`)
-	assertCodeContains(t, actualCode, `if val, ok := os.LookupEnv("USER_ID"); ok { if v, err := strconv.Atoi(val); err == nil { options.UserId = v } else { slog.WarnContext(context.Background(), "Could not parse environment variable as int for option", "envVar", "USER_ID", "option", "UserId", "value", val, "error", err) } }`)
+	assertCodeContains(t, actualCode, `if val, ok := os.LookupEnv("USER_ID"); ok { if v, err := strconv.Atoi(val); err == nil { options.UserId = v } else { slog.WarnContext(ctx, "Could not parse environment variable as int for option", "envVar", "USER_ID", "option", "UserId", "value", val, "error", err) } }`)
 	assertCodeContains(t, actualCode, `flag.IntVar(&options.UserId, "user-id", options.UserId, "User ID" /* Original Default: 0, Env: USER_ID */)`)
 	expectedRequiredCheck := `
 	initialDefaultUserId := 0

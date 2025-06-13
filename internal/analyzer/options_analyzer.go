@@ -1,6 +1,7 @@
 package analyzer
 
 import (
+	"context"
 	"fmt"
 	"go/ast"
 
@@ -93,7 +94,7 @@ func AnalyzeOptions( // Renamed from AnalyzeOptionsV3
 
 	// loader is now passed in directly
 
-	loadedPkgs, err := loader.Load(loadPattern) // Use the passed-in loader. baseDir is handled by the locator if necessary.
+	loadedPkgs, err := loader.Load(ctx, loadPattern) // Use the passed-in loader. baseDir is handled by the locator if necessary.
 	if err != nil {
 		// Updated error message to reflect that baseDir is not directly used by Load() here.
 		return nil, "", fmt.Errorf("error loading package '%s' (derived load pattern '%s') with loader: %w", targetPackagePath, loadPattern, err)
@@ -174,7 +175,7 @@ func AnalyzeOptions( // Renamed from AnalyzeOptionsV3
 							break
 						}
 					} else {
-						tempResolvedPkg, errTmpResolve := currentPkg.ResolveImport(path)
+						tempResolvedPkg, errTmpResolve := currentPkg.ResolveImport(ctx, path)
 						if errTmpResolve == nil && tempResolvedPkg != nil && tempResolvedPkg.Name == externalPkgSelector {
 							resolvedExternalImportPath = path
 							break
@@ -184,7 +185,7 @@ func AnalyzeOptions( // Renamed from AnalyzeOptionsV3
 				if resolvedExternalImportPath == "" {
 					return nil, actualStructName, fmt.Errorf("unable to resolve import path for selector '%s' in embedded type '%s'", externalPkgSelector, embeddedTypeName)
 				}
-				resolvedExternalPkg, errResolve := currentPkg.ResolveImport(resolvedExternalImportPath)
+				resolvedExternalPkg, errResolve := currentPkg.ResolveImport(ctx, resolvedExternalImportPath)
 				if errResolve != nil {
 					return nil, actualStructName, fmt.Errorf("could not resolve imported package for path '%s': %w", resolvedExternalImportPath, errResolve)
 				}
@@ -247,7 +248,7 @@ func AnalyzeOptions( // Renamed from AnalyzeOptionsV3
 			}
 			// fileContainingOptionsStruct is available from the outer scope in AnalyzeOptions
 			// currentPkg is also available.
-			_, definingPkg, err := currentPkg.GetImportPathBySelector(pkgSelectorIdent.Name, fileContainingOptionsStruct)
+			_, definingPkg, err := currentPkg.GetImportPathBySelector(ctx, pkgSelectorIdent.Name, fileContainingOptionsStruct)
 			if err == nil && definingPkg != nil {
 				typeSpec, _, err := definingPkg.FindTypeSpec(te.Sel.Name)
 				if err == nil {
@@ -286,7 +287,7 @@ func AnalyzeOptions( // Renamed from AnalyzeOptionsV3
 		}
 		// End of UnderlyingKind determination
 
-		isUnmarshaler, errUnmarshaler := fieldInfo.ImplementsInterface("encoding", "TextUnmarshaler")
+		isUnmarshaler, errUnmarshaler := fieldInfo.ImplementsInterface(ctx, "encoding", "TextUnmarshaler")
 		if errUnmarshaler != nil {
 			fmt.Println(fmt.Sprintf("analyzer: warning: error checking TextUnmarshaler for field %s type %s: %v", fieldInfo.Name, opt.TypeName, errUnmarshaler))
 			opt.IsTextUnmarshaler = false
@@ -294,7 +295,7 @@ func AnalyzeOptions( // Renamed from AnalyzeOptionsV3
 			opt.IsTextUnmarshaler = isUnmarshaler
 		}
 
-		isMarshaler, errMarshaler := fieldInfo.ImplementsInterface("encoding", "TextMarshaler")
+		isMarshaler, errMarshaler := fieldInfo.ImplementsInterface(ctx, "encoding", "TextMarshaler")
 		if errMarshaler != nil {
 			fmt.Println(fmt.Sprintf("analyzer: warning: error checking TextMarshaler for field %s type %s: %v", fieldInfo.Name, opt.TypeName, errMarshaler))
 			opt.IsTextMarshaler = false

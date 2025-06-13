@@ -121,7 +121,8 @@ func extractMarkerInfo(
 	if !ok {
 		// Value is not a function call, could be a direct literal (TODO: handle direct literals as defaults)
 		// Check if it's an identifier that needs resolution (e.g. o.MyEnum = MyEnumValues)
-		evalRes := astutils.EvaluateArg(ctx, valueExpr) // Use EvaluateArg for single values
+		// Corrected: Pass ctx to EvaluateArg
+		evalRes := astutils.EvaluateArg(ctx, valueExpr)
 		if evalRes.IdentifierName != "" {
 			// This is an attempt to handle cases like `FieldName: MyEnumVariable`
 			// where MyEnumVariable itself is a slice. This is complex because optMeta.Type
@@ -185,6 +186,7 @@ func extractMarkerInfo(
 
 					if isGoatEnumCall {
 						if len(enumInnerCallExpr.Args) > 0 {
+							// Corrected: Pass ctx to EvaluateSliceArg
 							evalResult := astutils.EvaluateSliceArg(ctx, enumInnerCallExpr.Args[0])
 							extractEnumValuesFromEvalResult(ctx, evalResult, optMeta, fileAst, loader, currentPkgPath, "Default (via goat.Enum)")
 						}
@@ -192,6 +194,7 @@ func extractMarkerInfo(
 						slog.DebugContext(ctx, fmt.Sprintf("Second argument to goat.Default for field %s is a call to %s.%s, not goat.Enum. Ignoring for enum constraints.", optMeta.Name, innerPkgAlias, innerFuncName))
 					}
 				} else { // goat.Default("val", MyEnumVarOrSliceLiteral)
+					// Corrected: Pass ctx to EvaluateSliceArg
 					enumEvalResult := astutils.EvaluateSliceArg(ctx, enumArg)
 					if enumEvalResult.Value != nil {
 						if s, ok := enumEvalResult.Value.([]any); ok {
@@ -226,6 +229,7 @@ func extractMarkerInfo(
 		}
 
 		if valuesArg != nil {
+			// Corrected: Pass ctx to EvaluateSliceArg
 			evalResult := astutils.EvaluateSliceArg(ctx, valuesArg)
 
 			// Check if EvaluateSliceArg could not resolve valuesArg into a simple slice
@@ -235,7 +239,8 @@ func extractMarkerInfo(
 					slog.DebugContext(ctx, fmt.Sprintf("Enum for field %s is a composite literal. Attempting to resolve elements.", optMeta.Name))
 					var resolvedEnumStrings []any
 					for _, elt := range compLit.Elts {
-						elementEvalResult := astutils.EvaluateArg(ctx, elt) // Evaluate each element
+						// Corrected: Pass ctx to EvaluateArg
+						elementEvalResult := astutils.EvaluateArg(ctx, elt)
 						// fileAst is the AST of the file where goat.Enum is called.
 						// currentPkgPath is the import path of this file.
 						// Pass fileAst as fileAstForContext for resolving package aliases within elt if it's a qualified identifier.
@@ -264,6 +269,7 @@ func extractMarkerInfo(
 	case "File":
 		slog.DebugContext(ctx, fmt.Sprintf("Interpreting goat.File for field %s", optMeta.Name))
 		if len(callExpr.Args) > 0 {
+			// Corrected: Pass ctx to EvaluateArg
 			fileArgEvalResult := astutils.EvaluateArg(ctx, callExpr.Args[0])
 			if fileArgEvalResult.IdentifierName == "" {
 				optMeta.DefaultValue = fileArgEvalResult.Value
@@ -376,7 +382,8 @@ func resolveEvalResultToEnumString(
 		}
 
 		slog.DebugContext(ctx, fmt.Sprintf("[resolveEvalResultToEnumString] Attempting to load package: '%s' for const identifier '%s'", targetPkgPath, identName))
-		loadedPkgs, err := loader.Load(targetPkgPath)
+		// Corrected: Pass ctx to loader.Load
+		loadedPkgs, err := loader.Load(ctx, targetPkgPath)
 		if err != nil {
 			slog.DebugContext(ctx, fmt.Sprintf("[resolveEvalResultToEnumString] Error: Failed loading package '%s' for const identifier '%s': %v", targetPkgPath, identName, err))
 			return "", false
@@ -477,7 +484,8 @@ func resolveConstStringValue(ctx context.Context, constName string, pkg *loader.
 								if len(valSpec.Values) > i {
 									// Try to evaluate the constant's value
 									// We expect it to be a basic literal string.
-									constValEval := astutils.EvaluateArg(valSpec.Values[i])
+									// Corrected: Pass ctx to EvaluateArg
+									constValEval := astutils.EvaluateArg(ctx, valSpec.Values[i])
 									if strVal, ok := constValEval.Value.(string); ok {
 										foundVal = strVal
 										return false // Stop inspection, value found
@@ -544,7 +552,8 @@ func extractEnumValuesFromEvalResult(
 		}
 
 		slog.DebugContext(ctx, fmt.Sprintf("Attempting to load package: '%s' for enum identifier '%s' (field %s, marker %s)", targetPkgPath, evalResult.IdentifierName, optMeta.Name, markerType))
-		loadedPkgs, err := loader.Load(targetPkgPath)
+		// Corrected: Pass ctx to loader.Load
+		loadedPkgs, err := loader.Load(ctx, targetPkgPath)
 		if err != nil {
 			slog.DebugContext(ctx, fmt.Sprintf("Error loading package '%s' for enum identifier '%s': %v (field %s, marker %s)", targetPkgPath, evalResult.IdentifierName, err, optMeta.Name, markerType))
 			return
@@ -622,7 +631,8 @@ func extractEnumValuesFromEvalResult(
 															someElementsFailed = true
 															continue // Skip this element
 														}
-														selPkgs, errSel := loader.Load(resolvedSelImportPath)
+														// Corrected: Pass ctx to loader.Load
+														selPkgs, errSel := loader.Load(ctx, resolvedSelImportPath)
 														if errSel != nil || len(selPkgs) == 0 {
 															slog.DebugContext(ctx, fmt.Sprintf("[extractEnumValuesFromEvalResult] Field %s, Var %s: Error: Could not load package '%s' for resolving const '%s' in string(%s.%s) for element %s: %v", optMeta.Name, evalResult.IdentifierName, resolvedSelImportPath, constNameToResolve, selPkgAlias, constNameToResolve, eltStrForLog, errSel))
 															someElementsFailed = true
@@ -656,7 +666,8 @@ func extractEnumValuesFromEvalResult(
 										} else { // Not a CallExpr, try to resolve it using the new function
 											eltStr := astutils.ExprToTypeName(elt)
 											slog.DebugContext(ctx, fmt.Sprintf("[extractEnumValuesFromEvalResult] Field %s, Var %s: Processing variable initializer element: %s", optMeta.Name, evalResult.IdentifierName, eltStr))
-											elementEvalResult := astutils.EvaluateArg(elt)
+											// Corrected: Pass ctx to EvaluateArg
+											elementEvalResult := astutils.EvaluateArg(ctx, elt)
 											strVal, success := resolveEvalResultToEnumString(ctx, elementEvalResult, loader, pkg.ImportPath, loadedFileAst)
 											if success {
 												tempValues = append(tempValues, strVal)
@@ -683,7 +694,8 @@ func extractEnumValuesFromEvalResult(
 									// If someElementsFailed and len(foundValues)==0, the warning above covers it.
 								} else {
 									// Fallback to original logic if initializer is not a CompositeLit (e.g. alias to another var)
-									resolvedSlice := astutils.EvaluateSliceArg(initializerExpr)
+									// Corrected: Pass ctx to EvaluateSliceArg
+									resolvedSlice := astutils.EvaluateSliceArg(ctx, initializerExpr)
 									if resolvedSlice.Value != nil {
 										if s, ok := resolvedSlice.Value.([]any); ok {
 											foundValues = s
