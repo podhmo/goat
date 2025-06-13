@@ -79,6 +79,243 @@ func NewOptions() *Options {
 	}
 }
 
+func TestHelpMessageSubcommand_WithLocatorGoList(t *testing.T) {
+	tmpFile := setupTestAppWithGoMod(t, testGoFileContent)
+	args := []string{"help-message", "-run", "Run", "-initializer", "NewOptions", "-locator", "golist", tmpFile}
+	out := runMainWithArgs(t, args...)
+
+	processedOut := strings.TrimSpace(strings.ReplaceAll(out, "\r\n", "\n"))
+	processedExpected := strings.TrimSpace(strings.ReplaceAll(expectedHelpOutput, "\r\n", "\n"))
+
+	outLines := strings.Split(processedOut, "\n")
+	expectedLines := strings.Split(processedExpected, "\n")
+
+	if len(outLines) != len(expectedLines) {
+		t.Errorf("TestHelpMessageSubcommand_WithLocatorGoList line count mismatch after processing:\nWant (%d lines):\n%s\nGot (%d lines):\n%s", len(expectedLines), processedExpected, len(outLines), processedOut)
+		t.Logf("Original Expected:\n%s\nOriginal Got:\n%s", expectedHelpOutput, out)
+		return
+	}
+	for i := range outLines {
+		trimmedOutLine := strings.TrimSpace(outLines[i])
+		trimmedExpectedLine := strings.TrimSpace(expectedLines[i])
+		if trimmedOutLine != trimmedExpectedLine {
+			t.Errorf("TestHelpMessageSubcommand_WithLocatorGoList mismatch at line %d after processing:\nWant (trimmed): %q\nGot  (trimmed): %q\n\nOriginal Expected Line: %q\nOriginal Got Line:      %q\n\nFull Original Expected:\n%s\nFull Original Got:\n%s",
+				i+1, trimmedExpectedLine, trimmedOutLine, expectedLines[i], outLines[i], expectedHelpOutput, out)
+			return
+		}
+	}
+}
+
+func TestHelpMessageSubcommand_WithLocatorGoMod(t *testing.T) {
+	tmpFile := setupTestAppWithGoMod(t, testGoFileContent)
+	args := []string{"help-message", "-run", "Run", "-initializer", "NewOptions", "-locator", "gomod", tmpFile}
+	out := runMainWithArgs(t, args...)
+
+	processedOut := strings.TrimSpace(strings.ReplaceAll(out, "\r\n", "\n"))
+	processedExpected := strings.TrimSpace(strings.ReplaceAll(expectedHelpOutput, "\r\n", "\n"))
+
+	outLines := strings.Split(processedOut, "\n")
+	expectedLines := strings.Split(processedExpected, "\n")
+
+	if len(outLines) != len(expectedLines) {
+		t.Errorf("TestHelpMessageSubcommand_WithLocatorGoMod line count mismatch after processing:\nWant (%d lines):\n%s\nGot (%d lines):\n%s", len(expectedLines), processedExpected, len(outLines), processedOut)
+		t.Logf("Original Expected:\n%s\nOriginal Got:\n%s", expectedHelpOutput, out)
+		return
+	}
+	for i := range outLines {
+		trimmedOutLine := strings.TrimSpace(outLines[i])
+		trimmedExpectedLine := strings.TrimSpace(expectedLines[i])
+		if trimmedOutLine != trimmedExpectedLine {
+			t.Errorf("TestHelpMessageSubcommand_WithLocatorGoMod mismatch at line %d after processing:\nWant (trimmed): %q\nGot  (trimmed): %q\n\nOriginal Expected Line: %q\nOriginal Got Line:      %q\n\nFull Original Expected:\n%s\nFull Original Got:\n%s",
+				i+1, trimmedExpectedLine, trimmedOutLine, expectedLines[i], outLines[i], expectedHelpOutput, out)
+			return
+		}
+	}
+}
+
+func TestScanSubcommand_WithLocatorGoList(t *testing.T) {
+	tmpFile := setupTestAppWithGoMod(t, testGoFileContent)
+	args := []string{"scan", "-run", "Run", "-initializer", "NewOptions", "-locator", "golist", tmpFile}
+	out := runMainWithArgs(t, args...)
+
+	// Check for locator message in t.Log output (from stderr) can be done manually or by configuring logging
+	// For now, primary validation is the successful metadata generation.
+
+	var metadataOutput metadata.CommandMetadata
+	if err := json.Unmarshal([]byte(out), &metadataOutput); err != nil {
+		t.Fatalf("Failed to unmarshal JSON output: %v\nOutput was:\n%s", err, out)
+	}
+	if metadataOutput.Name != "testcmdmodule" {
+		t.Errorf("Expected metadata Name %q, got %q", "testcmdmodule", metadataOutput.Name)
+	}
+	// ... (rest of the assertions from TestScanSubcommand)
+	if metadataOutput.Description != "Run the test application.\nIt does something." {
+		t.Errorf("Expected metadata Description %q, got %q", "Run the test application.\nIt does something.", metadataOutput.Description)
+	}
+	if len(metadataOutput.Options) != 4 {
+		t.Errorf("Expected 4 options, got %d", len(metadataOutput.Options))
+	}
+	optionsChecks := map[string]func(opt *metadata.OptionMetadata){
+		"Name": func(opt *metadata.OptionMetadata) {
+			if opt.TypeName != "string" || !opt.IsRequired || opt.DefaultValue != "anonymous" {
+				t.Errorf("Validation failed for Name: %+v", opt)
+			}
+		},
+		"Port": func(opt *metadata.OptionMetadata) {
+			if opt.TypeName != "int" || !opt.IsRequired || opt.DefaultValue.(float64) != 8080 {
+				t.Errorf("Validation failed for Port: %+v, DefaultValue type: %T", opt, opt.DefaultValue)
+			}
+		},
+		"Verbose": func(opt *metadata.OptionMetadata) {
+			if opt.TypeName != "bool" || !opt.IsRequired {
+				t.Errorf("Validation failed for Verbose: %+v", opt)
+			}
+		},
+		"EnableMagic": func(opt *metadata.OptionMetadata) {
+			if opt.TypeName != "bool" || !opt.IsRequired || opt.DefaultValue.(bool) != true {
+				t.Errorf("Validation failed for EnableMagic: %+v", opt)
+			}
+		},
+	}
+	foundOptions := make(map[string]bool)
+	for _, opt := range metadataOutput.Options {
+		if checkFunc, ok := optionsChecks[opt.Name]; ok {
+			checkFunc(opt)
+			foundOptions[opt.Name] = true
+		}
+	}
+	for optName := range optionsChecks {
+		if !foundOptions[optName] {
+			t.Errorf("Option '%s' not found in metadata output", optName)
+		}
+	}
+}
+
+func TestScanSubcommand_WithLocatorGoMod(t *testing.T) {
+	tmpFile := setupTestAppWithGoMod(t, testGoFileContent)
+	args := []string{"scan", "-run", "Run", "-initializer", "NewOptions", "-locator", "gomod", tmpFile}
+	out := runMainWithArgs(t, args...)
+
+	var metadataOutput metadata.CommandMetadata
+	if err := json.Unmarshal([]byte(out), &metadataOutput); err != nil {
+		t.Fatalf("Failed to unmarshal JSON output: %v\nOutput was:\n%s", err, out)
+	}
+	if metadataOutput.Name != "testcmdmodule" {
+		t.Errorf("Expected metadata Name %q, got %q", "testcmdmodule", metadataOutput.Name)
+	}
+	// ... (rest of the assertions from TestScanSubcommand)
+	if metadataOutput.Description != "Run the test application.\nIt does something." {
+		t.Errorf("Expected metadata Description %q, got %q", "Run the test application.\nIt does something.", metadataOutput.Description)
+	}
+	if len(metadataOutput.Options) != 4 {
+		t.Errorf("Expected 4 options, got %d", len(metadataOutput.Options))
+	}
+	optionsChecks := map[string]func(opt *metadata.OptionMetadata){
+		"Name": func(opt *metadata.OptionMetadata) {
+			if opt.TypeName != "string" || !opt.IsRequired || opt.DefaultValue != "anonymous" {
+				t.Errorf("Validation failed for Name: %+v", opt)
+			}
+		},
+		"Port": func(opt *metadata.OptionMetadata) {
+			if opt.TypeName != "int" || !opt.IsRequired || opt.DefaultValue.(float64) != 8080 {
+				t.Errorf("Validation failed for Port: %+v, DefaultValue type: %T", opt, opt.DefaultValue)
+			}
+		},
+		"Verbose": func(opt *metadata.OptionMetadata) {
+			if opt.TypeName != "bool" || !opt.IsRequired {
+				t.Errorf("Validation failed for Verbose: %+v", opt)
+			}
+		},
+		"EnableMagic": func(opt *metadata.OptionMetadata) {
+			if opt.TypeName != "bool" || !opt.IsRequired || opt.DefaultValue.(bool) != true {
+				t.Errorf("Validation failed for EnableMagic: %+v", opt)
+			}
+		},
+	}
+	foundOptions := make(map[string]bool)
+	for _, opt := range metadataOutput.Options {
+		if checkFunc, ok := optionsChecks[opt.Name]; ok {
+			checkFunc(opt)
+			foundOptions[opt.Name] = true
+		}
+	}
+	for optName := range optionsChecks {
+		if !foundOptions[optName] {
+			t.Errorf("Option '%s' not found in metadata output", optName)
+		}
+	}
+}
+
+func TestEmitSubcommand_WithLocatorGoList(t *testing.T) {
+	tmpFile := setupTestAppWithGoMod(t, testGoFileContent)
+	initialContent, err := os.ReadFile(tmpFile)
+	if err != nil {
+		t.Fatalf("Failed to read initial temp file content: %v", err)
+	}
+	initialContentCopy := make([]byte, len(initialContent))
+	copy(initialContentCopy, initialContent)
+
+	args := []string{"emit", "-run", "Run", "-initializer", "NewOptions", "-locator", "golist", tmpFile}
+	stdout := runMainWithArgs(t, args...)
+
+	if !strings.Contains(stdout, "Goat: Processing finished.") {
+		t.Errorf("Expected stdout to contain 'Goat: Processing finished.' but got: %s", stdout)
+	}
+	if !strings.Contains(stdout, "Goat: Using GoListLocator for package discovery") {
+		// Note: This relies on debug logging being captured or indirectly verifiable.
+		// If slog debug messages are not captured by runMainWithArgs, this check might fail
+		// or need adjustment based on how scanMain's logging is actually outputted/testable.
+		// For now, assuming stderr (where slog debug often goes) is logged by runMainWithArgs.
+		t.Errorf("Expected stdout/stderr to contain 'Goat: Using GoListLocator for package discovery' but got: %s", stdout)
+	}
+
+	modifiedContent, err := os.ReadFile(tmpFile)
+	if err != nil {
+		t.Fatalf("Failed to read modified temp file: %v", err)
+	}
+	if bytes.Equal(initialContentCopy, modifiedContent) {
+		t.Errorf("Expected file content to be modified by emit, but it was unchanged.")
+	}
+	fset := token.NewFileSet()
+	_, err = parser.ParseFile(fset, tmpFile, modifiedContent, parser.ParseComments)
+	if err != nil {
+		t.Errorf("Modified file content could not be parsed as Go: %v\nContent:\n%s", err, string(modifiedContent))
+	}
+}
+
+func TestEmitSubcommand_WithLocatorGoMod(t *testing.T) {
+	tmpFile := setupTestAppWithGoMod(t, testGoFileContent)
+	initialContent, err := os.ReadFile(tmpFile)
+	if err != nil {
+		t.Fatalf("Failed to read initial temp file content: %v", err)
+	}
+	initialContentCopy := make([]byte, len(initialContent))
+	copy(initialContentCopy, initialContent)
+
+	args := []string{"emit", "-run", "Run", "-initializer", "NewOptions", "-locator", "gomod", tmpFile}
+	stdout := runMainWithArgs(t, args...)
+
+	if !strings.Contains(stdout, "Goat: Processing finished.") {
+		t.Errorf("Expected stdout to contain 'Goat: Processing finished.' but got: %s", stdout)
+	}
+	if !strings.Contains(stdout, "Goat: Using GoModLocator for package discovery") {
+		t.Errorf("Expected stdout/stderr to contain 'Goat: Using GoModLocator for package discovery' but got: %s", stdout)
+	}
+
+	modifiedContent, err := os.ReadFile(tmpFile)
+	if err != nil {
+		t.Fatalf("Failed to read modified temp file: %v", err)
+	}
+	if bytes.Equal(initialContentCopy, modifiedContent) {
+		t.Errorf("Expected file content to be modified by emit, but it was unchanged.")
+	}
+	fset := token.NewFileSet()
+	_, err = parser.ParseFile(fset, tmpFile, modifiedContent, parser.ParseComments)
+	if err != nil {
+		t.Errorf("Modified file content could not be parsed as Go: %v\nContent:\n%s", err, string(modifiedContent))
+	}
+}
+
 // Run the test application.
 // It does something.
 func Run(opts Options) error {

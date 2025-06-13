@@ -25,6 +25,7 @@ type Options struct {
 	RunFuncName            string
 	OptionsInitializerName string
 	TargetFile             string
+	LocatorName            string
 }
 
 func main() {
@@ -52,9 +53,10 @@ func main() {
 		slog.Info("Goat: init command finished successfully.") // Updated
 	case "emit":
 		emitCmd := flag.NewFlagSet("emit", flag.ExitOnError)
-		var runFuncName, optionsInitializerName string
+		var runFuncName, optionsInitializerName, locatorName string
 		emitCmd.StringVar(&runFuncName, "run", "run", "Name of the function to be treated as the entrypoint")
 		emitCmd.StringVar(&optionsInitializerName, "initializer", "", "Name of the function that initializes the options struct")
+		emitCmd.StringVar(&locatorName, "locator", "golist", "Locator to use for package discovery (golist or gomod)")
 		emitCmd.Usage = func() {
 			fmt.Fprintf(os.Stderr, "Usage: goat emit [options] <target_gofile.go>\n\nOptions:\n")
 			emitCmd.PrintDefaults()
@@ -69,6 +71,7 @@ func main() {
 			RunFuncName:            runFuncName,
 			OptionsInitializerName: optionsInitializerName,
 			TargetFile:             emitCmd.Arg(0),
+			LocatorName:            locatorName,
 		}
 		if err := runGoat(opts); err != nil {
 			slog.Error("Error running goat (emit)", "error", err)
@@ -76,9 +79,10 @@ func main() {
 		}
 	case "help-message":
 		helpMessageCmd := flag.NewFlagSet("help-message", flag.ExitOnError)
-		var runFuncName, optionsInitializerName string
+		var runFuncName, optionsInitializerName, locatorName string
 		helpMessageCmd.StringVar(&runFuncName, "run", "run", "Name of the function to be treated as the entrypoint")
 		helpMessageCmd.StringVar(&optionsInitializerName, "initializer", "", "Name of the function that initializes the options struct")
+		helpMessageCmd.StringVar(&locatorName, "locator", "golist", "Locator to use for package discovery (golist or gomod)")
 		helpMessageCmd.Usage = func() {
 			fmt.Fprintf(os.Stderr, "Usage: goat help-message [options] <target_gofile.go>\n\nOptions:\n")
 			helpMessageCmd.PrintDefaults()
@@ -93,6 +97,7 @@ func main() {
 			RunFuncName:            runFuncName,
 			OptionsInitializerName: optionsInitializerName,
 			TargetFile:             helpMessageCmd.Arg(0),
+			LocatorName:            locatorName,
 		}
 		fset := token.NewFileSet()
 		cmdMetadata, _, err := scanMain(fset, opts)
@@ -104,9 +109,10 @@ func main() {
 		fmt.Print(helpMsg)
 	case "scan":
 		scanCmd := flag.NewFlagSet("scan", flag.ExitOnError)
-		var runFuncName, optionsInitializerName string
+		var runFuncName, optionsInitializerName, locatorName string
 		scanCmd.StringVar(&runFuncName, "run", "run", "Name of the function to be treated as the entrypoint")
 		scanCmd.StringVar(&optionsInitializerName, "initializer", "", "Name of the function that initializes the options struct")
+		scanCmd.StringVar(&locatorName, "locator", "golist", "Locator to use for package discovery (golist or gomod)")
 		scanCmd.Usage = func() {
 			fmt.Fprintf(os.Stderr, "Usage: goat scan [options] <target_gofile.go>\n\nOptions:\n")
 			scanCmd.PrintDefaults()
@@ -121,6 +127,7 @@ func main() {
 			RunFuncName:            runFuncName,
 			OptionsInitializerName: optionsInitializerName,
 			TargetFile:             scanCmd.Arg(0),
+			LocatorName:            locatorName,
 		}
 		fset := token.NewFileSet()
 		cmdMetadata, _, err := scanMain(fset, opts)
@@ -243,10 +250,22 @@ func scanMain(fset *token.FileSet, opts *Options) (*metadata.CommandMetadata, *a
 		return nil, nil, fmt.Errorf("parser.ParseFile returned nil AST for %s without an error", opts.TargetFile)
 	}
 
+	// Dynamically choose the locator
+	var selectedLocator loader.PackageLocator
+	switch opts.LocatorName {
+	case "gomod":
+		gmLocator := &loader.GoModLocator{}
+		selectedLocator = gmLocator.Locate
+		slog.Debug("Goat: Using GoModLocator for package discovery", "workingDir", targetDir)
+	default: // "golist" or any other unspecified value
+		selectedLocator = loader.GoListLocator
+		slog.Debug("Goat: Using GoListLocator for package discovery")
+	}
+
 	// Create an instance of our custom locator
 	customLocator := &execDirectoryLocator{
 		BaseDir:        targetDir,
-		WrappedLocator: loader.GoListLocator,
+		WrappedLocator: selectedLocator,
 	}
 
 	llCfg := loader.Config{
