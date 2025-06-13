@@ -45,5 +45,5 @@ make test
 - 禁止。`go/packages`はimportがeagerになってしまうので使わないこと。
 - 禁止。go buildで作成したバイナリはコミットしないこと。
 - 強制。デバッグ用に一時的に作成したファイルはコミットしないこと。
-- 強制。ログにはlog/slogを使うこと
+- 強制。ログにはlog/slogを使うこと。使うときはcontextを受け取るメソッドを使うこと（e.g. DebugContext()）
 - 禁止。logパッケージを使わないこと。
