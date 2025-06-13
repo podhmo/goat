@@ -56,7 +56,7 @@ func main() {
 		var runFuncName, optionsInitializerName, locatorName string
 		emitCmd.StringVar(&runFuncName, "run", "run", "Name of the function to be treated as the entrypoint")
 		emitCmd.StringVar(&optionsInitializerName, "initializer", "", "Name of the function that initializes the options struct")
-		emitCmd.StringVar(&locatorName, "locator", "golist", "Locator to use for package discovery (golist or gomod)")
+		emitCmd.StringVar(&locatorName, "locator", "golist", "Locator to use for package discovery (gomod or golist)")
 		emitCmd.Usage = func() {
 			fmt.Fprintf(os.Stderr, "Usage: goat emit [options] <target_gofile.go>\n\nOptions:\n")
 			emitCmd.PrintDefaults()
@@ -82,7 +82,7 @@ func main() {
 		var runFuncName, optionsInitializerName, locatorName string
 		helpMessageCmd.StringVar(&runFuncName, "run", "run", "Name of the function to be treated as the entrypoint")
 		helpMessageCmd.StringVar(&optionsInitializerName, "initializer", "", "Name of the function that initializes the options struct")
-		helpMessageCmd.StringVar(&locatorName, "locator", "golist", "Locator to use for package discovery (golist or gomod)")
+		helpMessageCmd.StringVar(&locatorName, "locator", "golist", "Locator to use for package discovery (gomod or golist)")
 		helpMessageCmd.Usage = func() {
 			fmt.Fprintf(os.Stderr, "Usage: goat help-message [options] <target_gofile.go>\n\nOptions:\n")
 			helpMessageCmd.PrintDefaults()
@@ -112,7 +112,7 @@ func main() {
 		var runFuncName, optionsInitializerName, locatorName string
 		scanCmd.StringVar(&runFuncName, "run", "run", "Name of the function to be treated as the entrypoint")
 		scanCmd.StringVar(&optionsInitializerName, "initializer", "", "Name of the function that initializes the options struct")
-		scanCmd.StringVar(&locatorName, "locator", "golist", "Locator to use for package discovery (golist or gomod)")
+		scanCmd.StringVar(&locatorName, "locator", "golist", "Locator to use for package discovery (gomod or golist)")
 		scanCmd.Usage = func() {
 			fmt.Fprintf(os.Stderr, "Usage: goat scan [options] <target_gofile.go>\n\nOptions:\n")
 			scanCmd.PrintDefaults()

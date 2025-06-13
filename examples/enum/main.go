@@ -106,13 +106,22 @@ Flags:
 
 	if val, ok := os.LookupEnv("ENUM_LOCAL_ENUM"); ok {
 
+		// This handles non-pointer named types with an underlying kind of string (e.g., string-based enums)
+		options.LocalEnumField = MyLocalEnum(val)
+
 	}
 
 	if val, ok := os.LookupEnv("ENUM_IMPORTED_ENUM"); ok {
 
+		// This handles non-pointer named types with an underlying kind of string (e.g., string-based enums)
+		options.ImportedEnumField = customtypes.MyCustomEnum(val)
+
 	}
 
 	if val, ok := os.LookupEnv("ENUM_OPTIONAL_IMPORTED_ENUM"); ok {
+
+		// This handles non-pointer named types with an underlying kind of string (e.g., string-based enums)
+		options.OptionalImportedEnumField = *customtypes.MyCustomEnum(val)
 
 	}
 
