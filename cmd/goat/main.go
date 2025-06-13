@@ -314,7 +314,8 @@ func scanMain(fset *token.FileSet, opts *Options) (*metadata.CommandMetadata, *a
 	const goatMarkersImportPath = "github.com/podhmo/goat"
 	if opts.OptionsInitializerName != "" && returnedOptionsStructName != "" {
 		// targetFileAst is already available and is the correct AST to interpret the initializer from.
-		err = interpreter.InterpretInitializer(targetFileAst, returnedOptionsStructName, opts.OptionsInitializerName, cmdMetadata.Options, goatMarkersImportPath)
+		// Pass targetPackageID as currentPkgPath and the loader instance 'l'.
+		err = interpreter.InterpretInitializer(targetFileAst, returnedOptionsStructName, opts.OptionsInitializerName, cmdMetadata.Options, goatMarkersImportPath, targetPackageID, l)
 		if err != nil {
 			return nil, targetFileAst, fmt.Errorf("failed to interpret options initializer %s: %w", opts.OptionsInitializerName, err)
 		}
