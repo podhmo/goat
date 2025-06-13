@@ -4,14 +4,13 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"go/build" // Added this import
-	"os"       // Required for os.ReadFile
+	"go/build"  // Added this import
+	"go/parser" // For parsing package name
+	"go/token"  // For parsing package name
+	"os"        // Required for os.ReadFile
 	"os/exec"
 	"path/filepath" // New import
 	"strings"
-	"go/token" // For parsing package name
-	"go/parser" // For parsing package name
-
 
 	"errors"
 
@@ -267,16 +266,16 @@ func (gml *GoModLocator) Locate(pattern string, buildCtx BuildContext) ([]Packag
 			pkgDir := filepath.Join(depModDirPrefix, subPath) // pkgDir is absolute
 
 			if stat, statErr := os.Stat(pkgDir); statErr == nil && stat.IsDir() {
-					determinedPkgName := filepath.Base(pkgDir) // Default
+				determinedPkgName := filepath.Base(pkgDir) // Default
 				goFiles, testGoFiles, xTestGoFiles, listErr := gml.listGoFiles(pkgDir)
 
-					if listErr == nil && len(goFiles) > 0 && (strings.TrimPrefix(subPath, "/") == "" || subPath == ".") {
-                         // If it's the root of the dependency, try to parse package name
-                        parsedName, parseErr := getPackageNameFromFiles(pkgDir, goFiles)
-                        if parseErr == nil {
-                            determinedPkgName = parsedName
-                        }
-                    }
+				if listErr == nil && len(goFiles) > 0 && (strings.TrimPrefix(subPath, "/") == "" || subPath == ".") {
+					// If it's the root of the dependency, try to parse package name
+					parsedName, parseErr := getPackageNameFromFiles(pkgDir, goFiles)
+					if parseErr == nil {
+						determinedPkgName = parsedName
+					}
+				}
 
 				if goFiles == nil {
 					goFiles = []string{}
@@ -290,7 +289,7 @@ func (gml *GoModLocator) Locate(pattern string, buildCtx BuildContext) ([]Packag
 
 				if listErr == nil && (len(goFiles) > 0 || len(testGoFiles) > 0 || len(xTestGoFiles) > 0) {
 					meta := PackageMetaInfo{
-							ImportPath: pattern, Name: determinedPkgName, Dir: pkgDir, // Use determinedPkgName
+						ImportPath: pattern, Name: determinedPkgName, Dir: pkgDir, // Use determinedPkgName
 						GoFiles: goFiles, TestGoFiles: testGoFiles, XTestGoFiles: xTestGoFiles,
 						ModulePath:    depModPath,      // The module path of the dependency
 						ModuleDir:     depModDirPrefix, // The root directory of the dependency in the cache
