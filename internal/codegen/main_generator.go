@@ -73,6 +73,10 @@ func main() {
 				slog.Warn("Could not parse environment variable for TextUnmarshaler option; using default or previously set value.", "envVar", "{{.EnvVar}}", "option", "{{.CliName}}", "value", val, "error", err)
 			}
 			{{end}}
+	{{else if and .IsPointer (eq .UnderlyingKind "string")}}
+	// This handles pointer to named types with an underlying kind of string (e.g., *MyEnum)
+	typedVal := {{.TypeName | TrimStar}}(val)
+	options.{{.Name}} = &typedVal
 	{{else if eq .UnderlyingKind "string"}}
 	// This handles non-pointer named types with an underlying kind of string (e.g., string-based enums)
 	options.{{.Name}} = {{.TypeName}}(val)
@@ -151,6 +155,15 @@ func main() {
 	{{else}}
 	flag.TextVar(&options.{{.Name}}, "{{.CliName}}", options.{{.Name}}, {{FormatHelpText .HelpText}} {{- if .EnvVar}}/* Env: {{.EnvVar}} */{{- end -}})
 	{{end}}
+	{{else if and .IsPointer .EnumValues (not .IsTextUnmarshaler)}} // Handles *MyCustomEnum if EnumValues are present and not TextUnmarshaler
+	// Ensure the field is initialized if nil, as flag.Var needs a non-nil flag.Value.
+	// The initializer (NewOptions) would have run. If it set a non-nil default, that's used.
+	// If the default from NewOptions was nil (as in our case for OptionalImportedEnumField),
+	// then we must initialize it here before passing to flag.Var.
+	if options.{{.Name}} == nil {
+		options.{{.Name}} = new({{.TypeName | TrimStar}})
+	}
+	flag.Var(options.{{.Name}}, "{{ KebabCase .Name }}", {{FormatHelpText .HelpText}})
 	{{end}}
 	{{end}} // End of range .Options for flags
 
@@ -245,6 +258,21 @@ func main() {
 			isValidChoice_{{.Name}} = true
 			{{end}}
 		}
+	{{else if .IsPointer}} // Catches other pointer enums, e.g. *MyCustomEnum
+	if options.{{.Name}} != nil {
+		currentValue_{{.Name}}Str := fmt.Sprintf("%v", *options.{{.Name}})
+		isValidChoice_{{.Name}} = slices.Contains(allowedChoices_{{.Name}}, currentValue_{{.Name}}Str)
+	} else { // Field is nil
+		{{if .IsRequired}}
+		slog.Error("Required enum flag is nil", "flag", "{{ KebabCase .Name }}", "option", "{{.Name}}")
+		os.Exit(1)
+		{{else}}
+		// For optional pointer enums, nil is a valid state (means not provided).
+		// If EnumValues are defined, it implies that if a value IS provided, it must be one of them.
+		// If it's nil, it hasn't been provided, so it's "valid" in terms of choice.
+		isValidChoice_{{.Name}} = true
+		{{end}}
+	}
 	{{else}}
 		currentValue_{{.Name}}Str := fmt.Sprintf("%v", options.{{.Name}})
 		isValidChoice_{{.Name}} = slices.Contains(allowedChoices_{{.Name}}, currentValue_{{.Name}}Str)
@@ -256,6 +284,11 @@ func main() {
 		if options.{{.Name}} != nil {
 			currentValueForMsg = *options.{{.Name}}
 		}
+		{{else if .IsPointer}}
+		if options.{{.Name}} != nil {
+			currentValueForMsg = *options.{{.Name}}
+		}
+		// If nil, currentValueForMsg remains options.{{.Name}} (which will print as <nil>)
 		{{end}}
 		slog.Error("Invalid value for flag", "flag", "{{ KebabCase .Name }}", "value", currentValueForMsg, "allowedChoices", strings.Join(allowedChoices_{{.Name}}, ", "))
 		os.Exit(1)

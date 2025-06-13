@@ -45,9 +45,9 @@ type Options struct {
 // NewOptions initializes Options with default values and enum constraints.
 func NewOptions() *Options {
 	return &Options{
-		LocalEnumField:            goat.Default(LocalA, goat.Enum(MyLocalEnumValues)),                                 // Changed
-		ImportedEnumField:         goat.Default(customtypes.OptionX, goat.Enum(customtypes.MyCustomEnumValues)),       // Changed
-		OptionalImportedEnumField: goat.Enum(nil, []string{string(customtypes.OptionX), string(customtypes.OptionY)}), // Unchanged
+		LocalEnumField:            goat.Default(LocalA, goat.Enum(MyLocalEnumValues)),                           // Changed
+		ImportedEnumField:         goat.Default(customtypes.OptionX, goat.Enum(customtypes.MyCustomEnumValues)), // Changed
+		OptionalImportedEnumField: goat.Enum((*customtypes.MyCustomEnum)(nil), []customtypes.MyCustomEnum{customtypes.OptionX, customtypes.OptionY}),
 	}
 }
 
@@ -121,8 +121,9 @@ Flags:
 
 	if val, ok := os.LookupEnv("ENUM_OPTIONAL_IMPORTED_ENUM"); ok {
 
-		// This handles non-pointer named types with an underlying kind of string (e.g., string-based enums)
-		options.OptionalImportedEnumField = *customtypes.MyCustomEnum(val)
+		// This handles pointer to named types with an underlying kind of string (e.g., *MyEnum)
+		typedVal := customtypes.MyCustomEnum(val)
+		options.OptionalImportedEnumField = &typedVal
 
 	}
 
