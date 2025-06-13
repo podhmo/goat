@@ -323,135 +323,90 @@ func resolveEvalResultToEnumString(
 	currentPkgPath string, // Package path where the goat.Enum call is made or where the variable holding the enum is defined
 	fileAstForContext *ast.File, // *ast.File where the identifier is used (for resolving local package aliases)
 ) (string, bool) {
-	slog.DebugContext(ctx, fmt.Sprintf("[resolveEvalResultToEnumString] --- ENTER --- EvalResult: %+v", elementEvalResult))
+	slog.DebugContext(ctx, fmt.Sprintf("[resolveEvalResultToEnumString] --- ENTER --- EvalResult: %+v, currentPkgPath: %s", elementEvalResult, currentPkgPath))
 
 	if elementEvalResult.Value != nil {
-		slog.DebugContext(ctx, fmt.Sprintf("[resolveEvalResultToEnumString] Path A1 (Value is not nil)"))
 		if strVal, ok := elementEvalResult.Value.(string); ok {
 			slog.DebugContext(ctx, fmt.Sprintf("[resolveEvalResultToEnumString] Value is direct string: \"%s\"", strVal))
 			return strVal, true
 		}
-		// If Value is not nil but not a string, it's an unexpected type for an enum string.
-		if elementEvalResult.Value != nil {
-			slog.DebugContext(ctx, fmt.Sprintf("[resolveEvalResultToEnumString] Warning: elementEvalResult.Value is not a string, but %T (%v). Cannot use as enum string.", elementEvalResult.Value, elementEvalResult.Value))
-			return "", false
-		}
-		// If Value is nil, then IdentifierName must be present. // This comment needs review based on structure
-		if elementEvalResult.IdentifierName == "" { // This path is only reachable if Value is non-nil and not a string due to the return above.
-			slog.DebugContext(ctx, fmt.Sprintf("[resolveEvalResultToEnumString] Path A2 (Value is not nil, not string, and IdentifierName is empty) - Error. EvalResult: %+v", elementEvalResult))
-			return "", false
-		}
-		// If Value was non-nil, not a string, and IdentifierName was not empty, it would fall through Block 1.
-		// This is an undesirable fallthrough from block A.
-		slog.DebugContext(ctx, fmt.Sprintf("[resolveEvalResultToEnumString] Path A3 (Value is not nil, not string, and IdentifierName is NOT empty) - Potential Fallthrough from Block A. EvalResult: %+v", elementEvalResult))
-		// This path should ideally not continue to IdentifierName processing without returning false,
-		// as Value was present but unusable. For now, let it fall to the next section.
+		slog.DebugContext(ctx, fmt.Sprintf("[resolveEvalResultToEnumString] Warning: elementEvalResult.Value is not a string, but %T (%v). Cannot use as enum string.", elementEvalResult.Value, elementEvalResult.Value))
+		return "", false
 	}
 
-	// Value is nil path (or Path A3 fallthrough)
-	slog.DebugContext(ctx, fmt.Sprintf("[resolveEvalResultToEnumString] Path B (Value is nil or fell through A3). EvalResult: %+v", elementEvalResult))
 	if elementEvalResult.IdentifierName == "" {
-		slog.DebugContext(ctx, fmt.Sprintf("[resolveEvalResultToEnumString] Path B1 (IdentifierName is empty). EvalResult: %+v", elementEvalResult))
+		slog.DebugContext(ctx, fmt.Sprintf("[resolveEvalResultToEnumString] Value is nil and IdentifierName is empty. EvalResult: %+v", elementEvalResult))
 		return "", false
 	}
 
-	// IdentifierName is present.
-	slog.DebugContext(ctx, fmt.Sprintf("[resolveEvalResultToEnumString] Path B2 (IdentifierName is NOT empty: '%s'). Processing as identifier.", elementEvalResult.IdentifierName))
-	// This 'if' is somewhat redundant if logic flows correctly, but good for explicit block.
-	if elementEvalResult.IdentifierName != "" {
-		slog.DebugContext(ctx, fmt.Sprintf("[resolveEvalResultToEnumString] Path B2-MAIN (Executing main logic for identifier '%s')", elementEvalResult.IdentifierName))
-		identName := elementEvalResult.IdentifierName
-		pkgAlias := elementEvalResult.PkgName
-		// slog.DebugContext(ctx, fmt.Sprintf("  [resolveEvalResultToEnumString] Resolving identifier '%s' (pkg alias '%s') from package '%s' using context file '%s'", identName, pkgAlias, currentPkgPath, fileAstForContext.Name.Name)) // Original detailed log
-		targetPkgPath := ""
-		if pkgAlias != "" { // Qualified identifier like mypkg.MyConst
-			resolvedImportPath := astutils.GetImportPath(fileAstForContext, pkgAlias)
-			if resolvedImportPath == "" {
-				slog.DebugContext(ctx, fmt.Sprintf("[resolveEvalResultToEnumString] Error: Could not resolve import path for package alias '%s' in file '%s' (used for enum element const '%s')", pkgAlias, fileAstForContext.Name.Name, identName))
-				return "", false
-			}
-			targetPkgPath = resolvedImportPath
-			slog.DebugContext(ctx, fmt.Sprintf("[resolveEvalResultToEnumString] Resolved package alias '%s' to import path '%s' for identifier '%s'", pkgAlias, targetPkgPath, identName))
-		} else { // Unqualified identifier, assume current package context
-			targetPkgPath = currentPkgPath
-			if targetPkgPath == "" {
-				slog.DebugContext(ctx, fmt.Sprintf("[resolveEvalResultToEnumString] Error: Current package path ('%s') is empty or invalid, cannot resolve unqualified identifier '%s'", currentPkgPath, identName))
-				return "", false
-			}
-			slog.DebugContext(ctx, fmt.Sprintf("[resolveEvalResultToEnumString] Identifier '%s' is unqualified, using current package path '%s'", identName, targetPkgPath))
-		}
+	// IdentifierName is present, resolve it using loader.LookupSymbol
+	identName := elementEvalResult.IdentifierName
+	pkgAlias := elementEvalResult.PkgName
+	targetPkgPath := ""
 
-		slog.DebugContext(ctx, fmt.Sprintf("[resolveEvalResultToEnumString] Attempting to load package: '%s' for const identifier '%s'", targetPkgPath, identName))
-		// Corrected: Pass ctx to loader.Load
-		loadedPkgs, err := loader.Load(ctx, targetPkgPath)
-		if err != nil {
-			slog.DebugContext(ctx, fmt.Sprintf("[resolveEvalResultToEnumString] Error: Failed loading package '%s' for const identifier '%s': %v", targetPkgPath, identName, err))
+	if pkgAlias != "" { // Qualified identifier like mypkg.MyConst
+		// fileAstForContext is the AST of the file where the identifier (pkgAlias.identName) is used.
+		// This context is needed to resolve the pkgAlias to its full import path.
+		if fileAstForContext == nil {
+			slog.ErrorContext(ctx, "[resolveEvalResultToEnumString] Error: fileAstForContext is nil for a qualified identifier. Cannot resolve package alias.", "identifier", identName, "pkgAlias", pkgAlias)
 			return "", false
 		}
-		if len(loadedPkgs) == 0 {
-			slog.DebugContext(ctx, fmt.Sprintf("[resolveEvalResultToEnumString] Error: No package found at path '%s' when resolving const identifier '%s'", targetPkgPath, identName))
+		resolvedImportPath := astutils.GetImportPath(fileAstForContext, pkgAlias)
+		if resolvedImportPath == "" {
+			slog.WarnContext(ctx, "[resolveEvalResultToEnumString] Error: Could not resolve import path for package alias.", "pkgAlias", pkgAlias, "identifier", identName, "contextFile", fileAstForContext.Name.Name)
 			return "", false
 		}
-		pkg := loadedPkgs[0]
-		slog.DebugContext(ctx, fmt.Sprintf("[resolveEvalResultToEnumString] Successfully loaded package '%s' (name: '%s') for const '%s'", pkg.ImportPath, pkg.Name, identName))
-
-		pkgFiles, err := pkg.Files()
-		if err != nil {
-			slog.DebugContext(ctx, fmt.Sprintf("[resolveEvalResultToEnumString] Error: Failed getting files for package '%s' to resolve const '%s': %v", pkg.ImportPath, identName, err))
+		targetPkgPath = resolvedImportPath
+		slog.DebugContext(ctx, fmt.Sprintf("[resolveEvalResultToEnumString] Resolved package alias '%s' to import path '%s' for identifier '%s'", pkgAlias, targetPkgPath, identName))
+	} else { // Unqualified identifier, assume current package context
+		targetPkgPath = currentPkgPath
+		if targetPkgPath == "" {
+			slog.ErrorContext(ctx, "[resolveEvalResultToEnumString] Error: Current package path is empty. Cannot resolve unqualified identifier.", "identifier", identName)
 			return "", false
 		}
+		slog.DebugContext(ctx, fmt.Sprintf("[resolveEvalResultToEnumString] Identifier '%s' is unqualified, using current package path '%s'", identName, targetPkgPath))
+	}
 
-		for _, fileAst := range pkgFiles {
-			var foundVal string
-			var declFound bool
-			slog.DebugContext(ctx, fmt.Sprintf("[resolveEvalResultToEnumString] Searching for CONST '%s' in file '%s' of package '%s'", identName, fileAst.Name.Name, pkg.ImportPath))
-			ast.Inspect(fileAst, func(node ast.Node) bool {
-				if genDecl, ok := node.(*ast.GenDecl); ok && genDecl.Tok == token.CONST {
-					for _, spec := range genDecl.Specs {
-						if valSpec, ok := spec.(*ast.ValueSpec); ok {
-							for i, nameIdentNode := range valSpec.Names {
-								if nameIdentNode.Name == identName {
-									declFound = true
-									slog.DebugContext(ctx, fmt.Sprintf("[resolveEvalResultToEnumString] Found const declaration for '%s' in package '%s', file '%s'", identName, pkg.ImportPath, fileAst.Name.Name))
-									if len(valSpec.Values) > i {
-										if basicLit, ok := valSpec.Values[i].(*ast.BasicLit); ok && basicLit.Kind == token.STRING {
-											unquotedVal, errUnquote := strconv.Unquote(basicLit.Value) // Changed to strconv.Unquote
-											if errUnquote != nil {
-												slog.DebugContext(ctx, fmt.Sprintf("[resolveEvalResultToEnumString] Error: Failed unquoting string for const '%s' in package '%s', raw value '%s': %v", identName, pkg.ImportPath, basicLit.Value, errUnquote))
-												return false // Stop inspection for this const
-											}
-											foundVal = unquotedVal
-											slog.DebugContext(ctx, fmt.Sprintf("[resolveEvalResultToEnumString] Successfully resolved identifier '%s' in package '%s' to string value: \"%s\"", identName, pkg.ImportPath, foundVal))
-											return false // Stop inspection, value found
-										}
-										slog.DebugContext(ctx, fmt.Sprintf("[resolveEvalResultToEnumString] Error: Const '%s' in package '%s', file '%s' is not a basic string literal. AST node type %T, value: %s", identName, pkg.ImportPath, fileAst.Name.Name, valSpec.Values[i], astutils.ExprToTypeName(valSpec.Values[i])))
-									} else {
-										slog.DebugContext(ctx, fmt.Sprintf("[resolveEvalResultToEnumString] Error: Const '%s' in package '%s', file '%s' has no value spec", identName, pkg.ImportPath, fileAst.Name.Name))
-									}
-									return false // Stop for this const name, whether successful or not
-								}
-							}
-						}
+	fullSymbolName := targetPkgPath + ":" + identName
+	slog.DebugContext(ctx, fmt.Sprintf("[resolveEvalResultToEnumString] Looking up symbol: '%s'", fullSymbolName))
+
+	symInfo, found := loader.LookupSymbol(fullSymbolName)
+	if !found {
+		slog.WarnContext(ctx, "[resolveEvalResultToEnumString] Symbol not found in cache.", "fullSymbolName", fullSymbolName)
+		return "", false
+	}
+
+	slog.DebugContext(ctx, fmt.Sprintf("[resolveEvalResultToEnumString] Found symbol '%s'. FilePath: '%s', Node Type: %T", fullSymbolName, symInfo.FilePath, symInfo.Node))
+
+	valSpec, ok := symInfo.Node.(*ast.ValueSpec)
+	if !ok {
+		slog.WarnContext(ctx, "[resolveEvalResultToEnumString] Symbol is not a ValueSpec (expected for const/var).", "fullSymbolName", fullSymbolName, "nodeType", fmt.Sprintf("%T", symInfo.Node))
+		return "", false
+	}
+
+	// Find the specific name in the ValueSpec (e.g., const ( A = "a", B = "b" ), we need B )
+	for i, nameIdent := range valSpec.Names {
+		if nameIdent.Name == identName {
+			if len(valSpec.Values) > i {
+				valueNode := valSpec.Values[i]
+				if basicLit, ok := valueNode.(*ast.BasicLit); ok && basicLit.Kind == token.STRING {
+					unquotedVal, errUnquote := strconv.Unquote(basicLit.Value)
+					if errUnquote != nil {
+						slog.WarnContext(ctx, "[resolveEvalResultToEnumString] Error unquoting string for const/var.", "fullSymbolName", fullSymbolName, "rawValue", basicLit.Value, "error", errUnquote)
+						return "", false
 					}
+					slog.DebugContext(ctx, fmt.Sprintf("[resolveEvalResultToEnumString] Successfully resolved identifier '%s' to string value: \"%s\"", fullSymbolName, unquotedVal))
+					return unquotedVal, true
 				}
-				return true // Continue inspection
-			}) // End ast.Inspect
-
-			slog.DebugContext(ctx, fmt.Sprintf("[resolveEvalResultToEnumString] Check before return in file '%s': declFound=%v, foundVal='%s'", fileAst.Name.Name, declFound, foundVal))
-			if declFound && foundVal != "" {
-				return foundVal, true
-			}
-			if declFound { // Found declaration but not a usable string value
-				slog.DebugContext(ctx, fmt.Sprintf("[resolveEvalResultToEnumString] Warning: Const '%s' in package '%s', file '%s' was found but not resolved to a string.", identName, pkg.ImportPath, fileAst.Name.Name))
+				slog.WarnContext(ctx, "[resolveEvalResultToEnumString] Const/var is not a basic string literal.", "fullSymbolName", fullSymbolName, "valueNodeType", fmt.Sprintf("%T", valueNode))
 				return "", false
 			}
-		} // End for _, fileAst := range pkgFiles
-		slog.DebugContext(ctx, fmt.Sprintf("[resolveEvalResultToEnumString] Error: Const identifier '%s' not found in any file of package '%s' (path searched: '%s')", identName, pkg.ImportPath, targetPkgPath))
-		return "", false
+			slog.WarnContext(ctx, "[resolveEvalResultToEnumString] Const/var spec has no corresponding value.", "fullSymbolName", fullSymbolName, "nameIndex", i)
+			return "", false
+		}
 	}
 
-	// This point should ideally not be reached if the logic for identifier resolution (Path B2-MAIN) is complete and returns.
-	slog.DebugContext(ctx, fmt.Sprintf("[resolveEvalResultToEnumString] Error: Unhandled case or fallthrough AFTER main logic block for identifiers. EvalResult: %+v", elementEvalResult))
+	slog.WarnContext(ctx, "[resolveEvalResultToEnumString] Identifier name not found within the resolved ValueSpec's Names.", "fullSymbolName", fullSymbolName, "identName", identName)
 	return "", false
 }
 
@@ -536,216 +491,122 @@ func extractEnumValuesFromEvalResult(
 		slog.DebugContext(ctx, fmt.Sprintf("Enum argument for %s (field %s) is an identifier '%s' (pkg '%s'), attempting loader resolution", markerType, optMeta.Name, evalResult.IdentifierName, evalResult.PkgName))
 		targetPkgPath := ""
 		if evalResult.PkgName != "" { // Qualified identifier like mypkg.MyEnumVar
-			// fileAst is the AST of the file where the goat.Enum marker is called.
+			// fileAst is the AST of the file where the goat.Enum marker is called (the "using" file).
 			resolvedImportPath := astutils.GetImportPath(fileAst, evalResult.PkgName)
 			if resolvedImportPath == "" {
-				slog.DebugContext(ctx, fmt.Sprintf("Error: Could not resolve import path for package alias '%s' in file %s (used for enum in %s for field %s)", evalResult.PkgName, fileAst.Name.Name, markerType, optMeta.Name))
+				slog.WarnContext(ctx, "Could not resolve import path for package alias.", "pkgAlias", evalResult.PkgName, "identifier", evalResult.IdentifierName, "contextFile", fileAst.Name.Name, "field", optMeta.Name)
 				return
 			}
 			targetPkgPath = resolvedImportPath
 		} else { // Unqualified identifier, assume current package
 			targetPkgPath = currentPkgPath
 			if targetPkgPath == "" {
-				slog.DebugContext(ctx, fmt.Sprintf("Error: Current package path is empty, cannot resolve unqualified identifier '%s' (used for enum in %s for field %s)", evalResult.IdentifierName, markerType, optMeta.Name))
+				slog.ErrorContext(ctx, "Current package path is empty, cannot resolve unqualified identifier.", "identifier", evalResult.IdentifierName, "field", optMeta.Name)
 				return
 			}
 		}
 
-		slog.DebugContext(ctx, fmt.Sprintf("Attempting to load package: '%s' for enum identifier '%s' (field %s, marker %s)", targetPkgPath, evalResult.IdentifierName, optMeta.Name, markerType))
-		// Corrected: Pass ctx to loader.Load
-		loadedPkgs, err := loader.Load(ctx, targetPkgPath)
-		if err != nil {
-			slog.DebugContext(ctx, fmt.Sprintf("Error loading package '%s' for enum identifier '%s': %v (field %s, marker %s)", targetPkgPath, evalResult.IdentifierName, err, optMeta.Name, markerType))
-			return
-		}
-		if len(loadedPkgs) == 0 {
-			slog.DebugContext(ctx, fmt.Sprintf("No package found at path '%s' when resolving enum identifier '%s' (field %s, marker %s)", targetPkgPath, evalResult.IdentifierName, optMeta.Name, markerType))
+		fullSymbolName := targetPkgPath + ":" + evalResult.IdentifierName
+		slog.DebugContext(ctx, fmt.Sprintf("Looking up symbol for enum variable: '%s'", fullSymbolName))
+
+		symInfo, found := loader.LookupSymbol(fullSymbolName)
+		if !found {
+			slog.WarnContext(ctx, "Enum variable symbol not found in cache.", "fullSymbolName", fullSymbolName, "field", optMeta.Name)
 			return
 		}
 
-		// Assuming the first loaded package is the relevant one.
-		// For specific import paths, loader.Load should ideally return one package.
-		// If targetPkgPath was ".", it might return multiple in some loader implementations,
-		// but for Go module structure, "." usually maps to one package.
-		pkg := loadedPkgs[0]
-		var foundValues []any
-		var foundDecl bool // Flag to indicate if the variable declaration was found
+		slog.DebugContext(ctx, fmt.Sprintf("Found symbol for enum variable '%s'. FilePath: '%s', Node Type: %T", fullSymbolName, symInfo.FilePath, symInfo.Node))
 
-		slog.DebugContext(ctx, fmt.Sprintf("Searching for VAR '%s' in package '%s' (loaded from '%s')", evalResult.IdentifierName, pkg.ImportPath, targetPkgPath)) // Use pkg.ImportPath
-
-		// Get the files from the package
-		pkgFiles, err := pkg.Files()
-		if err != nil {
-			slog.DebugContext(ctx, fmt.Sprintf("Error getting files for package '%s': %v", pkg.ImportPath, err))
+		valSpec, ok := symInfo.Node.(*ast.ValueSpec)
+		if !ok {
+			slog.WarnContext(ctx, "Symbol for enum variable is not a ValueSpec.", "fullSymbolName", fullSymbolName, "nodeType", fmt.Sprintf("%T", symInfo.Node), "field", optMeta.Name)
 			return
 		}
 
-		for _, loadedFileAst := range pkgFiles { // Iterate through all files in the loaded package
-			// Log the file being inspected if needed for detailed debugging:
-			// slog.DebugContext(ctx, fmt.Sprintf("    Inspecting file: %s (package %s)", loadedFileAst.Name.Name, pkg.ImportPath))
-
-			ast.Inspect(loadedFileAst, func(node ast.Node) bool {
-				if foundDecl { // If already found in a previous file or node, stop.
-					return false
-				}
-				genDecl, ok := node.(*ast.GenDecl)
-				if !ok || genDecl.Tok != token.VAR {
-					return true // Continue inspection for other nodes
-				}
-
-				for _, spec := range genDecl.Specs {
-					valSpec, ok := spec.(*ast.ValueSpec)
-					if !ok {
-						continue
-					}
-
-					for i, nameIdent := range valSpec.Names {
-						if nameIdent.Name == evalResult.IdentifierName {
-							slog.DebugContext(ctx, fmt.Sprintf("Found var declaration for '%s' in package '%s', file '%s'", evalResult.IdentifierName, pkg.ImportPath, loadedFileAst.Name.Name)) // Use pkg.ImportPath
-							if len(valSpec.Values) > i {
-								initializerExpr := valSpec.Values[i]
-								if compLit, ok := initializerExpr.(*ast.CompositeLit); ok {
-									// Special handling for []string{string(CONST_A), string(CONST_B), ...}
-									var tempValues []any
-									// elementsAreResolvable := true // Removed: allow partial success
-									someElementsFailed := false // Track if any element fails
-									for _, elt := range compLit.Elts {
-										if callExpr, okElt := elt.(*ast.CallExpr); okElt {
-											eltStrForLog := astutils.ExprToTypeName(elt)
-											if funIdent, okFun := callExpr.Fun.(*ast.Ident); okFun && funIdent.Name == "string" && len(callExpr.Args) == 1 {
-												arg := callExpr.Args[0]
-												var constStrVal string
-												var constFound bool
-
-												if constIdent, okConst := arg.(*ast.Ident); okConst {
-													slog.DebugContext(ctx, fmt.Sprintf("[extractEnumValuesFromEvalResult] Field %s, Var %s: Processing element %s (string(ConstInSamePkg))", optMeta.Name, evalResult.IdentifierName, eltStrForLog))
-													constStrVal, constFound = resolveConstStringValue(ctx, constIdent.Name, pkg, loadedFileAst)
-												} else if selExpr, okSel := arg.(*ast.SelectorExpr); okSel {
-													slog.DebugContext(ctx, fmt.Sprintf("[extractEnumValuesFromEvalResult] Field %s, Var %s: Processing element %s (string(otherpkg.Const))", optMeta.Name, evalResult.IdentifierName, eltStrForLog))
-													if pkgNameIdent, okPkgName := selExpr.X.(*ast.Ident); okPkgName {
-														selPkgAlias := pkgNameIdent.Name
-														constNameToResolve := selExpr.Sel.Name
-														resolvedSelImportPath := astutils.GetImportPath(loadedFileAst, selPkgAlias)
-														if resolvedSelImportPath == "" {
-															slog.DebugContext(ctx, fmt.Sprintf("[extractEnumValuesFromEvalResult] Field %s, Var %s: Error: Could not resolve import path for package alias '%s' in file '%s' (used in string(%s.%s)) for element %s", optMeta.Name, evalResult.IdentifierName, selPkgAlias, loadedFileAst.Name.Name, selPkgAlias, constNameToResolve, eltStrForLog))
-															someElementsFailed = true
-															continue // Skip this element
-														}
-														// Corrected: Pass ctx to loader.Load
-														selPkgs, errSel := loader.Load(ctx, resolvedSelImportPath)
-														if errSel != nil || len(selPkgs) == 0 {
-															slog.DebugContext(ctx, fmt.Sprintf("[extractEnumValuesFromEvalResult] Field %s, Var %s: Error: Could not load package '%s' for resolving const '%s' in string(%s.%s) for element %s: %v", optMeta.Name, evalResult.IdentifierName, resolvedSelImportPath, constNameToResolve, selPkgAlias, constNameToResolve, eltStrForLog, errSel))
-															someElementsFailed = true
-															continue // Skip this element
-														}
-														constStrVal, constFound = resolveConstStringValue(ctx, constNameToResolve, selPkgs[0], nil)
-													} else {
-														slog.DebugContext(ctx, fmt.Sprintf("[extractEnumValuesFromEvalResult] Field %s, Var %s: Error: Unhandled selector expression in string() argument: X is %T, not *ast.Ident for element %s", optMeta.Name, evalResult.IdentifierName, selExpr.X, eltStrForLog))
-														someElementsFailed = true
-														continue // Skip this element
-													}
-												} else {
-													slog.DebugContext(ctx, fmt.Sprintf("[extractEnumValuesFromEvalResult] Field %s, Var %s: Error: Unhandled argument to string() conversion: %T for element %s", optMeta.Name, evalResult.IdentifierName, arg, eltStrForLog))
-													someElementsFailed = true
-													continue // Skip this element
-												}
-
-												if constFound {
-													tempValues = append(tempValues, constStrVal)
-													slog.DebugContext(ctx, fmt.Sprintf("[extractEnumValuesFromEvalResult] Field %s, Var %s: Successfully resolved element %s to value '%s'", optMeta.Name, evalResult.IdentifierName, eltStrForLog, constStrVal))
-												} else {
-													slog.DebugContext(ctx, fmt.Sprintf("[extractEnumValuesFromEvalResult] Field %s, Var %s: Error: Could not resolve constant value for element %s in initializer of %s", optMeta.Name, evalResult.IdentifierName, eltStrForLog, evalResult.IdentifierName))
-													someElementsFailed = true
-													// continue: already at end of this path for element
-												}
-											} else { // Not a string(IDENT) or string(pkg.IDENT) call
-												slog.DebugContext(ctx, fmt.Sprintf("[extractEnumValuesFromEvalResult] Field %s, Var %s: Warning: Element %s is a CallExpr but not the expected string(IDENT) pattern.", optMeta.Name, evalResult.IdentifierName, eltStrForLog))
-												someElementsFailed = true
-												// continue: already at end of this path for element
-											}
-										} else { // Not a CallExpr, try to resolve it using the new function
-											eltStr := astutils.ExprToTypeName(elt)
-											slog.DebugContext(ctx, fmt.Sprintf("[extractEnumValuesFromEvalResult] Field %s, Var %s: Processing variable initializer element: %s", optMeta.Name, evalResult.IdentifierName, eltStr))
-											// Corrected: Pass ctx to EvaluateArg
-											elementEvalResult := astutils.EvaluateArg(ctx, elt)
-											strVal, success := resolveEvalResultToEnumString(ctx, elementEvalResult, loader, pkg.ImportPath, loadedFileAst)
-											if success {
-												tempValues = append(tempValues, strVal)
-												slog.DebugContext(ctx, fmt.Sprintf("[extractEnumValuesFromEvalResult] Field %s, Var %s: Successfully resolved element %s to value '%s' via resolveEvalResultToEnumString", optMeta.Name, evalResult.IdentifierName, eltStr, strVal))
-											} else {
-												slog.DebugContext(ctx, fmt.Sprintf("[extractEnumValuesFromEvalResult] Field %s, Var %s: Warning: Failed to resolve enum value from variable initializer element '%s'. Element EvalResult: %+v", optMeta.Name, evalResult.IdentifierName, eltStr, elementEvalResult))
-												someElementsFailed = true
-												// continue: already at end of this path for element
-											}
-										}
-									} // End of for loop: for _, elt := range compLit.Elts
-
-									foundValues = tempValues // Assign collected values (can be empty or partial)
-									foundDecl = true         // We found and processed the var declaration
-
-									if someElementsFailed {
-										slog.DebugContext(ctx, fmt.Sprintf("Warning: Some elements of composite literal for '%s' in package '%s' could not be resolved.", evalResult.IdentifierName, pkg.ImportPath))
-									}
-									if len(foundValues) > 0 {
-										slog.DebugContext(ctx, fmt.Sprintf("Successfully resolved enum identifier '%s' in package '%s' by custom composite literal parsing to values: %v", evalResult.IdentifierName, pkg.ImportPath, foundValues))
-									} else if !someElementsFailed { // No values and no failures means it was an empty literal
-										slog.DebugContext(ctx, fmt.Sprintf("Enum identifier '%s' in package '%s' resolved to an empty list (all elements processed successfully but yielded no strings, or literal was empty).", evalResult.IdentifierName, pkg.ImportPath))
-									}
-									// If someElementsFailed and len(foundValues)==0, the warning above covers it.
-								} else {
-									// Fallback to original logic if initializer is not a CompositeLit (e.g. alias to another var)
-									// Corrected: Pass ctx to EvaluateSliceArg
-									resolvedSlice := astutils.EvaluateSliceArg(ctx, initializerExpr)
-									if resolvedSlice.Value != nil {
-										if s, ok := resolvedSlice.Value.([]any); ok {
-											foundValues = s
-											slog.DebugContext(ctx, fmt.Sprintf("Successfully resolved enum identifier '%s' in package '%s' to values (via fallback EvaluateSliceArg): %v", evalResult.IdentifierName, pkg.ImportPath, foundValues))
-											foundDecl = true
-										} else {
-											slog.DebugContext(ctx, fmt.Sprintf("Enum variable '%s' initializer in package '%s' resolved via fallback, but not to []any: %T", evalResult.IdentifierName, pkg.ImportPath, resolvedSlice.Value))
-										}
-									} else if resolvedSlice.IdentifierName != "" {
-										slog.DebugContext(ctx, fmt.Sprintf("Enum variable '%s' in package '%s' is an alias to another identifier '%s' (pkg '%s') (via fallback). Transitive resolution not yet supported.", evalResult.IdentifierName, pkg.ImportPath, resolvedSlice.IdentifierName, resolvedSlice.PkgName))
-									} else {
-										slog.DebugContext(ctx, fmt.Sprintf("Enum variable '%s' in package '%s' does not have a resolvable slice literal or identifier (via fallback): %T", evalResult.IdentifierName, pkg.ImportPath, initializerExpr))
-									}
-								}
-							} else {
-								slog.DebugContext(ctx, fmt.Sprintf("Enum variable '%s' in package '%s' has no initializer value at index %d.", evalResult.IdentifierName, pkg.ImportPath, i))
-							}
-							// Whether resolved or not, we found the declaration, so stop searching for this name.
-							// If it wasn't the right type (e.g., not a slice), foundDecl remains false,
-							// and the outer logic will report failure to resolve values.
-							// To prevent re-processing the same var if it appears multiple times (which shouldn't happen for VARs at package level):
-							if !foundDecl { // If not successfully resolved to values
-								slog.DebugContext(ctx, fmt.Sprintf("Declaration for '%s' found but values not extracted. Stopping further search for this name.", evalResult.IdentifierName))
-								// We should stop inspecting further for *this specific name* if it's found but not resolvable.
-								// The current ast.Inspect logic will stop if foundDecl is true.
-								// If it's found but not usable, we mark it as "found" to stop further search for this specific identifier.
-								// This is tricky because `foundDecl` is used to signal successful value extraction.
-								// Let's refine: if name matches, we consider it "handled" for this Inspect run.
-								// The `return false` below for the GenDecl should be sufficient for `nameIdent.Name == evalResult.IdentifierName`.
-							}
-							return false // Stop inspecting within this GenDecl once the matching name is processed.
-						}
-					}
-				}
-				return true // Continue inspecting other GenDecls or nodes
-			})
-
-			if foundDecl { // If found in this file, break from iterating pkg.Files
+		// Find the specific name in the ValueSpec (e.g., var ( A = ..., B = ... ), we need B )
+		nameIdx := -1
+		for i, nameIdent := range valSpec.Names {
+			if nameIdent.Name == evalResult.IdentifierName {
+				nameIdx = i
 				break
 			}
 		}
 
-		if foundDecl {
-			optMeta.EnumValues = foundValues
+		if nameIdx == -1 {
+			slog.ErrorContext(ctx, "Identifier name not found within the resolved ValueSpec's Names (should not happen if LookupSymbol worked).", "fullSymbolName", fullSymbolName, "identifierName", evalResult.IdentifierName, "field", optMeta.Name)
+			return
+		}
+
+		if len(valSpec.Values) <= nameIdx {
+			slog.WarnContext(ctx, "Enum variable ValueSpec has no corresponding initializer value.", "fullSymbolName", fullSymbolName, "nameIndex", nameIdx, "field", optMeta.Name)
+			return
+		}
+		initializerExpr := valSpec.Values[nameIdx]
+
+		if compLit, ok := initializerExpr.(*ast.CompositeLit); ok {
+			slog.DebugContext(ctx, fmt.Sprintf("Enum variable '%s' is a composite literal. Processing elements.", fullSymbolName))
+			var tempValues []any
+			var someElementsFailed bool
+
+			// Get the AST of the file where the enum variable is defined.
+			// This is crucial for resolving any package aliases used *within* the composite literal elements.
+			definingFileAST, astFound := loader.GetAST(symInfo.FilePath)
+			if !astFound {
+				slog.ErrorContext(ctx, "AST for defining file of enum variable not found in cache. Cannot resolve composite literal elements accurately.", "filePath", symInfo.FilePath, "fullSymbolName", fullSymbolName, "field", optMeta.Name)
+				return // Cannot proceed without the defining file's AST for context
+			}
+
+			for _, elt := range compLit.Elts {
+				eltStrForLog := astutils.ExprToTypeName(elt) // For logging
+				elementEvalResult := astutils.EvaluateArg(ctx, elt)
+
+				// When resolving elements of a composite literal defined in `targetPkgPath` (symInfo.PackagePath),
+				// the `currentPkgPath` for `resolveEvalResultToEnumString` should be `symInfo.PackagePath`,
+				// and the `fileAstForContext` should be `definingFileAST`.
+				strVal, success := resolveEvalResultToEnumString(ctx, elementEvalResult, loader, symInfo.PackagePath, definingFileAST)
+				if success {
+					tempValues = append(tempValues, strVal)
+					slog.DebugContext(ctx, fmt.Sprintf("Successfully resolved enum element '%s' for var '%s' to: \"%s\"", eltStrForLog, fullSymbolName, strVal))
+				} else {
+					slog.WarnContext(ctx, "Failed to resolve enum element for var.", "element", eltStrForLog, "var", fullSymbolName, "elementEvalResult", fmt.Sprintf("%+v", elementEvalResult))
+					someElementsFailed = true
+				}
+			}
+
+			if len(tempValues) > 0 {
+				optMeta.EnumValues = tempValues
+				slog.DebugContext(ctx, fmt.Sprintf("Successfully resolved enum variable '%s' from composite literal to values: %v", fullSymbolName, optMeta.EnumValues))
+			} else if !someElementsFailed {
+				slog.DebugContext(ctx, fmt.Sprintf("Enum variable '%s' from composite literal resolved to an empty list (or all elements failed to resolve to strings).", fullSymbolName))
+				optMeta.EnumValues = []any{} // Explicitly set to empty if no values but no failures
+			}
+			if someElementsFailed && len(tempValues) == 0 { // All elements failed
+				slog.WarnContext(ctx, "All elements of composite literal for enum variable failed to resolve.", "fullSymbolName", fullSymbolName, "field", optMeta.Name)
+			}
+
 		} else {
-			slog.DebugContext(ctx, fmt.Sprintf("Could not find VAR declaration or resolve values for enum identifier '%s' in package '%s' (path searched: '%s', field %s, marker %s)", evalResult.IdentifierName, pkg.ImportPath, targetPkgPath, optMeta.Name, markerType)) // Use pkg.ImportPath
+			// Fallback to original logic if initializer is not a CompositeLit (e.g. alias to another var)
+			slog.DebugContext(ctx, fmt.Sprintf("Enum variable '%s' initializer is not a CompositeLit (%T). Attempting fallback with EvaluateSliceArg.", fullSymbolName, initializerExpr))
+			resolvedSlice := astutils.EvaluateSliceArg(ctx, initializerExpr) // Pass context
+			if resolvedSlice.Value != nil {
+				if s, ok := resolvedSlice.Value.([]any); ok {
+					optMeta.EnumValues = s
+					slog.DebugContext(ctx, fmt.Sprintf("Successfully resolved enum variable '%s' to values (via fallback EvaluateSliceArg): %v", fullSymbolName, optMeta.EnumValues))
+				} else {
+					slog.WarnContext(ctx, "Enum variable initializer (via fallback) not resolved to []any.", "fullSymbolName", fullSymbolName, "resolvedType", fmt.Sprintf("%T", resolvedSlice.Value), "field", optMeta.Name)
+				}
+			} else if resolvedSlice.IdentifierName != "" {
+				// This means the var was an alias to another var. The current LookupSymbol approach handles one level.
+				// If `MyEnumVar = OtherEnumVar`, LookupSymbol gets `MyEnumVar`. If `OtherEnumVar` needs further lookup,
+				// that would be transitive. For now, this path indicates that the direct ValueSpec didn't contain a literal.
+				slog.WarnContext(ctx, "Enum variable initializer (via fallback) is an alias to another identifier. Transitive resolution is not directly supported by this fallback path; direct LookupSymbol on the original identifier should handle it if it's a var/const.", "fullSymbolName", fullSymbolName, "aliasTo", resolvedSlice.IdentifierName, "aliasPkg", resolvedSlice.PkgName, "field", optMeta.Name)
+			} else {
+				slog.WarnContext(ctx, "Enum variable initializer (via fallback) does not have a resolvable slice literal or identifier.", "fullSymbolName", fullSymbolName, "initializerType", fmt.Sprintf("%T", initializerExpr), "field", optMeta.Name)
+			}
 		}
 		return
 	}
 
-	// Neither Value nor IdentifierName is set
-	slog.DebugContext(ctx, fmt.Sprintf("Enum argument for field %s (marker %s, type %T) could not be evaluated to a literal slice or a resolvable identifier. EvalResult: %+v", optMeta.Name, markerType, evalResult, evalResult))
+	// Neither Value nor IdentifierName is set in the initial evalResult for the enum variable itself
+	slog.WarnContext(ctx, "Enum argument could not be evaluated to a literal slice or a resolvable identifier.", "field", optMeta.Name, "markerType", markerType, "evalResult", fmt.Sprintf("%+v", evalResult))
 }

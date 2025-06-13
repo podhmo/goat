@@ -90,3 +90,31 @@ To meet these requirements, the following approach was adopted:
 *   Adheres to the constraint of not using `go/types` directly in the interpreter logic for this specific resolution path, relying instead on AST inspection of loaded packages.
 
 This approach provides a balance between functionality and adherence to project-specific constraints.
+
+# Loader Caching Strategy
+
+To enhance performance and avoid redundant computations during package loading and symbol analysis, the `internal/loader.Loader` implements several caching mechanisms:
+
+1.  **Package Cache (Existing)**:
+    *   The `Loader` maintains a cache of `*loader.Package` objects keyed by their import paths. When `loader.Load()` is called for a previously loaded import path, the cached `*Package` instance is returned, preventing redundant metadata resolution and initial package object creation.
+
+2.  **File AST Cache (New)**:
+    *   A global AST cache, `Loader.fileASTCache (map[string]*ast.File)`, is introduced.
+    *   The key is the canonical absolute file path of a `.go` source file.
+    *   The value is the parsed `*ast.File` for that file.
+    *   This cache is populated when a file is first parsed by any `Package` instance associated with the `Loader`.
+    *   Subsequent requests to parse the same file (even by different `Package` instances, if they share the same `Loader`) will retrieve the AST from this cache, avoiding redundant disk I/O and parsing operations.
+    *   This is particularly beneficial when multiple packages might include or refer to the same source files, or when files are accessed multiple times during an analysis session.
+
+3.  **Symbol Cache (New)**:
+    *   A global symbol cache, `Loader.symbolCache (map[string]loader.SymbolInfo)`, is introduced.
+    *   The key is a fully qualified symbol name string in the format `<package_import_path>:<symbol_name>` (e.g., `"example.com/mypkg:MyType"`).
+    *   The value is a `loader.SymbolInfo` struct, which contains:
+        *   `PackagePath`: The import path of the package where the symbol is defined.
+        *   `SymbolName`: The name of the symbol.
+        *   `FilePath`: The canonical absolute file path to the `.go` file where the symbol is defined.
+        *   `Node`: The `ast.Node` representing the symbol's declaration (e.g., `*ast.TypeSpec`, `*ast.FuncDecl`).
+    *   This cache is populated after a `Package`'s files are parsed. The `ensureParsed` method iterates through the top-level declarations in each file's AST and stores information about each symbol.
+    *   This cache allows for quick lookups of symbol definitions across all loaded packages, which is useful for features like "go to definition" or cross-package type analysis without repeatedly traversing ASTs.
+
+All caches within the `Loader` (`cache`, `fileASTCache`, `symbolCache`) are protected by a single `sync.Mutex` (`Loader.mu`) to ensure thread-safe access and modification. The `Package.ensureParsed()` method, which is responsible for populating the new `fileASTCache` and `symbolCache`, interacts with these loader-level caches in a thread-safe manner.

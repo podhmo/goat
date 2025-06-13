@@ -66,13 +66,38 @@ func (p *Package) ensureParsed() error {
 			return
 		}
 		for _, goFile := range p.GoFiles {
-			path := filepath.Join(p.Dir, goFile)
-			fileAST, err := parser.ParseFile(p.fset, path, nil, parser.ParseComments)
-			if err != nil {
-				p.parseErr = fmt.Errorf("failed to parse %s: %w", path, err)
-				return
+			canonicalPath := filepath.Join(p.Dir, goFile)
+			// Attempt to make canonicalPath absolute if p.Dir might be relative.
+			// This ensures cache keys are consistent.
+			if !filepath.IsAbs(canonicalPath) {
+				absPath, err := filepath.Abs(canonicalPath)
+				if err != nil {
+					p.parseErr = fmt.Errorf("failed to get absolute path for %s: %w", canonicalPath, err)
+					return
+				}
+				canonicalPath = absPath
 			}
-			p.parsedFiles[goFile] = fileAST
+
+			var fileAST *ast.File
+			var err error
+
+			p.loader.mu.Lock()
+			cachedAST, found := p.loader.fileASTCache[canonicalPath]
+			p.loader.mu.Unlock()
+
+			if found {
+				fileAST = cachedAST
+			} else {
+				fileAST, err = parser.ParseFile(p.fset, canonicalPath, nil, parser.ParseComments)
+				if err != nil {
+					p.parseErr = fmt.Errorf("failed to parse %s: %w", canonicalPath, err)
+					return
+				}
+				p.loader.mu.Lock()
+				p.loader.fileASTCache[canonicalPath] = fileAST
+				p.loader.mu.Unlock()
+			}
+			p.parsedFiles[goFile] = fileAST // Keyed by relative goFile path
 
 			// Collect import specs
 			var imports []*ast.ImportSpec
@@ -81,11 +106,75 @@ func (p *Package) ensureParsed() error {
 			}
 			p.fileImports[goFile] = imports
 		}
+
 		// If Name wasn't available from locator, try to get it from AST
 		if p.Name == "" && len(p.parsedFiles) > 0 {
 			for _, fAST := range p.parsedFiles {
+				// Note: This assumes all files in a package have the same package name.
+				// This is a Go language requirement.
 				p.Name = fAST.Name.Name
 				break
+			}
+		}
+
+		// Populate symbol cache
+		for goFile, fileAST := range p.parsedFiles {
+			canonicalFilePath := filepath.Join(p.Dir, goFile)
+			if !filepath.IsAbs(canonicalFilePath) {
+				// Ensure canonicalFilePath is absolute for SymbolInfo
+				absPath, err := filepath.Abs(canonicalFilePath)
+				if err != nil {
+					// Log or handle error if absolute path is critical for symbol info
+					// For now, proceed with potentially relative path if Abs fails,
+					// or consider this a part of p.parseErr.
+					// To be safe, let's assume ensureParsed might fail here.
+					p.parseErr = fmt.Errorf("failed to get absolute path for symbol %s in %s: %w", goFile, p.ImportPath, err)
+					return
+				}
+				canonicalFilePath = absPath
+			}
+
+			for _, decl := range fileAST.Decls {
+				var symbolName string
+				var node ast.Node
+				var symbolNames []string // For ValueSpec
+
+				switch d := decl.(type) {
+				case *ast.FuncDecl:
+					symbolName = d.Name.Name
+					node = d
+					symbolNames = append(symbolNames, symbolName)
+				case *ast.GenDecl:
+					for _, spec := range d.Specs {
+						switch s := spec.(type) {
+						case *ast.TypeSpec:
+							symbolName = s.Name.Name
+							node = s // Store TypeSpec node
+							symbolNames = append(symbolNames, symbolName)
+						case *ast.ValueSpec: // For variables and constants
+							node = s // Common node for all idents in this ValueSpec
+							for _, ident := range s.Names {
+								symbolNames = append(symbolNames, ident.Name)
+							}
+						}
+					}
+				}
+
+				for _, sn := range symbolNames {
+					if sn != "" && sn != "_" { // Ignore blank identifier
+						fullSymbolName := p.ImportPath + ":" + sn
+						symbolInfo := SymbolInfo{ // Assuming SymbolInfo is defined in the same package
+							PackagePath: p.ImportPath,
+							SymbolName:  sn,
+							FilePath:    canonicalFilePath,
+							Node:        node, // Use the specific decl/spec node
+						}
+						p.loader.mu.Lock()
+						p.loader.symbolCache[fullSymbolName] = symbolInfo
+						p.loader.mu.Unlock()
+					}
+				}
+				symbolNames = symbolNames[:0] // Reset for next decl
 			}
 		}
 	})
