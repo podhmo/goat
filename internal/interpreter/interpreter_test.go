@@ -5,11 +5,13 @@ import (
 	"go/parser"
 	"go/token"
 	"reflect"
+	"strconv" // Added for strconv.Quote
 	"strings"
 	"testing"
 
 	"github.com/podhmo/goat/internal/loader" // Added for loader.Loader
 	"github.com/podhmo/goat/internal/metadata"
+	"github.com/podhmo/goat/internal/utils/astutils" // Added for astutils.EvalResult
 )
 
 func parseTestFileForInterpreter(t *testing.T, content string) *ast.File {
@@ -43,21 +45,55 @@ func NewOpts() *Options {
 		Verbose: g.Default(true),
 	}
 }
+` // Closing backtick for content variable in TestInterpretInitializer_SimpleDefaults
+	fileAst := parseTestFileForInterpreter(t, content)
+	optionsMeta := []*metadata.OptionMetadata{
+		{Name: "Name", CliName: "name", TypeName: "string"},
+		{Name: "Port", CliName: "port", TypeName: "int"},
+		{Name: "Verbose", CliName: "verbose", TypeName: "bool"},
+	}
+
+	// Provide dummy loader and currentPkgPath for tests not focusing on identifier resolution
+	dummyLoader := loader.New(loader.Config{})
+	dummyCurrentPkgPath := "github.com/podhmo/goat/internal/interpreter/testpkgs/simpledefaults"
+	err := InterpretInitializer(fileAst, "Options", "NewOpts", optionsMeta, goatPkgImportPath, dummyCurrentPkgPath, dummyLoader)
+	if err != nil {
+		t.Fatalf("InterpretInitializer failed: %v", err)
+	}
+
+	expectedDefaults := map[string]any{
+		"Name":    "guest",
+		"Port":    int64(8080), // parser reads numbers as int64 initially
+		"Verbose": true,
+	}
+
+	for _, opt := range optionsMeta {
+		expected, ok := expectedDefaults[opt.Name]
+		if !ok {
+			t.Errorf("Unexpected option %s found in results", opt.Name)
+			continue
+		}
+		if !reflect.DeepEqual(opt.DefaultValue, expected) {
+			t.Errorf("For option %s, expected default %v (type %T), got %v (type %T)",
+				opt.Name, expected, expected, opt.DefaultValue, opt.DefaultValue)
+		}
+	}
+}
 
 // TestInterpretInitializer_EnumNewScenarios tests new enum resolution scenarios,
 // particularly direct composite literals with identifiers and variables resolving to such.
 func TestInterpretInitializer_EnumNewScenarios(t *testing.T) {
-	const testMarkerPkgImportPath = "github.com/podhmo/goat" // Using standard goat path for these, assuming test setup aligns or it's not strictly checked by GetImportPath logic here
-	const mainPkgImportPath = "enumtests_module/src/mainpkg"
-	const customTypesImportPath = "enumtests_module/src/customtypes"
+	const testMarkerPkgImportPath = "github.com/podhmo/goat"                  // Using standard goat path for these, assuming test setup aligns or it's not strictly checked by GetImportPath logic here
+	const mainPkgImportPath = "testdata/enumtests_module/src/mainpkg"         // Corrected path
+	const customTypesImportPath = "testdata/enumtests_module/src/customtypes" // Corrected path
 
 	moduleRoot := "./testdata/enumtests_module"
-	ld := newTestLoader(t, moduleRoot)
+	ld, fsetForLoader := newTestLoader(t, moduleRoot) // Get fset from loader
 
 	// Parse the mainpkg.go file which now contains all necessary definitions
 	mainGoFile := moduleRoot + "/src/mainpkg/main.go"
-	fsetForFile := token.NewFileSet() // Use a specific fset for parsing the file for InterpretInitializer
-	entryFileAst, err := parser.ParseFile(fsetForFile, mainGoFile, nil, parser.ParseComments)
+	// Use fsetForLoader for parsing
+	entryFileAst, err := parser.ParseFile(fsetForLoader, mainGoFile, nil, parser.ParseComments)
 	if err != nil {
 		t.Fatalf("Failed to parse test file %s: %v", mainGoFile, err)
 	}
@@ -80,7 +116,7 @@ func TestInterpretInitializer_EnumNewScenarios(t *testing.T) {
 	}
 	optionsMap := make(map[string]*metadata.OptionMetadata)
 	for i := range optionsMeta {
-		optionsMap[optionsMeta[i].Name] = &optionsMeta[i] // Store pointers
+		optionsMap[optionsMeta[i].Name] = optionsMeta[i] // Store pointers
 	}
 
 	// The InterpretInitializer function needs the *ast.File of the file containing NewOptions,
@@ -137,11 +173,11 @@ func TestInterpretInitializer_EnumNewScenarios(t *testing.T) {
 		},
 		{
 			fieldName:       "FieldForLocalConst", // Default(LocalStringConst) -> "local-val-1"
-			expectedDefault: MyLocalEnum("local-val-1"), // The type from astutils.EvaluateArg will be the underlying type
+			expectedDefault: "local-val-1",        // The type from astutils.EvaluateArg will be the underlying type
 		},
 		{
 			fieldName:       "FieldForImportedConst", // Default(customtypes.EnumValA) -> "val-a"
-			expectedDefault: customtypes.MyEnum("val-a"), // Underlying type after evaluation
+			expectedDefault: "val-a",                 // Underlying type after evaluation
 		},
 	}
 
@@ -173,16 +209,16 @@ func TestInterpretInitializer_EnumNewScenarios(t *testing.T) {
 	}
 }
 
-func newTestLoader(t *testing.T, moduleRootRelPath string) *loader.Loader {
+func newTestLoader(t *testing.T, moduleRootRelPath string) (*loader.Loader, *token.FileSet) {
 	t.Helper()
-	fset := token.NewFileSet()
+	fset := token.NewFileSet() // Create fset here
 	gml := &loader.GoModLocator{}
 	gml.WorkingDir = moduleRootRelPath // e.g., "./testdata/enumtests_module"
 	ld := loader.New(loader.Config{
 		Locator: gml.Locate,
-		Fset:    fset,
+		Fset:    fset, // Loader uses this fset
 	})
-	return ld
+	return ld, fset // Return it
 }
 
 // newTestContextForPkg creates a minimal *ast.File for a given package structure, primarily for import path resolution.
@@ -226,23 +262,23 @@ func TestResolveEvalResultToEnumString(t *testing.T) {
 	// The paths used for currentPkgPath and for resolving imports inside testdata
 	// should align with this module structure.
 	moduleRoot := "./testdata/enumtests_module"
-	ld := newTestLoader(t, moduleRoot)
+	ld, _ := newTestLoader(t, moduleRoot) // Get fset from loader, but not used directly here yet
 
 	// Define canonical import paths for test packages
 	// These must match what the loader would determine based on moduleRoot.
 	// For a module 'enumtests_module' with sources in 'src/', these are:
-	const mainPkgImportPath = "enumtests_module/src/mainpkg"
-	const customTypesImportPath = "enumtests_module/src/customtypes"
+	const mainPkgImportPath = "testdata/enumtests_module/src/mainpkg"         // Corrected path
+	const customTypesImportPath = "testdata/enumtests_module/src/customtypes" // Corrected path
 
 	// Test cases
 	tests := []struct {
-		name                string
-		elementEvalResult   astutils.EvalResult
-		currentPkgPath      string            // Import path of the package where the resolving is happening
-		importsInTestFile   map[string]string // Simulates imports in the file where the enum element is used
-		expectedString      string
-		expectedSuccess     bool
-		expectedErrorMsg    string // Optional: for checking specific error log patterns (not implemented in this test)
+		name              string
+		elementEvalResult astutils.EvalResult
+		currentPkgPath    string            // Import path of the package where the resolving is happening
+		importsInTestFile map[string]string // Simulates imports in the file where the enum element is used
+		expectedString    string
+		expectedSuccess   bool
+		expectedErrorMsg  string // Optional: for checking specific error log patterns (not implemented in this test)
 	}{
 		{
 			name:              "direct string value",
@@ -325,8 +361,8 @@ func TestResolveEvalResultToEnumString(t *testing.T) {
 			importsInTestFile: map[string]string{
 				"ct": customTypesImportPath,
 			},
-			expectedString:    "",
-			expectedSuccess:   false,
+			expectedString:  "",
+			expectedSuccess: false,
 		},
 		{
 			name: "const is not a string (local)", // mainpkg.go needs a non-string const for this
@@ -348,8 +384,8 @@ func TestResolveEvalResultToEnumString(t *testing.T) {
 			importsInTestFile: map[string]string{
 				"ct": customTypesImportPath,
 			},
-			expectedString:    "",
-			expectedSuccess:   false,
+			expectedString:  "",
+			expectedSuccess: false,
 		},
 		{
 			name: "package alias not resolvable",
@@ -372,8 +408,8 @@ func TestResolveEvalResultToEnumString(t *testing.T) {
 			importsInTestFile: map[string]string{
 				"badpkg": "enumtests_module/src/nonexistentpkg", // Path that loader will fail on
 			},
-			expectedString:    "",
-			expectedSuccess:   false,
+			expectedString:  "",
+			expectedSuccess: false,
 		},
 	}
 
@@ -393,41 +429,6 @@ func TestResolveEvalResultToEnumString(t *testing.T) {
 			}
 			// TODO: Check logs for tt.expectedErrorMsg if that becomes necessary
 		})
-	}
-}
-
-`
-	fileAst := parseTestFileForInterpreter(t, content)
-	optionsMeta := []*metadata.OptionMetadata{
-		{Name: "Name", CliName: "name", TypeName: "string"},
-		{Name: "Port", CliName: "port", TypeName: "int"},
-		{Name: "Verbose", CliName: "verbose", TypeName: "bool"},
-	}
-
-	// Provide dummy loader and currentPkgPath for tests not focusing on identifier resolution
-	dummyLoader := loader.New(loader.Config{})
-	dummyCurrentPkgPath := "github.com/podhmo/goat/internal/interpreter/testpkgs/simpledefaults"
-	err := InterpretInitializer(fileAst, "Options", "NewOpts", optionsMeta, goatPkgImportPath, dummyCurrentPkgPath, dummyLoader)
-	if err != nil {
-		t.Fatalf("InterpretInitializer failed: %v", err)
-	}
-
-	expectedDefaults := map[string]any{
-		"Name":    "guest",
-		"Port":    int64(8080), // parser reads numbers as int64 initially
-		"Verbose": true,
-	}
-
-	for _, opt := range optionsMeta {
-		expected, ok := expectedDefaults[opt.Name]
-		if !ok {
-			t.Errorf("Unexpected option %s found in results", opt.Name)
-			continue
-		}
-		if !reflect.DeepEqual(opt.DefaultValue, expected) {
-			t.Errorf("For option %s, expected default %v (type %T), got %v (type %T)",
-				opt.Name, expected, expected, opt.DefaultValue, opt.DefaultValue)
-		}
 	}
 }
 
@@ -810,7 +811,7 @@ func TestInterpretInitializer_EnumResolution(t *testing.T) {
 		{
 			"FieldDefaultIdent",
 			"defaultBeta",
-			nil, // EnumValues might be nil because direct identifier resolution in goat.Default is logged as "not fully implemented"
+			nil,   // EnumValues might be nil because direct identifier resolution in goat.Default is logged as "not fully implemented"
 			false, // Change to true if resolution for this case is implemented and expected
 		},
 		{
