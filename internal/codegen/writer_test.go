@@ -209,27 +209,33 @@ func helper() {}
 func TestWriteMain_AppendNewMain(t *testing.T) {
 	initialContent := `package main
 
-import "log"
+import (
+	"fmt"
+	"log/slog"
+)
 
 func someOtherFunc() {
-	log.Println("This file has no main yet.")
+	slog.Info(fmt.Sprint("This file has no main yet."))
 }
 `
 	newMainContent := `
 func main() {
-	log.Println("This is the new main, appended.")
+	slog.Info(fmt.Sprint("This is the new main, appended."))
 }`
 	// Expected: initial content, a newline (if not present), then new main content, then formatted.
 	expectedContentAfterWrite := `package main
 
-import "log"
+import (
+	"fmt"
+	"log/slog"
+)
 
 func someOtherFunc() {
-	log.Println("This file has no main yet.")
+	slog.Info(fmt.Sprint("This file has no main yet."))
 }
 
 func main() {
-	log.Println("This is the new main, appended.")
+	slog.Info(fmt.Sprint("This is the new main, appended."))
 }
 `
 	tempFilePath := createTempFile(t, initialContent)
