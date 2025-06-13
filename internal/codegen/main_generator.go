@@ -73,6 +73,8 @@ func main() {
 				slog.Warn("Could not parse environment variable for TextUnmarshaler option; using default or previously set value.", "envVar", "{{.EnvVar}}", "option", "{{.CliName}}", "value", val, "error", err)
 			}
 			{{end}}
+	{{else if .UnderlyingKindIsString}}
+	options.{{.Name}} = {{.TypeName}}(val)
 		{{else if eq .TypeName "string"}}
 		options.{{.Name}} = val
 		{{else if eq .TypeName "int"}}
