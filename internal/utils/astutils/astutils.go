@@ -9,6 +9,17 @@ import (
 	"strings"
 )
 
+// EvalResult holds the result of an evaluation.
+// If Value is not nil, it's a directly evaluated value.
+// If IdentifierName is not empty, it means the expression was an identifier
+// that needs further resolution (e.g., by a loader).
+// PkgName is for qualified identifiers like pkg.MyEnum.
+type EvalResult struct {
+	Value          any
+	IdentifierName string
+	PkgName        string // Added for qualified identifiers
+}
+
 // ExprToTypeName converts an ast.Expr (representing a type) to its string representation.
 func ExprToTypeName(expr ast.Expr) string {
 	if expr == nil {
@@ -93,87 +104,135 @@ func lastPathPart(path string) string {
 	return parts[len(parts)-1]
 }
 
-// EvaluateArg tries to evaluate an AST expression (typically a function argument)
-// to a Go literal value. It supports basic literals.
-// Returns the evaluated value or nil if not a simple literal.
-func EvaluateArg(arg ast.Expr) any {
+// EvaluateArg evaluates the argument of a function call.
+// It returns an EvalResult containing the evaluated argument or identifier information.
+// It currently supports basic literals (strings, integers, floats, chars),
+// identifiers like true, false, nil, unary expressions for negative numbers, and selector expressions.
+func EvaluateArg(arg ast.Expr) EvalResult {
 	switch v := arg.(type) {
 	case *ast.BasicLit:
 		switch v.Kind {
 		case token.INT:
 			i, err := strconv.ParseInt(v.Value, 0, 64)
 			if err == nil {
-				return i
+				return EvalResult{Value: i}
 			}
+			log.Printf("EvaluateArg: failed to parse integer literal %s: %v", v.Value, err)
 		case token.FLOAT:
 			f, err := strconv.ParseFloat(v.Value, 64)
 			if err == nil {
-				return f
+				return EvalResult{Value: f}
 			}
+			log.Printf("EvaluateArg: failed to parse float literal %s: %v", v.Value, err)
 		case token.STRING:
 			s, err := strconv.Unquote(v.Value)
 			if err == nil {
-				return s
+				return EvalResult{Value: s}
 			}
+			log.Printf("EvaluateArg: failed to unquote string literal %s: %v", v.Value, err)
 		case token.CHAR:
 			s, err := strconv.Unquote(v.Value) // char is rune, often represented as string in Go
 			if err == nil && len(s) == 1 {
-				return []rune(s)[0]
+				return EvalResult{Value: []rune(s)[0]}
 			}
+			log.Printf("EvaluateArg: failed to unquote or invalid char literal %s: %v", v.Value, err)
+		default:
+			log.Printf("EvaluateArg: unsupported basic literal type: %s, returning as raw string", v.Kind)
+			return EvalResult{Value: v.Value} // return raw token value as string
 		}
-		log.Printf("EvaluateArg: unhandled basic literal kind %v for value %s", v.Kind, v.Value)
-		return v.Value // return raw token value as string
+		// If parsing failed for supported types, return empty EvalResult
+		return EvalResult{}
 	case *ast.Ident:
-		// Could be a predefined constant like `true`, `false`, `nil`
 		switch v.Name {
 		case "true":
-			return true
+			return EvalResult{Value: true}
 		case "false":
-			return false
+			return EvalResult{Value: false}
 		case "nil":
-			return nil
+			return EvalResult{Value: nil}
+		default:
+			log.Printf("EvaluateArg: identified identifier %s for further resolution", v.Name)
+			return EvalResult{IdentifierName: v.Name}
 		}
-		// TODO: Could try to resolve other idents if we had a symbol table
-		log.Printf("EvaluateArg: unhandled identifier %s", v.Name)
 	case *ast.UnaryExpr:
 		if v.Op == token.SUB {
-			// Handle negative numbers
-			if xVal := EvaluateArg(v.X); xVal != nil {
-				switch num := xVal.(type) {
+			evalRes := EvaluateArg(v.X) // Recursively call EvaluateArg
+			if evalRes.Value != nil {
+				switch val := evalRes.Value.(type) {
 				case int64:
-					return -num
+					return EvalResult{Value: -val}
 				case float64:
-					return -num
-				// Add other numeric types if needed
+					return EvalResult{Value: -val}
+				// Add other numeric types if needed, e.g. int from a const
+				case int: // Check if this case is reachable given current literal parsing
+					return EvalResult{Value: -val}
 				default:
-					log.Printf("EvaluateArg: unhandled unary minus for type %T", xVal)
+					log.Printf("EvaluateArg: unary minus operator can only be applied to known numeric types, got %T for value of %s", evalRes.Value, ExprToTypeName(v.X))
+					return EvalResult{}
 				}
 			}
+			// If evalRes.Value is nil, it might be an identifier or unresolved.
+			// For now, we don't support unary ops on unresolved identifiers (e.g. -MyConst)
+			// unless MyConst resolves to a number. This would require more advanced resolution.
+			log.Printf("EvaluateArg: unary minus operand %s (type %T) could not be resolved to a value or is an identifier", ExprToTypeName(v.X), v.X)
+			return EvalResult{}
 		}
-		log.Printf("EvaluateArg: unhandled unary operator %s", v.Op)
-	// TODO: Add *ast.CompositeLit for simple slice/map literals if needed directly as default
+		log.Printf("EvaluateArg: unsupported unary expression operator: %s", v.Op)
+		return EvalResult{}
+	case *ast.SelectorExpr: // e.g. pkg.MyConst
+		if xIdent, okX := v.X.(*ast.Ident); okX { // Should be a package name
+			// v.Sel is already *ast.Ident, no type assertion needed here.
+			selIdent := v.Sel
+			log.Printf("EvaluateArg: identified selector %s.%s for further resolution", xIdent.Name, selIdent.Name)
+			return EvalResult{IdentifierName: selIdent.Name, PkgName: xIdent.Name}
+		}
+		log.Printf("EvaluateArg: unsupported selector expression, expected X to be *ast.Ident but got %T for X in X.Sel", v.X)
+		return EvalResult{}
 	default:
-		log.Printf("EvaluateArg: unhandled expression type %T", arg)
+		log.Printf("EvaluateArg: argument is not a basic literal, identifier, unary or selector expression, got %T", arg)
+		return EvalResult{}
 	}
-	return nil
 }
 
-// EvaluateSliceArg tries to evaluate an AST expression (typically an argument to goat.Enum)
-// that should be a slice literal (e.g., []string{"a", "b"}) into a []any.
-func EvaluateSliceArg(arg ast.Expr) []any {
-	compLit, ok := arg.(*ast.CompositeLit)
-	if !ok {
-		log.Printf("EvaluateSliceArg: argument is not a composite literal, got %T", arg)
-		return []any{}
-	}
-	results := make([]any, 0, len(compLit.Elts))
-	for _, elt := range compLit.Elts {
-		val := EvaluateArg(elt)
-		if val != nil {
-			results = append(results, val)
-		} else {
-			log.Printf("EvaluateSliceArg: could not evaluate element %T in slice", elt)
+// EvaluateSliceArg evaluates a slice argument of a function call.
+// It returns an EvalResult. If the argument is a literal slice of simple values,
+// EvalResult.Value will contain []any. If it's an identifier (qualified or not)
+// that refers to a slice, EvalResult.IdentifierName (and optionally PkgName) will be set.
+func EvaluateSliceArg(arg ast.Expr) EvalResult {
+	switch v := arg.(type) {
+	case *ast.CompositeLit:
+		// This is a composite literal, like []string{"a", "b"}
+		results := make([]any, 0, len(v.Elts)) // Initialize to empty slice, not nil
+		for _, elt := range v.Elts {
+			evalRes := EvaluateArg(elt) // Use the updated EvaluateArg
+			if evalRes.Value != nil {
+				results = append(results, evalRes.Value)
+			} else if evalRes.IdentifierName != "" {
+				// Element is an identifier, this slice is not purely literal.
+				log.Printf("EvaluateSliceArg: composite literal element %s (pkg %s) is an identifier, direct slice evaluation cannot fully resolve here.", evalRes.IdentifierName, evalRes.PkgName)
+				return EvalResult{} // Not a simple literal slice.
+			} else {
+				// Element could not be evaluated to a value and is not an identifier.
+				log.Printf("EvaluateSliceArg: failed to evaluate element %s of composite literal to a value and it's not an identifier.", ExprToTypeName(elt))
+				return EvalResult{}
+			}
 		}
+		return EvalResult{Value: results}
+	case *ast.Ident:
+		// This could be an identifier for a slice variable, requires further resolution
+		log.Printf("EvaluateSliceArg: argument is an identifier %s, requires loader resolution", v.Name)
+		return EvalResult{IdentifierName: v.Name}
+	case *ast.SelectorExpr: // e.g. pkg.MyEnumSlice
+		if xIdent, okX := v.X.(*ast.Ident); okX { // Package name
+			// v.Sel is already *ast.Ident, no type assertion needed here.
+			selIdent := v.Sel
+			log.Printf("EvaluateSliceArg: argument is a selector %s.%s, requires loader resolution", xIdent.Name, selIdent.Name)
+			return EvalResult{IdentifierName: selIdent.Name, PkgName: xIdent.Name}
+		}
+		log.Printf("EvaluateSliceArg: unsupported selector expression for slice, expected X to be *ast.Ident but got %T for X in X.Sel", v.X)
+		return EvalResult{}
+	default:
+		log.Printf("EvaluateSliceArg: argument is not a composite literal, identifier, or selector, got %T", arg)
+		return EvalResult{}
 	}
-	return results
 }

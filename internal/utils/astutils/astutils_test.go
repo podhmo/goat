@@ -194,10 +194,15 @@ func TestEvaluateArg(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			expr := parseExpr(t, tc.exprStr)
-			actual := EvaluateArg(expr)
-			if !reflect.DeepEqual(actual, tc.expected) {
-				t.Errorf("For expr '%s', expected %v (type %T), got %v (type %T)",
-					tc.exprStr, tc.expected, tc.expected, actual, actual)
+			evalResult := EvaluateArg(expr) // Returns EvalResult now
+			if evalResult.IdentifierName != "" {
+				t.Errorf("For expr '%s', expected a direct value, but got identifier '%s' (pkg '%s')",
+					tc.exprStr, evalResult.IdentifierName, evalResult.PkgName)
+				return
+			}
+			if !reflect.DeepEqual(evalResult.Value, tc.expected) {
+				t.Errorf("For expr '%s', expected value %v (type %T), got %v (type %T)",
+					tc.exprStr, tc.expected, tc.expected, evalResult.Value, evalResult.Value)
 			}
 		})
 	}
@@ -220,16 +225,45 @@ func TestEvaluateSliceArg(t *testing.T) {
 			if err != nil {
 				t.Fatalf("Failed to parse expr %s: %v", tc.exprStr, err)
 			}
-			actual := EvaluateSliceArg(exprNode)
-			if tc.name == "MixedSliceNotDirectlySupportedByBasicLit" { // special case for current limitations
-				if len(actual) != 2 || actual[0] != "a" || actual[1] != int64(1) {
-					t.Errorf("For expr '%s', expected evaluated elements, got %v", tc.exprStr, actual)
+			evalResult := EvaluateSliceArg(exprNode) // Returns EvalResult
+
+			if evalResult.IdentifierName != "" {
+				// This test suite for EvaluateSliceArg expects direct slice evaluations, not identifiers.
+				t.Errorf("For expr '%s', expected a direct slice value, but got identifier '%s' (pkg '%s')",
+					tc.exprStr, evalResult.IdentifierName, evalResult.PkgName)
+				return
+			}
+
+			actualSlice, ok := evalResult.Value.([]any)
+			if !ok {
+				if tc.expected != nil || evalResult.Value != nil { // Only fail if we expected a non-nil slice or got a non-nil non-slice value
+					t.Errorf("For expr '%s', expected result.Value to be []any, got %T", tc.exprStr, evalResult.Value)
+				}
+				// If tc.expected is nil and evalResult.Value is nil, it's a match.
+				if tc.expected == nil && evalResult.Value == nil {
+					return
+				}
+				// If tc.expected is not nil, but we got a nil value (and not ok above), it's a mismatch.
+				if tc.expected != nil && evalResult.Value == nil {
+					t.Errorf("For expr '%s', expected %v, got nil value in EvalResult", tc.exprStr, tc.expected)
+				}
+				return // cannot proceed with actualSlice
+			}
+
+			if tc.name == "MixedSliceNotDirectlySupportedByBasicLit" {
+				// This case expects ["a", int64(1)]
+				// The `EvaluateArg` for "a" returns EvalResult{Value:"a"}
+				// The `EvaluateArg` for 1 returns EvalResult{Value:int64(1)}
+				// `EvaluateSliceArg` should collect these into []any.
+				expectedMixed := []any{"a", int64(1)}
+				if !reflect.DeepEqual(actualSlice, expectedMixed) {
+					t.Errorf("For expr '%s', expected evaluated elements %v, got %v", tc.exprStr, expectedMixed, actualSlice)
 				}
 				return
 			}
 
-			if !reflect.DeepEqual(actual, tc.expected) {
-				t.Errorf("For expr '%s', expected %v, got %v", tc.exprStr, tc.expected, actual)
+			if !reflect.DeepEqual(actualSlice, tc.expected) {
+				t.Errorf("For expr '%s', expected %v, got %v", tc.exprStr, tc.expected, actualSlice)
 			}
 		})
 	}

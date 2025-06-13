@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"slices"
+	"strings"
 
 	"github.com/podhmo/goat"
 	"github.com/podhmo/goat/examples/enum/customtypes"
@@ -22,9 +24,9 @@ const (
 	LocalB MyLocalEnum = "local-b"
 )
 
-// GetLocalEnumsAsStrings returns the string representations of MyLocalEnum options.
-func GetLocalEnumsAsStrings() []string {
-	return []string{string(LocalA), string(LocalB)}
+var MyLocalEnumValues = []string{
+	string(LocalA),
+	string(LocalB),
 }
 
 // Options defines the command line options for the enum example.
@@ -43,10 +45,9 @@ type Options struct {
 // NewOptions initializes Options with default values and enum constraints.
 func NewOptions() *Options {
 	return &Options{
-		LocalEnumField: goat.Default(LocalA, goat.Enum(GetLocalEnumsAsStrings())),
-		// TODO: Since it's a generic function, there should be no need to cast it to a string type.If there are reasons why it is not possible, I want to resolve them.
-		ImportedEnumField:         goat.Default(customtypes.OptionX, goat.Enum(customtypes.GetCustomEnumOptionsAsStrings())),
-		OptionalImportedEnumField: goat.Enum(nil, []string{string(customtypes.OptionX), string(customtypes.OptionY)}),
+		LocalEnumField:            goat.Default(LocalA, goat.Enum(MyLocalEnumValues)),                                 // Changed
+		ImportedEnumField:         goat.Default(customtypes.OptionX, goat.Enum(customtypes.MyCustomEnumValues)),       // Changed
+		OptionalImportedEnumField: goat.Enum(nil, []string{string(customtypes.OptionX), string(customtypes.OptionY)}), // Unchanged
 	}
 }
 
@@ -86,8 +87,8 @@ Usage:
   enum [flags]
 
 Flags:
-  --local-enum-field             mylocalenum LocalEnumField demonstrates a locally defined enum. (required) (env: ENUM_LOCAL_ENUM)
-  --imported-enum-field          mycustomenum ImportedEnumField demonstrates an enum imported from another package. (required) (env: ENUM_IMPORTED_ENUM)
+  --local-enum-field             mylocalenum LocalEnumField demonstrates a locally defined enum. (required) (env: ENUM_LOCAL_ENUM) (allowed: "local-a", "local-b")
+  --imported-enum-field          mycustomenum ImportedEnumField demonstrates an enum imported from another package. (required) (env: ENUM_IMPORTED_ENUM) (allowed: "option-x", "option-y", "option-z")
   --optional-imported-enum-field mycustomenum OptionalImportedEnumField demonstrates an optional enum (pointer type)
                                         imported from another package. (env: ENUM_OPTIONAL_IMPORTED_ENUM)
 
@@ -138,6 +139,32 @@ Flags:
 	// Handle special case for required bools defaulting to true with 'no-<flag>'
 
 	// 5. Perform required checks (excluding booleans).
+
+	isValidChoice_LocalEnumField := false
+	allowedChoices_LocalEnumField := []string{"local-a", "local-b"}
+
+	currentValue_LocalEnumFieldStr := fmt.Sprintf("%v", options.LocalEnumField)
+	isValidChoice_LocalEnumField = slices.Contains(allowedChoices_LocalEnumField, currentValue_LocalEnumFieldStr)
+
+	if !isValidChoice_LocalEnumField {
+		var currentValueForMsg interface{} = options.LocalEnumField
+
+		slog.Error("Invalid value for flag", "flag", "local-enum-field", "value", currentValueForMsg, "allowedChoices", strings.Join(allowedChoices_LocalEnumField, ", "))
+		os.Exit(1)
+	}
+
+	isValidChoice_ImportedEnumField := false
+	allowedChoices_ImportedEnumField := []string{"option-x", "option-y", "option-z"}
+
+	currentValue_ImportedEnumFieldStr := fmt.Sprintf("%v", options.ImportedEnumField)
+	isValidChoice_ImportedEnumField = slices.Contains(allowedChoices_ImportedEnumField, currentValue_ImportedEnumFieldStr)
+
+	if !isValidChoice_ImportedEnumField {
+		var currentValueForMsg interface{} = options.ImportedEnumField
+
+		slog.Error("Invalid value for flag", "flag", "imported-enum-field", "value", currentValueForMsg, "allowedChoices", strings.Join(allowedChoices_ImportedEnumField, ", "))
+		os.Exit(1)
+	}
 
 	// End of range .Options for required checks
 
