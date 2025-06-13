@@ -132,9 +132,31 @@ func EvaluateArg(arg ast.Expr) any {
 			return false
 		case "nil":
 			return nil
+		default:
+			// Assume it's a constant and return its name.
+			return v.Name
 		}
-		// TODO: Could try to resolve other idents if we had a symbol table
-		log.Printf("EvaluateArg: unhandled identifier %s", v.Name)
+	case *ast.SelectorExpr: // e.g. customtypes.OptionX
+		// For now, assume X is an *ast.Ident (package name)
+		// v.X is ast.Expr (e.g. 'customtypes')
+		// v.Sel is *ast.Ident (e.g. 'OptionX')
+		if pkgIdent, ok := v.X.(*ast.Ident); ok {
+			// This is the case we want to handle: Pkg.Const
+			// v.Sel should be non-nil for valid code.
+			if v.Sel != nil {
+				return v.Sel.Name // "OptionX"
+			}
+			// If v.Sel is nil, it's malformed, log and return nil.
+			log.Printf("EvaluateArg: Selector expression %s has a nil Sel identifier", pkgIdent.Name)
+		} else {
+			// v.X is not a simple identifier. e.g., myStruct.Field.EnumVal
+			// We are not handling this for now. Log it.
+			selName := "<nil_sel>"
+			if v.Sel != nil {
+				selName = v.Sel.Name
+			}
+			log.Printf("EvaluateArg: unhandled selector expression with non-Ident X (%T = %s) and Sel (%s)", v.X, ExprToTypeName(v.X), selName)
+		}
 	case *ast.UnaryExpr:
 		if v.Op == token.SUB {
 			// Handle negative numbers

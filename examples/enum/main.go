@@ -45,7 +45,7 @@ func NewOptions() *Options {
 	return &Options{
 		LocalEnumField: goat.Default(LocalA, goat.Enum(GetLocalEnumsAsStrings())),
 		// TODO: Since it's a generic function, there should be no need to cast it to a string type.If there are reasons why it is not possible, I want to resolve them.
-		ImportedEnumField:         goat.Default(customtypes.OptionX, goat.Enum(customtypes.GetCustomEnumOptionsAsStrings())),
+		ImportedEnumField:         goat.Default(customtypes.OptionX, goat.Enum(customtypes.GetCustomEnumOptions())),
 		OptionalImportedEnumField: goat.Enum(nil, []string{string(customtypes.OptionX), string(customtypes.OptionY)}),
 	}
 }
@@ -86,8 +86,8 @@ Usage:
   enum [flags]
 
 Flags:
-  --local-enum-field             mylocalenum LocalEnumField demonstrates a locally defined enum. (required) (env: ENUM_LOCAL_ENUM)
-  --imported-enum-field          mycustomenum ImportedEnumField demonstrates an enum imported from another package. (required) (env: ENUM_IMPORTED_ENUM)
+  --local-enum-field             mylocalenum LocalEnumField demonstrates a locally defined enum. (default: "LocalA") (env: ENUM_LOCAL_ENUM)
+  --imported-enum-field          mycustomenum ImportedEnumField demonstrates an enum imported from another package. (default: "OptionX") (env: ENUM_IMPORTED_ENUM)
   --optional-imported-enum-field mycustomenum OptionalImportedEnumField demonstrates an optional enum (pointer type)
                                         imported from another package. (env: ENUM_OPTIONAL_IMPORTED_ENUM)
 
