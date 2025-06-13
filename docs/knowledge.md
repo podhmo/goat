@@ -88,3 +88,45 @@ This change ensures more accurate package metadata collection, which is crucial 
 - **Resolution**: Investigation revealed that `internal/loader/locator.go` (specifically the `GoModLocator`) already utilized this library for `go.mod` parsing via the `parseGoMod` function.
 - **Action Taken**: A clarifying comment was added to the `parseGoMod` function to make this usage explicit. This helps in confirming adherence to such requirements if the codebase is audited or reviewed for specific library uses.
 - **Learning**: When an issue requests the use of a specific library or technique, first thoroughly verify its current usage. If already implemented, clarification (e.g., via comments or documentation updates) might be the appropriate resolution, rather than assuming a missing implementation. This ensures that the intent of the issue (confirming best practices or specific dependencies) is met.
+
+# Interpreter Design for Enum Resolution
+
+The `internal/interpreter` package is responsible for understanding default values and enum constraints provided in user code, typically within initializer functions (e.g., `NewOptions`). A key challenge was to resolve enum values when they are defined not as literal slices directly within `goat.Enum()` calls, but as variables (e.g., `var MyEnum = []string{"a", "b"}`) potentially in different packages.
+
+## Core Requirements and Constraints:
+
+1.  **Resolve Enum Variables**: The interpreter needed to find the definition of an identifier passed to `goat.Enum()` and extract its values.
+2.  **Support Cross-Package Enums**: Enums might be defined in a separate package and imported.
+3.  **Avoid `go/types`**: A specific project constraint was to avoid using the `go/types` package for this part of the type resolution, favoring AST-level analysis and the existing `internal/loader`.
+
+## Implementation Strategy:
+
+To meet these requirements, the following approach was adopted:
+
+1.  **`astutils` Enhancement**:
+    *   The functions `astutils.EvaluateArg` and `astutils.EvaluateSliceArg` were modified to return a new struct, `astutils.EvalResult`.
+    *   `EvalResult` includes fields `Value` (for literal evaluations) and `IdentifierName` / `PkgName` (if the AST node was an identifier, possibly qualified with a package alias). This allows the interpreter to distinguish between a literal slice and a variable name that needs further lookup.
+
+2.  **Interpreter and Loader Integration**:
+    *   The main `internal/interpreter.InterpretInitializer` function was updated to accept an instance of `loader.Loader` and the `currentPkgPath` (import path of the package being interpreted).
+    *   When `extractMarkerInfo` (specifically the part handling `goat.Enum()`, refactored into `extractEnumValuesFromEvalResult`) encounters an `EvalResult` indicating an identifier:
+        *   It determines the target package path for the identifier (using `currentPkgPath` for unqualified idents or resolving the package alias via `astutils.GetImportPath` for qualified idents).
+        *   It uses the passed `loader.Loader` instance to load the AST of the target package (`loader.Load(targetPkgPath)`).
+        *   It then inspects the AST of the loaded package to find the `var` declaration matching the identifier's name.
+        *   If the `var` is found and its initializer is a slice literal (e.g., `[]string{"a", "b"}` or `[]string{string(ConstA), string(ConstB)}`), this initializer is processed to extract the final string values.
+
+3.  **Handling `string(Constant)` in Enums**:
+    *   The `extractEnumValuesFromEvalResult` function was enhanced to specifically handle `var` initializers that are composite literals (slices) where elements might be of the form `string(CONST_IDENT)` or `string(pkg.CONST_IDENT)`.
+    *   A helper function, `resolveConstStringValue(constName string, pkg *loader.Package, identFile *ast.File) (string, bool)`, was added. This helper inspects the AST of the given package (`pkg`) to find a `const` declaration matching `constName`. If the constant is a basic string literal, its value is returned.
+    *   When processing a slice element like `string(CONST_IDENT)`:
+        *   `CONST_IDENT` is resolved using `resolveConstStringValue` within its defining package (which might be the current package or an imported one, resolved using the loader).
+        *   The string value of the constant is then used.
+    *   This allows the interpreter to correctly extract string values from enums defined using the `string(CONST)` pattern, by looking up the constant's definition in the relevant package's AST. This mechanism works for constants defined as string literals.
+
+## Benefits:
+
+*   Allows users to define enums as variables, which is more idiomatic in Go than always requiring literal slices in `goat.Enum()`.
+*   Enables discovery of enums across package boundaries by leveraging the existing `loader`'s capabilities.
+*   Adheres to the constraint of not using `go/types` directly in the interpreter logic for this specific resolution path, relying instead on AST inspection of loaded packages.
+
+This approach provides a balance between functionality and adherence to project-specific constraints.

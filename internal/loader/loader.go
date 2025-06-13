@@ -49,7 +49,7 @@ func New(cfg Config) *Loader {
 			// Alternatively, could return an error from New.
 			panic(fmt.Sprintf("failed to get working directory for GoModLocator: %v", err))
 		}
-		gml := &GoModLocator{workingDir: wd}
+		gml := &GoModLocator{WorkingDir: wd} // Corrected to use exported field
 		cfg.Locator = gml.Locate // Use the method from the instance
 	}
 	fset := cfg.Fset

@@ -152,13 +152,13 @@ func extractMarkerInfo(
 		if len(callExpr.Args) > 0 {
 			// Default value is the first argument
 			defaultEvalResult := astutils.EvaluateArg(callExpr.Args[0])
-			if defaultEvalResult.Value != nil {
+			if defaultEvalResult.IdentifierName == "" { // If it's a literal or directly evaluatable value
 				optMeta.DefaultValue = defaultEvalResult.Value
 				log.Printf("  Default value: %v", optMeta.DefaultValue)
-			} else if defaultEvalResult.IdentifierName != "" {
-				// TODO: Default value could also be a constant that needs resolving.
-				// For now, we only handle literal defaults.
-				log.Printf("  Default value for field %s is an identifier '%s' (pkg '%s'). Resolution of identifiers for default values is not yet implemented.", optMeta.Name, defaultEvalResult.IdentifierName, defaultEvalResult.PkgName)
+			} else {
+				// Default value is an identifier, needs resolution (not currently implemented for defaults)
+				log.Printf("  Default value for field %s is an identifier '%s' (pkg '%s'). Resolution of identifiers for default values is not yet implemented here. DefaultValue will be nil.", optMeta.Name, defaultEvalResult.IdentifierName, defaultEvalResult.PkgName)
+				optMeta.DefaultValue = nil // Explicitly set to nil or some other indicator if preferred
 			}
 
 			// Subsequent args could be an Enum call for enumConstraint
@@ -208,8 +208,14 @@ func extractMarkerInfo(
 	case "File":
 		log.Printf("Interpreting goat.File for field %s", optMeta.Name)
 		if len(callExpr.Args) > 0 {
-			optMeta.DefaultValue = astutils.EvaluateArg(callExpr.Args[0])
-			log.Printf("  Default path: %v", optMeta.DefaultValue)
+			fileArgEvalResult := astutils.EvaluateArg(callExpr.Args[0])
+			if fileArgEvalResult.IdentifierName == "" {
+				optMeta.DefaultValue = fileArgEvalResult.Value
+				log.Printf("  Default path: %v", optMeta.DefaultValue)
+			} else {
+				log.Printf("  Default path for field %s is an identifier '%s' (pkg '%s'). Resolution of identifiers for file paths is not yet implemented here. DefaultValue will be nil.", optMeta.Name, fileArgEvalResult.IdentifierName, fileArgEvalResult.PkgName)
+				optMeta.DefaultValue = nil
+			}
 			optMeta.TypeName = "string" // File paths are strings
 
 			// Subsequent args are FileOption calls (e.g., goat.MustExist(), goat.GlobPattern())

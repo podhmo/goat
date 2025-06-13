@@ -85,18 +85,18 @@ type PackageLocator func(pattern string, buildCtx BuildContext) ([]PackageMetaIn
 // GoModLocator is a PackageLocator that resolves import paths
 // without relying on the `go list` command.
 type GoModLocator struct {
-	workingDir string // The working directory, typically the root of the main module.
+	WorkingDir string // The working directory, typically the root of the main module. (Exported)
 }
 
 // Locate implements the PackageLocator interface for GoModLocator.
 // It resolves package paths without using `go list`.
 func (gml *GoModLocator) Locate(pattern string, buildCtx BuildContext) ([]PackageMetaInfo, error) {
-	if gml.workingDir == "" {
+	if gml.WorkingDir == "" { // Use Exported field
 		wd, err := os.Getwd()
 		if err != nil {
 			return nil, fmt.Errorf("GoModLocator.Locate: failed to get current working directory: %w", err)
 		}
-		gml.workingDir = wd
+		gml.WorkingDir = wd // Use Exported field
 	}
 	var pkgName string // Declare pkgName
 	// Handle vendor paths (placeholder)
@@ -106,7 +106,7 @@ func (gml *GoModLocator) Locate(pattern string, buildCtx BuildContext) ([]Packag
 
 	if pattern == "." || strings.HasPrefix(pattern, "./") || strings.HasPrefix(pattern, "../") {
 		// Handle relative path
-		pkgDir := filepath.Clean(filepath.Join(gml.workingDir, pattern))
+		pkgDir := filepath.Clean(filepath.Join(gml.WorkingDir, pattern)) // Use Exported field
 		absPkgDir, err := filepath.Abs(pkgDir) // Ensure pkgDir is absolute
 		if err != nil {
 			return nil, fmt.Errorf("could not get absolute path for relative dir %s: %w", pkgDir, err)
@@ -118,10 +118,10 @@ func (gml *GoModLocator) Locate(pattern string, buildCtx BuildContext) ([]Packag
 
 		goFiles, testGoFiles, xTestGoFiles, errList := gml.listGoFiles(pkgDir)
 		if errList == nil && len(goFiles) > 0 {
-			// If pkgDir is the same as workingDir (pattern is ./) or it's a root of a relative path
+			// If pkgDir is the same as WorkingDir (pattern is ./) or it's a root of a relative path
 			// that might be a main package, try to get name from source.
-			// A simple heuristic: if the pattern is just "." or ".." or if pkgDir is the workingDir.
-			isRootLike := pattern == "." || pattern == ".." || filepath.Clean(pkgDir) == filepath.Clean(gml.workingDir)
+			// A simple heuristic: if the pattern is just "." or ".." or if pkgDir is the WorkingDir.
+			isRootLike := pattern == "." || pattern == ".." || filepath.Clean(pkgDir) == filepath.Clean(gml.WorkingDir) // Use Exported field
 			if isRootLike {
 				parsedName, parseErr := getPackageNameFromFiles(pkgDir, goFiles)
 				if parseErr == nil {
@@ -177,7 +177,7 @@ func (gml *GoModLocator) Locate(pattern string, buildCtx BuildContext) ([]Packag
 		return []PackageMetaInfo{meta}, nil
 	}
 
-	currentModuleRoot, err := gml.findModuleRoot(gml.workingDir) // findModuleRoot returns absolute path
+	currentModuleRoot, err := gml.findModuleRoot(gml.WorkingDir) // findModuleRoot returns absolute path, use Exported field
 	var currentModFile *modfile.File
 	var currentModulePath string
 
@@ -330,7 +330,7 @@ func (gml *GoModLocator) parseGoMod(modFilePath string) (*modfile.File, error) {
 func (gml *GoModLocator) findModuleRoot(startDir string) (string, error) {
 	dir := startDir
 	if !filepath.IsAbs(dir) {
-		absDir, err := filepath.Abs(filepath.Join(gml.workingDir, dir))
+		absDir, err := filepath.Abs(filepath.Join(gml.WorkingDir, dir)) // Use Exported field
 		if err != nil {
 			return "", fmt.Errorf("failed to get absolute path for %s: %w", dir, err)
 		}
@@ -358,7 +358,7 @@ func (gml *GoModLocator) findModuleRoot(startDir string) (string, error) {
 func (gml *GoModLocator) listGoFiles(dirPath string) (goFiles, testGoFiles, xTestGoFiles []string, err error) {
 	absDirPath := dirPath
 	if !filepath.IsAbs(dirPath) {
-		absDirPath = filepath.Join(gml.workingDir, dirPath)
+		absDirPath = filepath.Join(gml.WorkingDir, dirPath) // Use Exported field
 	}
 
 	entries, err := os.ReadDir(absDirPath)

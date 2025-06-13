@@ -202,7 +202,7 @@ func EvaluateSliceArg(arg ast.Expr) EvalResult {
 	switch v := arg.(type) {
 	case *ast.CompositeLit:
 		// This is a composite literal, like []string{"a", "b"}
-		var results []any
+		results := make([]any, 0, len(v.Elts)) // Initialize to empty slice, not nil
 		for _, elt := range v.Elts {
 			evalRes := EvaluateArg(elt) // Use the updated EvaluateArg
 			if evalRes.Value != nil {

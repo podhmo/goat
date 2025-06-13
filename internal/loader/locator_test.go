@@ -47,7 +47,7 @@ func TestGoModLocator_Locate_RelativePaths(t *testing.T) {
 	testModuleDir := setupTestModule(t, moduleName, files)
 	defer os.RemoveAll(testModuleDir)
 
-	locator := &GoModLocator{workingDir: testModuleDir}
+	locator := &GoModLocator{WorkingDir: testModuleDir}
 
 	// BuildContext can be minimal for these tests
 	buildCtx := BuildContext{}
@@ -207,7 +207,7 @@ func TestGoModLocator_Locate_NoModuleContext(t *testing.T) {
 	testSetupDir := setupTestDirNoModule(t, files)
 	defer os.RemoveAll(testSetupDir)
 
-	locator := &GoModLocator{workingDir: testSetupDir}
+	locator := &GoModLocator{WorkingDir: testSetupDir}
 	buildCtx := BuildContext{}
 
 	testCases := []struct {
@@ -324,7 +324,7 @@ func TestGoModLocator_Locate_NotFound(t *testing.T) {
 	})
 	defer os.RemoveAll(testModuleDir)
 
-	locator := &GoModLocator{workingDir: testModuleDir}
+	locator := &GoModLocator{WorkingDir: testModuleDir}
 	buildCtx := BuildContext{}
 
 	testCases := []struct {
@@ -465,7 +465,7 @@ func TestGoModLocator_Locate_ExternalDependency(t *testing.T) {
 	}
 
 	// 3. Initialize locator and perform test
-	locator := &GoModLocator{workingDir: testModuleDir}
+	locator := &GoModLocator{WorkingDir: testModuleDir}
 	buildCtx := BuildContext{}
 
 	escapedDepModulePathForCache, err := module.EscapePath(depModulePath)
@@ -577,7 +577,7 @@ func TestGoModLocator_Locate_CurrentModule(t *testing.T) {
 	testModuleDir := setupTestModule(t, moduleName, files)
 	defer os.RemoveAll(testModuleDir)
 
-	locator := &GoModLocator{workingDir: testModuleDir}
+	locator := &GoModLocator{WorkingDir: testModuleDir}
 	buildCtx := BuildContext{} // Minimal context
 
 	testCases := []struct {

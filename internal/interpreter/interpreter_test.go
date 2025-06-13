@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/podhmo/goat/internal/loader" // Added for loader.Loader
 	"github.com/podhmo/goat/internal/metadata"
 )
 
@@ -50,7 +51,10 @@ func NewOpts() *Options {
 		{Name: "Verbose", CliName: "verbose", TypeName: "bool"},
 	}
 
-	err := InterpretInitializer(fileAst, "Options", "NewOpts", optionsMeta, goatPkgImportPath)
+	// Provide dummy loader and currentPkgPath for tests not focusing on identifier resolution
+	dummyLoader := loader.New(loader.Config{})
+	dummyCurrentPkgPath := "github.com/podhmo/goat/internal/interpreter/testpkgs/simpledefaults"
+	err := InterpretInitializer(fileAst, "Options", "NewOpts", optionsMeta, goatPkgImportPath, dummyCurrentPkgPath, dummyLoader)
 	if err != nil {
 		t.Fatalf("InterpretInitializer failed: %v", err)
 	}
@@ -97,7 +101,9 @@ func InitOptions() *Options {
 		{Name: "Mode", CliName: "mode", TypeName: "string"},
 	}
 
-	err := InterpretInitializer(fileAst, "Options", "InitOptions", optionsMeta, goatPkgImportPath)
+	dummyLoader := loader.New(loader.Config{})
+	dummyCurrentPkgPath := "github.com/podhmo/goat/internal/interpreter/testpkgs/enumandcombined"
+	err := InterpretInitializer(fileAst, "Options", "InitOptions", optionsMeta, goatPkgImportPath, dummyCurrentPkgPath, dummyLoader)
 	if err != nil {
 		t.Fatalf("InterpretInitializer failed: %v", err)
 	}
@@ -141,7 +147,9 @@ func New() *Options {
 		{Name: "Path", CliName: "path", TypeName: "string"},
 	}
 
-	err := InterpretInitializer(fileAst, "Options", "New", optionsMeta, goatPkgImportPath)
+	dummyLoader := loader.New(loader.Config{})
+	dummyCurrentPkgPath := "github.com/podhmo/goat/internal/interpreter/testpkgs/assignmentstyle"
+	err := InterpretInitializer(fileAst, "Options", "New", optionsMeta, goatPkgImportPath, dummyCurrentPkgPath, dummyLoader)
 	if err != nil {
 		t.Fatalf("InterpretInitializer with assignment style failed: %v", err)
 	}
@@ -165,7 +173,9 @@ func New() *Options {
 	fileAst := parseTestFileForInterpreter(t, content)
 	optionsMeta := []*metadata.OptionMetadata{{Name: "Name"}}
 
-	err := InterpretInitializer(fileAst, "Options", "New", optionsMeta, goatPkgImportPath) // goatPkgImportPath is for "github.com/podhmo/goat"
+	dummyLoader := loader.New(loader.Config{})
+	dummyCurrentPkgPath := "github.com/podhmo/goat/internal/interpreter/testpkgs/nongoatpkgcall"
+	err := InterpretInitializer(fileAst, "Options", "New", optionsMeta, goatPkgImportPath, dummyCurrentPkgPath, dummyLoader) // goatPkgImportPath is for "github.com/podhmo/goat"
 	if err != nil {
 		t.Fatalf("InterpretInitializer failed: %v", err)
 	}
@@ -177,7 +187,9 @@ func New() *Options {
 func TestInterpretInitializer_InitializerNotFound(t *testing.T) {
 	content := `package main; type Options struct{}`
 	fileAst := parseTestFileForInterpreter(t, content)
-	err := InterpretInitializer(fileAst, "Options", "NonExistentInit", nil, goatPkgImportPath)
+	dummyLoader := loader.New(loader.Config{})
+	dummyCurrentPkgPath := "github.com/podhmo/goat/internal/interpreter/testpkgs/initializererror"
+	err := InterpretInitializer(fileAst, "Options", "NonExistentInit", nil, goatPkgImportPath, dummyCurrentPkgPath, dummyLoader)
 	if err == nil {
 		t.Fatal("InterpretInitializer should fail if initializer func not found")
 	}
@@ -301,7 +313,9 @@ func New() *Config { return &Config{ Input: g.File("in.txt", other.SomeOption())
 				currentOptionsMeta[i] = &metaCopy
 			}
 
-			err := InterpretInitializer(fileAst, tt.optionsName, tt.initializerName, currentOptionsMeta, goatPkgImportPath)
+			dummyLoader := loader.New(loader.Config{})
+			dummyCurrentPkgPath := "github.com/podhmo/goat/internal/interpreter/testpkgs/filemarkers/" + tt.name
+			err := InterpretInitializer(fileAst, tt.optionsName, tt.initializerName, currentOptionsMeta, goatPkgImportPath, dummyCurrentPkgPath, dummyLoader)
 
 			if tt.expectError {
 				if err == nil {
@@ -398,9 +412,12 @@ func TestInterpretInitializer_EnumResolution(t *testing.T) {
 	// If tests run from project root: "./internal/interpreter/testdata/enumtests_module"
 	// If tests run from internal/interpreter: "./testdata/enumtests_module"
 	// Let's assume testdata is sibling to the _test.go file.
-	ld := loader.NewLoader(&loader.Config{
-		Dir:  "./testdata/enumtests_module", // Root of the test Go module
-		Fset: fset,                         // Optional: share fileset
+	gml := &loader.GoModLocator{}
+	// Set WorkingDir relative to the package directory where `go test` is typically run from for the package.
+	gml.WorkingDir = "./testdata/enumtests_module"
+	ld := loader.New(loader.Config{ // Pass Config by value
+		Locator: gml.Locate,
+		Fset:    fset,
 	})
 
 	optionsMeta := []*metadata.OptionMetadata{
