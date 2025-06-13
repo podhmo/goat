@@ -48,46 +48,6 @@ The project employs a custom mechanism for loading Go package information, prima
 -   **Simplicity and Targeted Information**:
     For some straightforward tasks, direct use of `os` functions, `go/parser`, or a minimal invocation of `go list` (as used by `loader.GoListLocator`) is simpler and provides exactly the information needed without overkill. The `AnalyzeOptions` function in `options_analyzer.go` leverages the `loader` package. While `loader` can use `go list` for package discovery, the primary analysis within `AnalyzeOptions` focuses on ASTs. Full type information via `go/types` is used by `loader` when resolving types or checking interfaces as needed, but this is done on-demand rather than globally. This targeted approach aligns with the goal of minimizing unnecessary processing.
 
-### Refactoring of the Loader Package (Originally `lazyload`)
-
-To simplify package structure and naming conventions, the package for lazy loading Go source code has undergone refactoring:
-
--   **Final Location**: The package, originally at `internal/loader/lazyload` and briefly at `internal/loader/loader`, now resides directly under `internal/loader/`. Its Go files (e.g., `loader.go`, `package.go`) are located in `internal/loader/`.
--   **Package Name**: The Go package name is `loader`. Imports should now target `github.com/podhmo/goat/internal/loader` (or the appropriate project-specific path) to use the `loader` package.
--   **Constructor**: The constructor function is `loader.New`.
-
-This restructuring streamlines access to the loader functionality. The core lazy-loading strategy remains consistent.
-
-## Refactoring and Renaming in `internal/loader`
-
-- The package `internal/loader/lazyload` was consolidated into the `internal/loader` package. This change necessitated updates to import statements in files that previously imported `lazyload`.
-- The constructor function `loader.NewLoader` within the `internal/loader` package was renamed to `loader.New`. All instances where `NewLoader` was called needed to be updated to use `New`.
-
-## Determining Package Name in `internal/loader/locator.go`
-
-When locating Go packages, especially for packages at the root of a module or a directory specified by a relative path, relying solely on the directory name for the package name can be incorrect. The actual package name is defined by the `package` clause in the Go source files.
-
-To address this, the `GoModLocator.Locate` function was enhanced. A new helper function, `getPackageNameFromFiles(dir string, goFiles []string) (string, error)`, was introduced in `internal/loader/locator.go`.
-
-This function:
-- Takes the directory path and a list of Go files within that directory.
-- Parses the first available Go file from the list to read its `package` declaration.
-- Returns the declared package name.
-- Requires imports: `go/parser` and `go/token`.
-
-`GoModLocator.Locate` now calls `getPackageNameFromFiles` in the following scenarios to ensure the `PackageMetaInfo.Name` field is accurate:
-- When resolving relative paths (e.g., `./pkg`, `../anotherpkg`).
-- When the import path refers to the root of the current module.
-- When the import path refers to the root of an external dependency module.
-
-This change ensures more accurate package metadata collection, which is crucial for dependent tools and analysis.
-
-## Clarifying Existing Library Usage
-
-- **Issue Context**: A request was made to use `golang.org/x/mod/modfile` for parsing `go.mod` files in `internal/loader`.
-- **Resolution**: Investigation revealed that `internal/loader/locator.go` (specifically the `GoModLocator`) already utilized this library for `go.mod` parsing via the `parseGoMod` function.
-- **Action Taken**: A clarifying comment was added to the `parseGoMod` function to make this usage explicit. This helps in confirming adherence to such requirements if the codebase is audited or reviewed for specific library uses.
-- **Learning**: When an issue requests the use of a specific library or technique, first thoroughly verify its current usage. If already implemented, clarification (e.g., via comments or documentation updates) might be the appropriate resolution, rather than assuming a missing implementation. This ensures that the intent of the issue (confirming best practices or specific dependencies) is met.
 
 # Interpreter Design for Enum Resolution
 
