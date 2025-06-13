@@ -305,12 +305,22 @@ func main() {
 
 	{{/* Run the actual command */}}
 	var err error
-	{{if .RunFunc.OptionsArgTypeNameStripped}}
+	{{if .RunFunc.ContextArgName}}
+		{{if .RunFunc.OptionsArgTypeNameStripped}}
+	// Run function expects context and options arguments
+	err = {{.RunFunc.Name}}(context.Background(), {{if .RunFunc.OptionsArgIsPointer}} options {{else}} *options {{end}})
+		{{else}}
+	// Run function expects context argument
+	err = {{.RunFunc.Name}}(context.Background())
+		{{end}}
+	{{else}}
+		{{if .RunFunc.OptionsArgTypeNameStripped}}
 	// Run function expects an options argument
 	err = {{.RunFunc.Name}}( {{if .RunFunc.OptionsArgIsPointer}} options {{else}} *options {{end}} )
-	{{else}}
+		{{else}}
 	// Run function does not expect an options argument
 	err = {{.RunFunc.Name}}()
+		{{end}}
 	{{end}}
 
 	if err != nil {
