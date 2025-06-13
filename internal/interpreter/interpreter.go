@@ -199,10 +199,21 @@ func extractMarkerInfo(
 				}
 			}
 		}
-	case "Enum": // Handles o.MyField = goat.Enum(MyEnumValues) or o.MyField = goat.Enum(pkg.MyEnumValues)
+	case "Enum":
 		log.Printf("Interpreting goat.Enum for field %s (current Pkg: %s)", optMeta.Name, currentPkgPath)
-		if len(callExpr.Args) == 1 {
-			evalResult := astutils.EvaluateSliceArg(callExpr.Args[0])
+		var valuesArg ast.Expr
+		if len(callExpr.Args) == 1 { // goat.Enum(MyEnumValuesVarOrLiteral)
+			valuesArg = callExpr.Args[0]
+		} else if len(callExpr.Args) == 2 { // goat.Enum((*MyType)(nil), MyEnumValuesVarOrLiteral)
+			// The second argument is the slice of enum values
+			valuesArg = callExpr.Args[1]
+		} else {
+			log.Printf("  Warning: goat.Enum for field %s called with unexpected number of arguments: %d. Expected 1 or 2.", optMeta.Name, len(callExpr.Args))
+			return // or break, depending on desired error handling
+		}
+
+		if valuesArg != nil {
+			evalResult := astutils.EvaluateSliceArg(valuesArg)
 			extractEnumValuesFromEvalResult(evalResult, optMeta, fileAst, loader, currentPkgPath, "Enum (direct)")
 		}
 	case "File":
