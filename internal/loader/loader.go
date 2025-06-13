@@ -3,6 +3,7 @@ package loader
 import (
 	"context"
 	"fmt"
+	"go/ast" // Added import
 	"go/token"
 	"os" // New import for os.Getwd()
 	"sync"
@@ -31,12 +32,35 @@ type Config struct {
 	// TODO: Add other configurations like ParseFile func if needed
 }
 
+// SymbolInfo stores information about a resolved symbol, providing easy access
+// to its definition and location.
+type SymbolInfo struct {
+	// PackagePath is the import path of the package where the symbol is defined.
+	PackagePath string
+	// SymbolName is the name of the symbol (e.g., function name, type name).
+	SymbolName string
+	// FilePath is the canonical path to the .go file where the symbol is defined.
+	FilePath string
+	// Node is the AST node representing the symbol's declaration
+	// (e.g., *ast.FuncDecl, *ast.TypeSpec, *ast.ValueSpec).
+	Node ast.Node
+}
+
 // Loader is responsible for loading packages.
 type Loader struct {
 	fset  *token.FileSet
 	cfg   Config
 	mu    sync.Mutex
 	cache map[string]*Package // cache of loaded packages by import path
+
+	// fileASTCache caches ASTs by their canonical file path.
+	// This helps avoid re-parsing files that might be part of multiple packages
+	// or accessed multiple times.
+	fileASTCache map[string]*ast.File
+
+	// symbolCache caches information about resolved symbols.
+	// The key is a full symbol name, e.g., "<package_path>:<symbol_name>".
+	symbolCache map[string]SymbolInfo
 }
 
 // New creates a new Loader with the given configuration.
@@ -58,9 +82,11 @@ func New(cfg Config) *Loader {
 		fset = token.NewFileSet()
 	}
 	return &Loader{
-		fset:  fset,
-		cfg:   cfg,
-		cache: make(map[string]*Package),
+		fset:         fset,
+		cfg:          cfg,
+		cache:        make(map[string]*Package),
+		fileASTCache: make(map[string]*ast.File),  // Initialize new cache
+		symbolCache:  make(map[string]SymbolInfo), // Initialize new cache
 	}
 }
 
@@ -151,4 +177,23 @@ func (l *Loader) resolveImport(ctx context.Context, importerPath string, importP
 	l.mu.Unlock()
 
 	return pkg, nil
+}
+
+// GetAST retrieves a parsed AST from the cache by its canonical file path.
+// It returns the AST and true if found, otherwise nil and false.
+func (l *Loader) GetAST(filePath string) (*ast.File, bool) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	astFile, found := l.fileASTCache[filePath]
+	return astFile, found
+}
+
+// LookupSymbol retrieves symbol information from the cache by its full name
+// (e.g., "<package_path>:<symbol_name>").
+// It returns the SymbolInfo and true if found, otherwise an empty SymbolInfo and false.
+func (l *Loader) LookupSymbol(fullSymbolName string) (SymbolInfo, bool) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	symbolInfo, found := l.symbolCache[fullSymbolName]
+	return symbolInfo, found
 }

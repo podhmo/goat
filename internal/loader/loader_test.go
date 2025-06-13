@@ -548,3 +548,154 @@ func TestGetStructWithEmbeddedForeignStruct(t *testing.T) {
 
 	t.Log("Successfully verified UserStruct with embedded foreign BaseStruct.")
 }
+
+func TestCachingMechanisms(t *testing.T) {
+	cfg := Config{
+		Context: BuildContext{},
+		Locator: testdataLocator,
+	}
+	loader := New(cfg)
+	ctx := context.Background()
+
+	// --- simplepkg ---
+	pkgsSimple1, err := loader.Load(ctx, "example.com/simplepkg")
+	if err != nil {
+		t.Fatalf("Failed to load package 'example.com/simplepkg': %v", err)
+	}
+	if len(pkgsSimple1) != 1 {
+		t.Fatalf("Expected 1 package for simplepkg, got %d", len(pkgsSimple1))
+	}
+	pkgSimple1 := pkgsSimple1[0]
+
+	// Trigger parsing for simplepkg
+	if _, err := pkgSimple1.Files(); err != nil {
+		t.Fatalf("pkgSimple1.Files() failed: %v", err)
+	}
+
+	simpleGoPath := filepath.Join(pkgSimple1.Dir, "simple.go")
+	absSimpleGoPath, err := filepath.Abs(simpleGoPath)
+	if err != nil {
+		t.Fatalf("Failed to get absolute path for simple.go: %v", err)
+	}
+
+	// Check AST Cache for simple.go
+	astFile1, found := loader.GetAST(absSimpleGoPath)
+	if !found {
+		t.Errorf("AST for %s not found in cache after loading simplepkg", absSimpleGoPath)
+	}
+	if astFile1 == nil {
+		t.Fatalf("Cached AST for %s is nil", absSimpleGoPath)
+	}
+	if astFile1.Name.Name != "simplepkg" {
+		t.Errorf("Expected cached AST for simple.go to have package name 'simplepkg', got '%s'", astFile1.Name.Name)
+	}
+
+	// Check Symbol Cache for simplepkg:MyStruct
+	infoMyStruct, found := loader.LookupSymbol("example.com/simplepkg:MyStruct")
+	if !found {
+		t.Errorf("Symbol 'example.com/simplepkg:MyStruct' not found in cache")
+	}
+	if infoMyStruct.SymbolName != "MyStruct" {
+		t.Errorf("Expected symbol name 'MyStruct', got '%s'", infoMyStruct.SymbolName)
+	}
+	if infoMyStruct.PackagePath != "example.com/simplepkg" {
+		t.Errorf("Expected package path 'example.com/simplepkg', got '%s'", infoMyStruct.PackagePath)
+	}
+	if infoMyStruct.FilePath != absSimpleGoPath {
+		t.Errorf("Expected file path '%s', got '%s'", absSimpleGoPath, infoMyStruct.FilePath)
+	}
+	if _, ok := infoMyStruct.Node.(*ast.TypeSpec); !ok {
+		t.Errorf("Expected Node for MyStruct to be *ast.TypeSpec, got %T", infoMyStruct.Node)
+	}
+
+	// Check Symbol Cache for simplepkg:Greet
+	infoGreet, found := loader.LookupSymbol("example.com/simplepkg:Greet")
+	if !found {
+		t.Errorf("Symbol 'example.com/simplepkg:Greet' not found in cache")
+	}
+	if infoGreet.SymbolName != "Greet" {
+		t.Errorf("Expected symbol name 'Greet', got '%s'", infoGreet.SymbolName)
+	}
+	if infoGreet.FilePath != absSimpleGoPath {
+		t.Errorf("Expected file path for Greet to be '%s', got '%s'", absSimpleGoPath, infoGreet.FilePath)
+	}
+	if _, ok := infoGreet.Node.(*ast.FuncDecl); !ok {
+		t.Errorf("Expected Node for Greet to be *ast.FuncDecl, got %T", infoGreet.Node)
+	}
+
+	// Test Package Cache Hit
+	pkgsSimple2, err := loader.Load(ctx, "example.com/simplepkg")
+	if err != nil {
+		t.Fatalf("Failed to load package 'example.com/simplepkg' a second time: %v", err)
+	}
+	if len(pkgsSimple2) != 1 {
+		t.Fatalf("Expected 1 package for second load of simplepkg, got %d", len(pkgsSimple2))
+	}
+	pkgSimple2 := pkgsSimple2[0]
+	if pkgSimple1 != pkgSimple2 {
+		t.Errorf("Expected pkgSimple1 and pkgSimple2 to be the same instance due to package caching")
+	}
+
+	// Trigger parsing for this instance (pkgSimple2) to ensure it uses cached ASTs if possible
+	if _, err := pkgSimple2.Files(); err != nil {
+		t.Fatalf("pkgSimple2.Files() failed: %v", err)
+	}
+
+	// Test AST Cache Hit (direct check)
+	astFile2, found := loader.GetAST(absSimpleGoPath)
+	if !found {
+		t.Errorf("AST for %s not found in cache on second access via GetAST", absSimpleGoPath)
+	}
+	if astFile1 != astFile2 { // Pointer equality
+		t.Errorf("AST cache miss: Expected same AST instance for %s from GetAST, got different instances. astFile1=%p, astFile2=%p", absSimpleGoPath, astFile1, astFile2)
+	}
+
+	// --- anotherpkg ---
+	pkgsAnother1, err := loader.Load(ctx, "example.com/anotherpkg")
+	if err != nil {
+		t.Fatalf("Failed to load package 'example.com/anotherpkg': %v", err)
+	}
+	if len(pkgsAnother1) != 1 {
+		t.Fatalf("Expected 1 package for anotherpkg, got %d", len(pkgsAnother1))
+	}
+	pkgAnother1 := pkgsAnother1[0]
+
+	if _, err := pkgAnother1.Files(); err != nil { // Trigger parsing
+		t.Fatalf("pkgAnother1.Files() failed: %v", err)
+	}
+
+	anotherGoPath := filepath.Join(pkgAnother1.Dir, "another.go")
+	absAnotherGoPath, err := filepath.Abs(anotherGoPath)
+	if err != nil {
+		t.Fatalf("Failed to get absolute path for another.go: %v", err)
+	}
+
+	astAnotherFile1, found := loader.GetAST(absAnotherGoPath)
+	if !found {
+		t.Errorf("AST for %s not found in cache after loading anotherpkg", absAnotherGoPath)
+	}
+	if astAnotherFile1 == nil {
+		t.Fatalf("Cached AST for %s is nil", absAnotherGoPath)
+	}
+	if astAnotherFile1.Name.Name != "anotherpkg" {
+		t.Errorf("Expected cached AST for another.go to have package name 'anotherpkg', got '%s'", astAnotherFile1.Name.Name)
+	}
+
+	// Check Symbol Cache for anotherpkg:AnotherStruct
+	infoAnotherStruct, found := loader.LookupSymbol("example.com/anotherpkg:AnotherStruct")
+	if !found {
+		t.Errorf("Symbol 'example.com/anotherpkg:AnotherStruct' not found in cache")
+	}
+	if infoAnotherStruct.SymbolName != "AnotherStruct" {
+		t.Errorf("Expected symbol name 'AnotherStruct', got '%s'", infoAnotherStruct.SymbolName)
+	}
+	if infoAnotherStruct.PackagePath != "example.com/anotherpkg" {
+		t.Errorf("Expected package path 'example.com/anotherpkg', got '%s'", infoAnotherStruct.PackagePath)
+	}
+	if infoAnotherStruct.FilePath != absAnotherGoPath {
+		t.Errorf("Expected file path '%s', got '%s'", absAnotherGoPath, infoAnotherStruct.FilePath)
+	}
+	if _, ok := infoAnotherStruct.Node.(*ast.TypeSpec); !ok {
+		t.Errorf("Expected Node for AnotherStruct to be *ast.TypeSpec, got %T", infoAnotherStruct.Node)
+	}
+}
