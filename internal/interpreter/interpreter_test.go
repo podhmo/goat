@@ -85,12 +85,29 @@ func NewOpts() *Options {
 // TestInterpretInitializer_EnumNewScenarios tests new enum resolution scenarios,
 // particularly direct composite literals with identifiers and variables resolving to such.
 func TestInterpretInitializer_EnumNewScenarios(t *testing.T) {
-	const testMarkerPkgImportPath = "github.com/podhmo/goat"                  // Using standard goat path for these, assuming test setup aligns or it's not strictly checked by GetImportPath logic here
-	const mainPkgImportPath = "testdata/enumtests_module/src/mainpkg"         // Corrected path
-	const customTypesImportPath = "testdata/enumtests_module/src/customtypes" // Corrected path
+	const testMarkerPkgImportPath = "github.com/podhmo/goat" // Standard goat path
+	// Canonical import paths based on 'testdata/enumtests_module' as module root
+	const mainPkgImportPath = "testdata/enumtests_module/src/mainpkg"
+	const customTypesImportPath = "testdata/enumtests_module/src/customtypes"
+	const externalPkgPath = "testdata/enumtests_module/src/externalpkg" // Used by some enums
 
 	moduleRoot := "./testdata/enumtests_module"
 	ld, fsetForLoader := newTestLoader(t, moduleRoot) // Get fset from loader
+
+	ctx := context.Background() // Define context once
+
+	// Pre-load and parse necessary packages to populate loader caches
+	packagesToPreload := []string{mainPkgImportPath, customTypesImportPath, externalPkgPath}
+	loadedPkgs, errLoad := ld.Load(ctx, packagesToPreload...)
+	if errLoad != nil {
+		t.Fatalf("Failed to pre-load packages: %v", errLoad)
+	}
+	for _, p := range loadedPkgs {
+		if _, errFiles := p.Files(); errFiles != nil { // Trigger parsing and symbol caching
+			t.Fatalf("Failed to pre-parse files for package %s: %v", p.ImportPath, errFiles)
+		}
+		t.Logf("Successfully pre-loaded and parsed package: %s for EnumNewScenarios", p.ImportPath)
+	}
 
 	// Parse the mainpkg.go file which now contains all necessary definitions
 	mainGoFile := moduleRoot + "/src/mainpkg/main.go"
@@ -99,11 +116,7 @@ func TestInterpretInitializer_EnumNewScenarios(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to parse test file %s: %v", mainGoFile, err)
 	}
-	// The loader should also use this fset if it's supposed to load this specific AST.
-	// However, ld is already created. For these tests, ld.Load will parse files itself.
-	// The fileAst passed to InterpretInitializer is the one it directly inspects.
 
-	ctx := context.Background()
 	optionsMeta := []*metadata.OptionMetadata{
 		{Name: "EnumCompositeDirect"},
 		{Name: "EnumCompositeDirectMixed"},
@@ -268,10 +281,25 @@ func TestResolveEvalResultToEnumString(t *testing.T) {
 	ld, _ := newTestLoader(t, moduleRoot) // Get fset from loader, but not used directly here yet
 
 	// Define canonical import paths for test packages
-	// These must match what the loader would determine based on moduleRoot.
-	// For a module 'enumtests_module' with sources in 'src/', these are:
-	const mainPkgImportPath = "testdata/enumtests_module/src/mainpkg"         // Corrected path
-	const customTypesImportPath = "testdata/enumtests_module/src/customtypes" // Corrected path
+	const mainPkgImportPath = "testdata/enumtests_module/src/mainpkg"
+	const customTypesImportPath = "testdata/enumtests_module/src/customtypes"
+	const externalPkgPath = "testdata/enumtests_module/src/externalpkg" // For TestResolveEvalResultToEnumString if it uses it
+
+	// Pre-load packages for TestResolveEvalResultToEnumString
+	ctxForLoad := context.Background()
+	initialPkgsToLoad := []string{mainPkgImportPath, customTypesImportPath, externalPkgPath} // Add any other distinct pkgs used
+
+	pkgsForTest, errLoad := ld.Load(ctxForLoad, initialPkgsToLoad...)
+	if errLoad != nil {
+		t.Fatalf("Pre-loading packages for TestResolveEvalResultToEnumString failed: %v", errLoad)
+	}
+	for _, p := range pkgsForTest {
+		if _, errFiles := p.Files(); errFiles != nil {
+			t.Fatalf("Pre-parsing files for package %s (for TestResolveEvalResultToEnumString) failed: %v", p.ImportPath, errFiles)
+		}
+		t.Logf("Successfully pre-loaded and parsed package: %s for TestResolveEvalResultToEnumString", p.ImportPath)
+	}
+
 
 	// Test cases
 	tests := []struct {
@@ -738,27 +766,9 @@ func TestInterpretInitializer_EnumResolution(t *testing.T) {
 	// The paths used by the loader (e.g., for currentPkgPath and resolving imports)
 	// need to be relative to this module root or be absolute/canonical import paths.
 
-	// The actual import path for the goat markers.
-	// In the test files (mainpkg/main.go), we use "testcmdmodule/internal/goat".
-	// The loader needs to be able to resolve this path to the actual source code
-	// of the goat markers. This might require:
-	// 1. The main project's go.mod has a replace directive for the real goat import path
-	//    to "testcmdmodule/internal/goat" (if "testcmdmodule" is a module itself).
-	// 2. Or, more commonly for testing, "testcmdmodule/internal/goat" is a stand-in
-	//    module path that the loader is configured to recognize, OR the tests run
-	//    in an environment where this path is resolvable (e.g. it's part of the same module
-	//    as the tests, or the main go.mod has a replace like
-	//    `replace github.com/podhmo/goat => ./` and testcmdmodule is an alias for that path).
-	// For this test, we'll assume `testMarkerPkgImportPath` is how goat markers are identified.
-	// The `astutils.GetImportPath` in `extractMarkerInfo` will resolve the alias "testcmdmodule/internal/goat"
-	// from the import statement to this `testMarkerPkgImportPath` if the loader's environment/config allows it.
-	// Let's assume for this test, the marker functions are identified by this path.
 	const testMarkerPkgImportPath = "testcmdmodule/internal/goat" // This must match what's used in mainpkg.go's import
-
-	// currentPkgPath is the import path of the package being processed (mainpkg)
-	// This should be how the Go toolchain (and thus the loader) identifies this package.
-	const mainPkgPath = "testdata/enumtests_module/src/mainpkg"
-	const externalPkgPath = "testdata/enumtests_module/src/externalpkg" // For reference, not directly passed to InterpretInitializer for mainpkg
+	const mainPkgPath = "testdata/enumtests_module/src/mainpkg"            // Corrected canonical path
+	const externalPkgPathForTest = "testdata/enumtests_module/src/externalpkg" // Used in TestInterpretInitializer_EnumResolution
 
 	// Parse the main.go file from our test module
 	mainGoFile := "./testdata/enumtests_module/src/mainpkg/main.go" // Path relative to internal/interpreter package
@@ -769,19 +779,28 @@ func TestInterpretInitializer_EnumResolution(t *testing.T) {
 	}
 
 	// Instantiate Loader
-	// The loader's Dir should be the root of the test module so it can find go.mod
-	// and resolve packages like "testdata/enumtests_module/src/externalpkg".
-	// Adjusting path to be relative from where `go test` is run (presumably project root or package dir)
-	// If tests run from project root: "./internal/interpreter/testdata/enumtests_module"
-	// If tests run from internal/interpreter: "./testdata/enumtests_module"
-	// Let's assume testdata is sibling to the _test.go file.
 	gml := &loader.GoModLocator{}
-	// Set WorkingDir relative to the package directory where `go test` is typically run from for the package.
-	gml.WorkingDir = "./testdata/enumtests_module"
-	ld := loader.New(loader.Config{ // Pass Config by value
+	gml.WorkingDir = "./testdata/enumtests_module" // Module root for GoModLocator
+	ld := loader.New(loader.Config{
 		Locator: gml.Locate,
 		Fset:    fset,
 	})
+
+	// Pre-load and parse necessary packages for TestInterpretInitializer_EnumResolution
+	// to ensure symbols are in the cache.
+	ctx := context.Background()
+	packagesToPreloadForEnumRes := []string{mainPkgPath, externalPkgPathForTest}
+	loadedPkgsForEnumRes, errLoadEnumRes := ld.Load(ctx, packagesToPreloadForEnumRes...)
+	if errLoadEnumRes != nil {
+		t.Fatalf("Failed to pre-load packages for EnumResolution test: %v", errLoadEnumRes)
+	}
+	for _, p := range loadedPkgsForEnumRes {
+		if _, errFiles := p.Files(); errFiles != nil {
+			t.Fatalf("Failed to pre-parse files for package %s (for EnumResolution test): %v", p.ImportPath, errFiles)
+		}
+		t.Logf("Successfully pre-loaded and parsed package: %s for EnumResolution test", p.ImportPath)
+	}
+
 
 	optionsMeta := []*metadata.OptionMetadata{
 		{Name: "FieldSamePkg", TypeName: "string"},
@@ -795,7 +814,7 @@ func TestInterpretInitializer_EnumResolution(t *testing.T) {
 	// Call InterpretInitializer
 	// The currentPkgPath needs to be the canonical import path of mainpkg
 	// as the loader would see it, relative to the loader's configured module root.
-	ctx := context.Background()
+	// ctx was already defined above for ld.Load, err was defined by parser.ParseFile
 	err = InterpretInitializer(ctx, fileAst, "Options", "NewOptions", optionsMeta,
 		testMarkerPkgImportPath, // How goat markers are identified
 		mainPkgPath,             // Canonical path for the package being processed
