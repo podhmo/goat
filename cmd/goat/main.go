@@ -42,17 +42,19 @@ func main() {
 
 	switch os.Args[1] {
 	case "init":
+		ctx := context.Background()
 		initCmd := flag.NewFlagSet("init", flag.ExitOnError)
 		initCmd.Usage = func() {
 			fmt.Fprintf(os.Stderr, "Usage: goat init\n\nGenerates a basic main.go file in the current directory.\n")
 		}
 		initCmd.Parse(os.Args[2:])
-		if err := initMain(); err != nil {
-			slog.ErrorContext(context.Background(), "Error running goat (init)", "error", err)
+		if err := initMain(ctx); err != nil {
+			slog.ErrorContext(ctx, "Error running goat (init)", "error", err)
 			os.Exit(1)
 		}
-		slog.InfoContext(context.Background(), "Goat: init command finished successfully.") // Updated
+		slog.InfoContext(ctx, "Goat: init command finished successfully.") // Updated
 	case "emit":
+		ctx := context.Background()
 		emitCmd := flag.NewFlagSet("emit", flag.ExitOnError)
 		var runFuncName, optionsInitializerName, locatorName string
 		emitCmd.StringVar(&runFuncName, "run", "run", "Name of the function to be treated as the entrypoint")
@@ -74,11 +76,12 @@ func main() {
 			TargetFile:             emitCmd.Arg(0),
 			LocatorName:            locatorName,
 		}
-		if err := runGoat(opts); err != nil {
-			slog.ErrorContext(context.Background(), "Error running goat (emit)", "error", err)
+		if err := runGoat(ctx, opts); err != nil {
+			slog.ErrorContext(ctx, "Error running goat (emit)", "error", err)
 			os.Exit(1)
 		}
 	case "help-message":
+		ctx := context.Background()
 		helpMessageCmd := flag.NewFlagSet("help-message", flag.ExitOnError)
 		var runFuncName, optionsInitializerName, locatorName string
 		helpMessageCmd.StringVar(&runFuncName, "run", "run", "Name of the function to be treated as the entrypoint")
@@ -101,14 +104,15 @@ func main() {
 			LocatorName:            locatorName,
 		}
 		fset := token.NewFileSet()
-		cmdMetadata, _, err := scanMain(fset, opts)
+		cmdMetadata, _, err := scanMain(ctx, fset, opts)
 		if err != nil {
-			slog.ErrorContext(context.Background(), "Error scanning main for help-message", "error", err)
+			slog.ErrorContext(ctx, "Error scanning main for help-message", "error", err)
 			os.Exit(1)
 		}
 		helpMsg := help.GenerateHelp(cmdMetadata)
 		fmt.Print(helpMsg)
 	case "scan":
+		ctx := context.Background()
 		scanCmd := flag.NewFlagSet("scan", flag.ExitOnError)
 		var runFuncName, optionsInitializerName, locatorName string
 		scanCmd.StringVar(&runFuncName, "run", "run", "Name of the function to be treated as the entrypoint")
@@ -131,27 +135,28 @@ func main() {
 			LocatorName:            locatorName,
 		}
 		fset := token.NewFileSet()
-		cmdMetadata, _, err := scanMain(fset, opts)
+		cmdMetadata, _, err := scanMain(ctx, fset, opts)
 		if err != nil {
-			slog.ErrorContext(context.Background(), "Error scanning main for scan", "error", err)
+			slog.ErrorContext(ctx, "Error scanning main for scan", "error", err)
 			os.Exit(1)
 		}
 		jsonData, err := json.MarshalIndent(cmdMetadata, "", "  ")
 		if err != nil {
-			slog.ErrorContext(context.Background(), "Error marshalling metadata to JSON for scan", "error", err)
+			slog.ErrorContext(ctx, "Error marshalling metadata to JSON for scan", "error", err)
 			os.Exit(1)
 		}
 		fmt.Println(string(jsonData))
 	default:
+		// ctx is not created for default case, as it's not used.
 		fmt.Fprintf(os.Stderr, "Error: Unknown subcommand '%s'\n", os.Args[1])
 		fmt.Fprintln(os.Stderr, "Available subcommands: init, emit, help-message, scan")
 		os.Exit(1)
 	}
 }
 
-func runGoat(opts *Options) error {
+func runGoat(ctx context.Context, opts *Options) error {
 	fset := token.NewFileSet()
-	cmdMetadata, fileAST, err := scanMain(fset, opts)
+	cmdMetadata, fileAST, err := scanMain(ctx, fset, opts)
 	if err != nil {
 		return fmt.Errorf("failed to scan main: %w", err)
 	}
@@ -201,8 +206,8 @@ func main() {
 `
 
 // initMain initializes a basic main.go file in the current directory.
-func initMain() error {
-	slog.InfoContext(context.Background(), "Goat: Initializing main.go in current directory.")
+func initMain(ctx context.Context) error {
+	slog.InfoContext(ctx, "Goat: Initializing main.go in current directory.")
 
 	// Create main.go in current directory
 	mainGoPath := "main.go"
@@ -226,19 +231,19 @@ func initMain() error {
 		return fmt.Errorf("failed to execute main.go template: %w", err)
 	}
 
-	slog.InfoContext(context.Background(), "Goat: Created main.go in current directory", "path", mainGoPath)
+	slog.InfoContext(ctx, "Goat: Created main.go in current directory", "path", mainGoPath)
 	fmt.Fprintln(os.Stdout, "Goat: main.go initialized successfully in current directory.")
 	return nil
 }
 
-func scanMain(fset *token.FileSet, opts *Options) (*metadata.CommandMetadata, *ast.File, error) {
+func scanMain(ctx context.Context, fset *token.FileSet, opts *Options) (*metadata.CommandMetadata, *ast.File, error) {
 	absTargetFile, err := filepath.Abs(opts.TargetFile)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to get absolute path for target file %s: %w", opts.TargetFile, err)
 	}
 	opts.TargetFile = absTargetFile
 
-	slog.InfoContext(context.Background(), "Goat: Analyzing file", "targetFile", opts.TargetFile, "runFunc", opts.RunFuncName, "optionsInitializer", opts.OptionsInitializerName)
+	slog.InfoContext(ctx, "Goat: Analyzing file", "targetFile", opts.TargetFile, "runFunc", opts.RunFuncName, "optionsInitializer", opts.OptionsInitializerName)
 
 	targetDir := filepath.Dir(opts.TargetFile)
 
@@ -257,10 +262,10 @@ func scanMain(fset *token.FileSet, opts *Options) (*metadata.CommandMetadata, *a
 	case "gomod":
 		gmLocator := &loader.GoModLocator{}
 		selectedLocator = gmLocator.Locate
-		slog.DebugContext(context.Background(), "Goat: Using GoModLocator for package discovery", "workingDir", targetDir)
+		slog.DebugContext(ctx, "Goat: Using GoModLocator for package discovery", "workingDir", targetDir)
 	default: // "golist" or any other unspecified value
 		selectedLocator = loader.GoListLocator
-		slog.DebugContext(context.Background(), "Goat: Using GoListLocator for package discovery")
+		slog.DebugContext(ctx, "Goat: Using GoListLocator for package discovery")
 	}
 
 	// Create an instance of our custom locator
@@ -270,8 +275,11 @@ func scanMain(fset *token.FileSet, opts *Options) (*metadata.CommandMetadata, *a
 	}
 
 	llCfg := loader.Config{
-		Fset:    fset,
-		Locator: customLocator.Locate,
+		Fset: fset,
+		// Pass ctx to customLocator.Locate
+		Locator: func(pattern string, buildCtx loader.BuildContext) ([]loader.PackageMetaInfo, error) {
+			return customLocator.Locate(ctx, pattern, buildCtx)
+		},
 	}
 	l := loader.New(llCfg) // Loader is still needed for internal/analyzer
 
@@ -280,7 +288,7 @@ func scanMain(fset *token.FileSet, opts *Options) (*metadata.CommandMetadata, *a
 	// This is less ideal as it might still load more than just metadata,
 	// but it's a common way to get the canonical import path.
 	// The alternative would be complex AST walking for package decl and trying to map to dir.
-	slog.DebugContext(context.Background(), "Goat: Loading package info for target directory", "directory", targetDir, "pattern", ".")
+	slog.DebugContext(ctx, "Goat: Loading package info for target directory", "directory", targetDir, "pattern", ".")
 	loadedPkgs, err := l.Load(".") // This uses the customLocator, so it runs 'go list .' in targetDir
 	if err != nil {
 		return nil, targetFileAst, fmt.Errorf("failed to load package info for directory %s (pattern .): %w", targetDir, err)
@@ -290,39 +298,41 @@ func scanMain(fset *token.FileSet, opts *Options) (*metadata.CommandMetadata, *a
 	}
 	currentPkg := loadedPkgs[0] // Assuming the first package is the one we care about
 	targetPackageID := currentPkg.ImportPath
-	slog.DebugContext(context.Background(), "Goat: Determined target package ID", "targetPackageID", targetPackageID, "packageDir", currentPkg.Dir)
+	slog.DebugContext(ctx, "Goat: Determined target package ID", "targetPackageID", targetPackageID, "packageDir", currentPkg.Dir)
 
 	moduleRootPath, err := findModuleRoot(currentPkg.Dir) // currentPkg.Dir comes from loader
 	if err != nil {
-		slog.WarnContext(context.Background(), "Error trying to find module root", "packageDir", currentPkg.Dir, "error", err)
+		slog.WarnContext(ctx, "Error trying to find module root", "packageDir", currentPkg.Dir, "error", err)
 		moduleRootPath = currentPkg.Dir
 	} else if moduleRootPath == "" {
-		slog.WarnContext(context.Background(), "go.mod not found upwards from package directory. Using package directory as module root.", "packageDir", currentPkg.Dir)
+		slog.WarnContext(ctx, "go.mod not found upwards from package directory. Using package directory as module root.", "packageDir", currentPkg.Dir)
 		moduleRootPath = currentPkg.Dir
 	}
-	slog.DebugContext(context.Background(), "Determined module root", "moduleRootPath", moduleRootPath)
+	slog.DebugContext(ctx, "Determined module root", "moduleRootPath", moduleRootPath)
 
 	// The files for analysis is now just the single parsed target file.
 	// However, analyzer.Analyze expects a slice.
 	filesForAnalysis := []*ast.File{targetFileAst}
 
+	// TODO: Pass ctx to analyzer.Analyze
 	cmdMetadata, returnedOptionsStructName, err := analyzer.Analyze(fset, filesForAnalysis, opts.RunFuncName, opts.OptionsInitializerName, targetPackageID, moduleRootPath, l)
 	if err != nil {
 		return nil, targetFileAst, fmt.Errorf("failed to analyze AST (targetPkgID: %s, modRoot: %s): %w", targetPackageID, moduleRootPath, err)
 	}
-	slog.InfoContext(context.Background(), "Goat: Command metadata extracted", "commandName", cmdMetadata.Name, "optionsStruct", returnedOptionsStructName)
+	slog.InfoContext(ctx, "Goat: Command metadata extracted", "commandName", cmdMetadata.Name, "optionsStruct", returnedOptionsStructName)
 
 	const goatMarkersImportPath = "github.com/podhmo/goat"
 	if opts.OptionsInitializerName != "" && returnedOptionsStructName != "" {
 		// targetFileAst is already available and is the correct AST to interpret the initializer from.
 		// Pass targetPackageID as currentPkgPath and the loader instance 'l'.
+		// TODO: Pass ctx to interpreter.InterpretInitializer
 		err = interpreter.InterpretInitializer(targetFileAst, returnedOptionsStructName, opts.OptionsInitializerName, cmdMetadata.Options, goatMarkersImportPath, targetPackageID, l)
 		if err != nil {
 			return nil, targetFileAst, fmt.Errorf("failed to interpret options initializer %s: %w", opts.OptionsInitializerName, err)
 		}
-		slog.InfoContext(context.Background(), "Goat: Options initializer interpreted successfully.")
+		slog.InfoContext(ctx, "Goat: Options initializer interpreted successfully.")
 	} else {
-		slog.InfoContext(context.Background(), "Goat: Skipping options initializer interpretation", "initializerName", opts.OptionsInitializerName, "optionsStructName", returnedOptionsStructName)
+		slog.InfoContext(ctx, "Goat: Skipping options initializer interpretation", "initializerName", opts.OptionsInitializerName, "optionsStructName", returnedOptionsStructName)
 	}
 	return cmdMetadata, targetFileAst, nil
 }
@@ -355,7 +365,7 @@ type execDirectoryLocator struct {
 
 // Locate matches the loader.PackageLocator function signature.
 // It executes the wrapped locator from BaseDir.
-func (l *execDirectoryLocator) Locate(pattern string, buildCtx loader.BuildContext) ([]loader.PackageMetaInfo, error) {
+func (l *execDirectoryLocator) Locate(ctx context.Context, pattern string, buildCtx loader.BuildContext) ([]loader.PackageMetaInfo, error) {
 	if l.WrappedLocator == nil {
 		return nil, fmt.Errorf("ExecDirectoryLocator: WrappedLocator is nil")
 	}
@@ -369,12 +379,12 @@ func (l *execDirectoryLocator) Locate(pattern string, buildCtx loader.BuildConte
 		if err := os.Chdir(l.BaseDir); err != nil {
 			return nil, fmt.Errorf("ExecDirectoryLocator: failed to change directory to %s: %w", l.BaseDir, err)
 		}
-		slog.DebugContext(context.Background(), "ExecDirectoryLocator: Changed working directory", "to", l.BaseDir)
+		slog.DebugContext(ctx, "ExecDirectoryLocator: Changed working directory", "to", l.BaseDir)
 		defer func() {
 			if err := os.Chdir(originalWD); err != nil {
-				slog.ErrorContext(context.Background(), "ExecDirectoryLocator: failed to restore original working directory", "originalWD", originalWD, "error", err)
+				slog.ErrorContext(ctx, "ExecDirectoryLocator: failed to restore original working directory", "originalWD", originalWD, "error", err)
 			} else {
-				slog.DebugContext(context.Background(), "ExecDirectoryLocator: Restored working directory", "to", originalWD)
+				slog.DebugContext(ctx, "ExecDirectoryLocator: Restored working directory", "to", originalWD)
 			}
 		}()
 	}

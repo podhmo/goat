@@ -20,7 +20,7 @@ import (
 // - moduleRootPath: Absolute path to the root of the module this package belongs to.
 // - loader: Loader for lazy loading of package information.
 // - initializerFuncNameOption: User-specified name for the options initializer function.
-func Analyze(fset *token.FileSet, files []*ast.File, runFuncName string, initializerFuncNameOption string, targetPackageID string, moduleRootPath string, loader *loader.Loader) (*metadata.CommandMetadata, string, error) {
+func Analyze(ctx context.Context, fset *token.FileSet, files []*ast.File, runFuncName string, initializerFuncNameOption string, targetPackageID string, moduleRootPath string, loader *loader.Loader) (*metadata.CommandMetadata, string, error) {
 	cmdMeta := &metadata.CommandMetadata{
 		Options: []*metadata.OptionMetadata{},
 	}
@@ -62,16 +62,16 @@ func Analyze(fset *token.FileSet, files []*ast.File, runFuncName string, initial
 		var initializerFuncName string
 		if initializerFuncNameOption != "" {
 			initializerFuncName = initializerFuncNameOption
-			slog.DebugContext(context.Background(), "Goat: Looking for user-specified options initializer function", "specifiedName", initializerFuncName)
+			slog.DebugContext(ctx, "Goat: Looking for user-specified options initializer function", "specifiedName", initializerFuncName)
 		} else {
 			initializerFuncName = "New" + runFuncInfo.OptionsArgTypeNameStripped
-			slog.DebugContext(context.Background(), "Goat: Looking for conventional options initializer function", "expectedName", initializerFuncName)
+			slog.DebugContext(ctx, "Goat: Looking for conventional options initializer function", "expectedName", initializerFuncName)
 		}
 		initializerFuncFoundInAst := false // Flag to track if we found any function with the name
 
 		for _, file := range files {
 			if file.Name.Name != "main" { // Check if the file belongs to package "main"
-				slog.DebugContext(context.Background(), "Goat: Skipping file as it does not belong to package main for initializer search", "fileName", fset.File(file.Pos()).Name(), "packageName", file.Name.Name)
+				slog.DebugContext(ctx, "Goat: Skipping file as it does not belong to package main for initializer search", "fileName", fset.File(file.Pos()).Name(), "packageName", file.Name.Name)
 				continue // Skip files not in package "main"
 			}
 
@@ -87,10 +87,10 @@ func Analyze(fset *token.FileSet, files []*ast.File, runFuncName string, initial
 					if fn.Type.Params == nil || len(fn.Type.Params.List) == 0 {
 						runFuncInfo.InitializerFunc = initializerFuncName
 						// Log with the actual package name from the AST file node, which we've confirmed is "main"
-						slog.InfoContext(context.Background(), "Goat: Found and using conventional initializer function", "name", initializerFuncName, "package", file.Name.Name)
+						slog.InfoContext(ctx, "Goat: Found and using conventional initializer function", "name", initializerFuncName, "package", file.Name.Name)
 						// No need to 'break' inner loop here, outer loop will break due to InitializerFunc being set.
 					} else {
-						slog.WarnContext(context.Background(), "Goat: Conventional initializer function found in package main but has unexpected parameters; it will be ignored.",
+						slog.WarnContext(ctx, "Goat: Conventional initializer function found in package main but has unexpected parameters; it will be ignored.",
 							"functionName", initializerFuncName,
 							"paramCount", len(fn.Type.Params.List),
 							"package", file.Name.Name) // Log with actual package name "main"
@@ -103,9 +103,9 @@ func Analyze(fset *token.FileSet, files []*ast.File, runFuncName string, initial
 
 		if runFuncInfo.InitializerFunc == "" && !initializerFuncFoundInAst {
 			if initializerFuncNameOption != "" {
-				slog.InfoContext(context.Background(), "Goat: User-specified initializer function not found", "specifiedName", initializerFuncNameOption)
+				slog.InfoContext(ctx, "Goat: User-specified initializer function not found", "specifiedName", initializerFuncNameOption)
 			} else {
-				slog.InfoContext(context.Background(), "Goat: No conventional initializer function found with the expected name in package main", "expectedName", initializerFuncName)
+				slog.InfoContext(ctx, "Goat: No conventional initializer function found with the expected name in package main", "expectedName", initializerFuncName)
 			}
 		} else if runFuncInfo.InitializerFunc == "" && initializerFuncFoundInAst {
 			// This case means a function was found by name in a "main" package file, but it had the wrong signature (and a warning was logged).
@@ -113,9 +113,9 @@ func Analyze(fset *token.FileSet, files []*ast.File, runFuncName string, initial
 			// The logging for this specific case (found but wrong signature) is handled where the signature check occurs.
 			// We can add a debug log here if needed, but the existing warning for wrong signature should be prominent.
 			if initializerFuncNameOption != "" {
-				slog.DebugContext(context.Background(), "Goat: A function matching user-specified initializer name was found in package main but ignored due to signature.", "specifiedName", initializerFuncNameOption)
+				slog.DebugContext(ctx, "Goat: A function matching user-specified initializer name was found in package main but ignored due to signature.", "specifiedName", initializerFuncNameOption)
 			} else {
-				slog.DebugContext(context.Background(), "Goat: A function matching conventional initializer name was found in package main but ignored due to signature.", "expectedName", initializerFuncName)
+				slog.DebugContext(ctx, "Goat: A function matching conventional initializer name was found in package main but ignored due to signature.", "expectedName", initializerFuncName)
 			}
 		}
 	}
@@ -125,11 +125,11 @@ func Analyze(fset *token.FileSet, files []*ast.File, runFuncName string, initial
 		var foundOptionsStructName string
 		// err is already declared in the function scope from AnalyzeRunFunc, reuse it.
 
-		slog.DebugContext(context.Background(), "Goat: Analyzing options", "targetPackageID", targetPackageID, "moduleRootPath", moduleRootPath)
+		slog.DebugContext(ctx, "Goat: Analyzing options", "targetPackageID", targetPackageID, "moduleRootPath", moduleRootPath)
 		// AnalyzeOptions uses the loader package for dynamic parsing and type analysis.
 		// It no longer requires a map of pre-parsed AST files.
 		// The loader instance (which is assumed to be *loader.Config) is passed directly.
-		options, foundOptionsStructName, err = AnalyzeOptions(fset, runFuncInfo.OptionsArgType, targetPackageID, moduleRootPath, loader) // loader is *loader.Config
+		options, foundOptionsStructName, err = AnalyzeOptions(ctx, fset, runFuncInfo.OptionsArgType, targetPackageID, moduleRootPath, loader) // loader is *loader.Config
 
 		if err != nil {
 			return nil, "", fmt.Errorf("analyzing options struct for run function '%s' in package '%s': %w", runFuncName, targetPackageID, err)
@@ -153,9 +153,9 @@ func Analyze(fset *token.FileSet, files []*ast.File, runFuncName string, initial
 			if funcDecl, ok := funcOb.Decl.(*ast.FuncDecl); ok {
 				pos := fset.Position(funcDecl.Pos())
 				cmdMeta.MainFuncPosition = &pos
-				slog.InfoContext(context.Background(), "Goat: Found main function", "name", emitTargetFuncName, "position", cmdMeta.MainFuncPosition)
+				slog.InfoContext(ctx, "Goat: Found main function", "name", emitTargetFuncName, "position", cmdMeta.MainFuncPosition)
 			} else {
-				slog.WarnContext(context.Background(), "Goat: Found main function but it is not a FuncDecl", "name", emitTargetFuncName, "type", fmt.Sprintf("%T", funcOb.Decl))
+				slog.WarnContext(ctx, "Goat: Found main function but it is not a FuncDecl", "name", emitTargetFuncName, "type", fmt.Sprintf("%T", funcOb.Decl))
 			}
 			break
 		}

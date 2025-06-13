@@ -71,6 +71,7 @@ func init() {
 //   - baseDir: The base directory from which to resolve targetPackagePath (often module root).
 //   - loader: Instance of loader.Loader.
 func AnalyzeOptions( // Renamed from AnalyzeOptionsV3
+	ctx context.Context,
 	fset *token.FileSet, // Still needed for some astutils
 	optionsTypeName string,
 	targetPackagePath string,
@@ -191,11 +192,11 @@ func AnalyzeOptions( // Renamed from AnalyzeOptionsV3
 					return nil, actualStructName, fmt.Errorf("resolved imported package is nil for path '%s'", resolvedExternalImportPath)
 				}
 				// Pass loader directly
-				embeddedOptions, _, embErr = AnalyzeOptions(fset, typeNameInExternalPkg, resolvedExternalPkg.ImportPath, resolvedExternalPkg.Dir, loader)
+				embeddedOptions, _, embErr = AnalyzeOptions(ctx, fset, typeNameInExternalPkg, resolvedExternalPkg.ImportPath, resolvedExternalPkg.Dir, loader)
 			} else { // Embedded struct from the same package
 				cleanEmbeddedTypeName := strings.TrimPrefix(embeddedTypeName, "*")
 				// Pass loader directly
-				embeddedOptions, _, embErr = AnalyzeOptions(fset, cleanEmbeddedTypeName, targetPackagePath, baseDir, loader)
+				embeddedOptions, _, embErr = AnalyzeOptions(ctx, fset, cleanEmbeddedTypeName, targetPackagePath, baseDir, loader)
 			}
 
 			if embErr != nil {

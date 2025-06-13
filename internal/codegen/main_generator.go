@@ -12,6 +12,7 @@ import (
 
 const mainFuncTmpl = `
 func main() {
+	ctx := context.Background()
 	isFlagExplicitlySet := make(map[string]bool)
 
 	{{if .HelpText}}
@@ -65,12 +66,12 @@ func main() {
 			}
 			err := options.{{.Name}}.UnmarshalText([]byte(val))
 			if err != nil {
-				slog.WarnContext(context.Background(), "Could not parse environment variable for TextUnmarshaler option; using default or previously set value.", "envVar", "{{.EnvVar}}", "option", "{{.CliName}}", "value", val, "error", err)
+				slog.WarnContext(ctx, "Could not parse environment variable for TextUnmarshaler option; using default or previously set value.", "envVar", "{{.EnvVar}}", "option", "{{.CliName}}", "value", val, "error", err)
 			}
 			{{else}}
 			err := (&options.{{.Name}}).UnmarshalText([]byte(val))
 			if err != nil {
-				slog.WarnContext(context.Background(), "Could not parse environment variable for TextUnmarshaler option; using default or previously set value.", "envVar", "{{.EnvVar}}", "option", "{{.CliName}}", "value", val, "error", err)
+				slog.WarnContext(ctx, "Could not parse environment variable for TextUnmarshaler option; using default or previously set value.", "envVar", "{{.EnvVar}}", "option", "{{.CliName}}", "value", val, "error", err)
 			}
 			{{end}}
 	{{else if and .IsPointer (eq .UnderlyingKind "string")}}
@@ -86,13 +87,13 @@ func main() {
 		if v, err := strconv.Atoi(val); err == nil {
 			options.{{.Name}} = v
 		} else {
-			slog.WarnContext(context.Background(), "Could not parse environment variable as int for option", "envVar", "{{.EnvVar}}", "option", "{{.Name}}", "value", val, "error", err)
+			slog.WarnContext(ctx, "Could not parse environment variable as int for option", "envVar", "{{.EnvVar}}", "option", "{{.Name}}", "value", val, "error", err)
 		}
 		{{else if eq .TypeName "bool"}}
 		if v, err := strconv.ParseBool(val); err == nil {
 			options.{{.Name}} = v
 		} else {
-			slog.WarnContext(context.Background(), "Could not parse environment variable as bool for option", "envVar", "{{.EnvVar}}", "option", "{{.Name}}", "value", val, "error", err)
+			slog.WarnContext(ctx, "Could not parse environment variable as bool for option", "envVar", "{{.EnvVar}}", "option", "{{.Name}}", "value", val, "error", err)
 		}
 		{{else if eq .TypeName "*string"}}
 		if options.{{.Name}} == nil { options.{{.Name}} = new(string) }
@@ -102,14 +103,14 @@ func main() {
 		if v, err := strconv.Atoi(val); err == nil {
 			*options.{{.Name}} = v
 		} else {
-			slog.WarnContext(context.Background(), "Could not parse environment variable as *int for option", "envVar", "{{.EnvVar}}", "option", "{{.Name}}", "value", val, "error", err)
+			slog.WarnContext(ctx, "Could not parse environment variable as *int for option", "envVar", "{{.EnvVar}}", "option", "{{.Name}}", "value", val, "error", err)
 		}
 		{{else if eq .TypeName "*bool"}}
 		if options.{{.Name}} == nil { options.{{.Name}} = new(bool) }
 		if v, err := strconv.ParseBool(val); err == nil {
 			*options.{{.Name}} = v
 		} else {
-			slog.WarnContext(context.Background(), "Could not parse environment variable as *bool for option", "envVar", "{{.EnvVar}}", "option", "{{.Name}}", "value", val, "error", err)
+			slog.WarnContext(ctx, "Could not parse environment variable as *bool for option", "envVar", "{{.EnvVar}}", "option", "{{.Name}}", "value", val, "error", err)
 		}
 		{{else if eq .TypeName "[]string"}}
 		options.{{.Name}} = strings.Split(val, ",")
@@ -193,7 +194,7 @@ func main() {
 	if _, ok := os.LookupEnv("{{$opt.EnvVar}}"); ok { env{{$opt.Name}}WasSet = true }
 	{{end}}
 	if options.{{$opt.Name}} == initialDefault{{$opt.Name}} && !isFlagExplicitlySet["{{KebabCase $opt.Name}}"] && !env{{$opt.Name}}WasSet {
-		slog.ErrorContext(context.Background(), "Missing required flag or environment variable not set", errors.New("Missing required flag or environment variable not set"), "flag", "{{KebabCase $opt.Name}}"{{if $opt.EnvVar}}, "envVar", "{{$opt.EnvVar}}"{{end}}, "option", "{{$opt.Name}}")
+		slog.ErrorContext(ctx, "Missing required flag or environment variable not set", errors.New("Missing required flag or environment variable not set"), "flag", "{{KebabCase $opt.Name}}"{{if $opt.EnvVar}}, "envVar", "{{$opt.EnvVar}}"{{end}}, "option", "{{$opt.Name}}")
 		os.Exit(1)
 	}
 	{{else if eq $opt.TypeName "int"}}
@@ -203,7 +204,7 @@ func main() {
 	if _, ok := os.LookupEnv("{{$opt.EnvVar}}"); ok { env{{$opt.Name}}WasSet = true }
 	{{end}}
 	if options.{{$opt.Name}} == initialDefault{{$opt.Name}} && !isFlagExplicitlySet["{{KebabCase $opt.Name}}"] && !env{{$opt.Name}}WasSet {
-		slog.ErrorContext(context.Background(), "Missing required flag or environment variable not set", errors.New("Missing required flag or environment variable not set"), "flag", "{{KebabCase $opt.Name}}"{{if $opt.EnvVar}}, "envVar", "{{$opt.EnvVar}}"{{end}}, "option", "{{$opt.Name}}")
+		slog.ErrorContext(ctx, "Missing required flag or environment variable not set", errors.New("Missing required flag or environment variable not set"), "flag", "{{KebabCase $opt.Name}}"{{if $opt.EnvVar}}, "envVar", "{{$opt.EnvVar}}"{{end}}, "option", "{{$opt.Name}}")
 		os.Exit(1)
 	}
 	{{else if eq $opt.TypeName "*string"}}
@@ -215,12 +216,12 @@ func main() {
 		{{if $opt.DefaultValue}}
 		{{else}}
 		if options.{{$opt.Name}} == nil || *options.{{$opt.Name}} == "" {
-			slog.ErrorContext(context.Background(), "Missing required flag or environment variable, and no default provided", errors.New("Missing required flag or environment variable, and no default provided"), "flag", "{{KebabCase $opt.Name}}"{{if $opt.EnvVar}}, "envVar", "{{$opt.EnvVar}}"{{end}}, "option", "{{$opt.Name}}")
+			slog.ErrorContext(ctx, "Missing required flag or environment variable, and no default provided", errors.New("Missing required flag or environment variable, and no default provided"), "flag", "{{KebabCase $opt.Name}}"{{if $opt.EnvVar}}, "envVar", "{{$opt.EnvVar}}"{{end}}, "option", "{{$opt.Name}}")
 			os.Exit(1)
 		}
 		{{end}}
 	} else if options.{{$opt.Name}} == nil || *options.{{$opt.Name}} == "" {
-		slog.ErrorContext(context.Background(), "Required flag was set to an empty value", errors.New("Required flag was set to an empty value"), "flag", "{{KebabCase $opt.Name}}"{{if $opt.EnvVar}}, "envVar", "{{$opt.EnvVar}}"{{end}}, "option", "{{$opt.Name}}")
+		slog.ErrorContext(ctx, "Required flag was set to an empty value", errors.New("Required flag was set to an empty value"), "flag", "{{KebabCase $opt.Name}}"{{if $opt.EnvVar}}, "envVar", "{{$opt.EnvVar}}"{{end}}, "option", "{{$opt.Name}}")
 		os.Exit(1)
 	}
 	{{else if eq $opt.TypeName "*int"}}
@@ -232,12 +233,12 @@ func main() {
 		{{if $opt.DefaultValue}}
 		{{else}}
 		if options.{{$opt.Name}} == nil {
-			slog.ErrorContext(context.Background(), "Missing required flag or environment variable, and no default provided", errors.New("Missing required flag or environment variable, and no default provided"), "flag", "{{KebabCase $opt.Name}}"{{if $opt.EnvVar}}, "envVar", "{{$opt.EnvVar}}"{{end}}, "option", "{{$opt.Name}}")
+			slog.ErrorContext(ctx, "Missing required flag or environment variable, and no default provided", errors.New("Missing required flag or environment variable, and no default provided"), "flag", "{{KebabCase $opt.Name}}"{{if $opt.EnvVar}}, "envVar", "{{$opt.EnvVar}}"{{end}}, "option", "{{$opt.Name}}")
 			os.Exit(1)
 		}
 		{{end}}
 	} else if options.{{$opt.Name}} == nil {
-		slog.ErrorContext(context.Background(), "Required flag was not provided or set to nil", errors.New("Required flag was not provided or set to nil"), "flag", "{{KebabCase $opt.Name}}"{{if $opt.EnvVar}}, "envVar", "{{$opt.EnvVar}}"{{end}}, "option", "{{$opt.Name}}")
+		slog.ErrorContext(ctx, "Required flag was not provided or set to nil", errors.New("Required flag was not provided or set to nil"), "flag", "{{KebabCase $opt.Name}}"{{if $opt.EnvVar}}, "envVar", "{{$opt.EnvVar}}"{{end}}, "option", "{{$opt.Name}}")
 		os.Exit(1)
 	}
 	{{end}}
@@ -253,7 +254,7 @@ func main() {
 			isValidChoice_{{$opt.Name}} = slices.Contains(allowedChoices_{{$opt.Name}}, currentValue_{{$opt.Name}}Str)
 		} else {
 			{{if $opt.IsRequired}}
-			slog.ErrorContext(context.Background(), "Required enum flag is nil", errors.New("Required enum flag is nil"), "flag", "{{ KebabCase $opt.Name }}", "option", "{{$opt.Name}}")
+			slog.ErrorContext(ctx, "Required enum flag is nil", errors.New("Required enum flag is nil"), "flag", "{{ KebabCase $opt.Name }}", "option", "{{$opt.Name}}")
 			os.Exit(1)
 			{{else}}
 			isValidChoice_{{$opt.Name}} = true
@@ -265,7 +266,7 @@ func main() {
 		isValidChoice_{{$opt.Name}} = slices.Contains(allowedChoices_{{$opt.Name}}, currentValue_{{$opt.Name}}Str)
 	} else { // Field is nil
 		{{if $opt.IsRequired}}
-		slog.ErrorContext(context.Background(), "Required enum flag is nil", errors.New("Required enum flag is nil"), "flag", "{{ KebabCase $opt.Name }}", "option", "{{$opt.Name}}")
+		slog.ErrorContext(ctx, "Required enum flag is nil", errors.New("Required enum flag is nil"), "flag", "{{ KebabCase $opt.Name }}", "option", "{{$opt.Name}}")
 		os.Exit(1)
 		{{else}}
 		// For optional pointer enums, nil is a valid state (means not provided).
@@ -291,7 +292,7 @@ func main() {
 		}
 		// If nil, currentValueForMsg remains options.{{$opt.Name}} (which will print as <nil>)
 		{{end}}
-		slog.ErrorContext(context.Background(), "Invalid value for flag", errors.New("Invalid value for flag"), "flag", "{{ KebabCase $opt.Name }}", "value", currentValueForMsg, "allowedChoices", strings.Join(allowedChoices_{{$opt.Name}}, ", "))
+		slog.ErrorContext(ctx, "Invalid value for flag", errors.New("Invalid value for flag"), "flag", "{{ KebabCase $opt.Name }}", "value", currentValueForMsg, "allowedChoices", strings.Join(allowedChoices_{{$opt.Name}}, ", "))
 		os.Exit(1)
 	}
 	{{end}}{{end}}
@@ -308,10 +309,10 @@ func main() {
 	{{if .RunFunc.ContextArgName}}
 		{{if .RunFunc.OptionsArgTypeNameStripped}}
 	// Run function expects context and options arguments
-	err = {{.RunFunc.Name}}(context.Background(), {{if .RunFunc.OptionsArgIsPointer}} options {{else}} *options {{end}})
+	err = {{.RunFunc.Name}}(ctx, {{if .RunFunc.OptionsArgIsPointer}} options {{else}} *options {{end}})
 		{{else}}
 	// Run function expects context argument
-	err = {{.RunFunc.Name}}(context.Background())
+	err = {{.RunFunc.Name}}(ctx)
 		{{end}}
 	{{else}}
 		{{if .RunFunc.OptionsArgTypeNameStripped}}
@@ -324,7 +325,7 @@ func main() {
 	{{end}}
 
 	if err != nil {
-		slog.ErrorContext(context.Background(), "Runtime error", "error", err)
+		slog.ErrorContext(ctx, "Runtime error", "error", err)
 		os.Exit(1)
 	}
 }
