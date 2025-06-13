@@ -30,3 +30,17 @@ During the development and testing of `internal/loader/locator.go` and its assoc
 - **Outcome of Attempts**: These attempts were unsuccessful. The tests continued to fail with errors like `GoModLocator: package "." not found` when "gomod" was the default, even with `go mod tidy` being executed.
 - **Final Decision**: Due to the inability to resolve these test failures within a reasonable scope, the default locator in `cmd/goat/main.go` has been kept as "golist" to ensure test suite stability. The help message for the `-locator` flag still suggests `(gomod or golist)`.
 - **Status**: Remains unresolved. Making "gomod" the default locator would require a more in-depth investigation of the test environment, the behavior of Go tooling like `go list` in temporary/ad-hoc module setups, and its interaction with the `GoModLocator` implementation.
+
+## GoModLocator robustness for `.` pattern and working directory
+
+**Problem/Observation**:
+While investigating test failures with `gomod` locator (as originally stated in the issue and this document), potential issues in `internal/loader/locator.go`'s `GoModLocator.Locate` method were identified. These were:
+*   The `workingDir` field of `GoModLocator` might not be reliably initialized in all code paths before being used by `findModuleRoot`, potentially leading to errors if it remained empty.
+*   The relative path detection logic (`if strings.HasPrefix(pattern, "./") || strings.HasPrefix(pattern, "../")`) did not explicitly handle the `pattern == "."` case. If `pattern` was `"."`, it would fall through to other logic that relied on `workingDir` being correctly set for `findModuleRoot(gml.workingDir)`, which could fail if `workingDir` was empty.
+
+**Solution**:
+*   The `GoModLocator.Locate` method was modified to initialize `gml.workingDir` using `os.Getwd()` at the beginning, but only if it wasn't already set (to preserve behavior for tests that might pre-set this field).
+*   The condition for relative path handling was changed to `if pattern == "." || strings.HasPrefix(pattern, "./") || strings.HasPrefix(pattern, "../")` to correctly include the `"."` pattern.
+
+**Status**:
+Resolved. These changes improve the robustness of `GoModLocator`. Tests (including those using `gomod` locator via `-locator gomod` flag) continued to pass after these changes. Although initial `make test` runs in this session showed all tests passing (contrary to some historical accounts in this document for default locator changes), these specific improvements make the locator more reliable.
