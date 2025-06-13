@@ -26,15 +26,3 @@ Thank you for considering contributing to `goat`!
 6.  **Open a Pull Request:** Submit a PR against the main `goat` repository.
 
 ## Known Issues
-
-### `make examples-emit` and `examples/fullset/main.go`
-
-Currently, the `goat emit` command has an internal issue when processing Go files that directly import the `github.com/podhmo/goat` package itself (as `examples/fullset/main.go` does). This results in an error like:
-
-`ERROR ... could not import github.com/podhmo/goat (invalid package name: "")`
-
-This prevents `make examples-emit` (or direct `go generate` on `examples/fullset/main.go`) from successfully regenerating the `main()` function for this specific example.
-
-While the source code of `examples/fullset/main.go` should be kept up-to-date to reflect all features, the generated `main()` function within it might be stale until this underlying issue in the `goat` tool is resolved. Other examples that do not import `github.com/podhmo/goat` (like `examples/hello/main.go`) should process correctly.
-
-Please be aware of this limitation when working with the `fullset` example.
