@@ -25,10 +25,10 @@ func main() {
 	isFlagExplicitlySet := make(map[string]bool)
 
 	flag.Usage = func() {
-		fmt.Fprint(os.Stderr, `github.com/podhmo/goat/examples/hello - run is the actual command logic.
+		fmt.Fprint(os.Stderr, `hello - run is the actual command logic.
 
 Usage:
-  github.com/podhmo/goat/examples/hello [flags]
+  hello [flags]
 
 Flags:
   --version     bool     Print version information

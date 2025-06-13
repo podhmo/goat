@@ -79,11 +79,11 @@ func main() {
 	isFlagExplicitlySet := make(map[string]bool)
 
 	flag.Usage = func() {
-		fmt.Fprint(os.Stderr, `github.com/podhmo/goat/examples/enum - run is the main execution logic for the enum example CLI.
+		fmt.Fprint(os.Stderr, `enum - run is the main execution logic for the enum example CLI.
          It prints the selected enum values.
 
 Usage:
-  github.com/podhmo/goat/examples/enum [flags]
+  enum [flags]
 
 Flags:
   --local-enum-field             mylocalenum LocalEnumField demonstrates a locally defined enum. (required) (env: ENUM_LOCAL_ENUM)

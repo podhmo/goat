@@ -143,12 +143,12 @@ func main() {
 	isFlagExplicitlySet := make(map[string]bool)
 
 	flag.Usage = func() {
-		fmt.Fprint(os.Stderr, `github.com/podhmo/goat/examples/fullset - run is the core logic for this CLI tool.
+		fmt.Fprint(os.Stderr, `fullset - run is the core logic for this CLI tool.
          It receives the parsed and validated options.
          This function`+"`"+`s doc comment is used as the main help text for the command.
 
 Usage:
-  github.com/podhmo/goat/examples/fullset [flags]
+  fullset [flags]
 
 Flags:
   --name                            string   Name of the person to greet. This is a mandatory field. (default: "World") (env: SIMPLE_NAME)

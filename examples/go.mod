@@ -1,6 +1,8 @@
 module github.com/podhmo/goat/examples
 
-go 1.22
+go 1.23.0
+
+toolchain go1.23.10
 
 replace github.com/podhmo/goat => ../
 
