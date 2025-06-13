@@ -1,6 +1,7 @@
 package interpreter
 
 import (
+	"context"
 	"fmt"
 	"go/ast"
 	"go/token"
@@ -55,7 +56,7 @@ func InterpretInitializer(
 	// opts.Field = goat.Default(...)
 	// return opts
 
-	slog.Info(fmt.Sprintf("Interpreting initializer: %s", initializerFuncName))
+	slog.InfoContext(context.Background(), fmt.Sprintf("Interpreting initializer: %s", initializerFuncName))
 
 	ast.Inspect(initializerFunc.Body, func(n ast.Node) bool {
 		switch stmtNode := n.(type) {
@@ -68,7 +69,7 @@ func InterpretInitializer(
 					// Assuming selExpr.X is the options struct variable, selExpr.Sel is the field name
 					fieldName := selExpr.Sel.Name
 					if optMeta, exists := optionsMap[fieldName]; exists {
-						slog.Info(fmt.Sprintf("Found assignment to options field: %s", fieldName))
+						slog.InfoContext(context.Background(), fmt.Sprintf("Found assignment to options field: %s", fieldName))
 						extractMarkerInfo(stmtNode.Rhs[0], optMeta, fileAst, markerPkgImportPath, loader, currentPkgPath)
 					}
 				}
@@ -85,7 +86,7 @@ func InterpretInitializer(
 					// Check if this composite literal is for our Options struct
 					// This requires resolving compLit.Type to optionsStructName, which can be complex.
 					// For a simpler start, assume if it's a struct literal in NewOptions, it's the one.
-					slog.Info(fmt.Sprintf("Found return composite literal in %s", initializerFuncName))
+					slog.InfoContext(context.Background(), fmt.Sprintf("Found return composite literal in %s", initializerFuncName))
 					for _, elt := range compLit.Elts {
 						if kvExpr, ok := elt.(*ast.KeyValueExpr); ok {
 							if keyIdent, ok := kvExpr.Key.(*ast.Ident); ok {
@@ -124,13 +125,13 @@ func extractMarkerInfo(
 			// where MyEnumVariable itself is a slice. This is complex because optMeta.Type
 			// might not be known yet to confirm it's a slice type.
 			// For now, we log and might need a separate mechanism or rely on `goat.Enum(MyEnumVariable)`.
-			slog.Info(fmt.Sprintf("  Field %s is assigned an identifier '%s' (pkg '%s') directly. If this is an enum, use goat.Enum(%s) or ensure type information is available for resolution.", optMeta.Name, evalRes.IdentifierName, evalRes.PkgName, evalRes.IdentifierName))
+			slog.InfoContext(context.Background(), fmt.Sprintf("  Field %s is assigned an identifier '%s' (pkg '%s') directly. If this is an enum, use goat.Enum(%s) or ensure type information is available for resolution.", optMeta.Name, evalRes.IdentifierName, evalRes.PkgName, evalRes.IdentifierName))
 		} else if evalRes.Value != nil {
 			// It's a literal value assigned directly, e.g. `FieldName: "defaultValue"`
 			// This could be a default value.
 			// We need to be careful not to overwrite defaults set by goat.Default() if that's preferred.
 			// For now, let's assume goat.X markers are the primary source of metadata.
-			slog.Info(fmt.Sprintf("  Field %s is assigned a literal value '%v' directly. This might be a default, but typically use goat.Default() for clarity.", optMeta.Name, evalRes.Value))
+			slog.InfoContext(context.Background(), fmt.Sprintf("  Field %s is assigned a literal value '%v' directly. This might be a default, but typically use goat.Default() for clarity.", optMeta.Name, evalRes.Value))
 		}
 		return
 	}
@@ -143,21 +144,21 @@ func extractMarkerInfo(
 		actualMarkerPkgPath == "testcmdmodule/internal/goat") // For cmd/goat tests
 
 	if !isKnownMarkerPackage {
-		slog.Info(fmt.Sprintf("  Call is to package '%s' (alias '%s'), not the recognized marker package(s) ('%s' or 'testcmdmodule/internal/goat')", actualMarkerPkgPath, markerPkgAlias, markerPkgImportPath))
+		slog.InfoContext(context.Background(), fmt.Sprintf("  Call is to package '%s' (alias '%s'), not the recognized marker package(s) ('%s' or 'testcmdmodule/internal/goat')", actualMarkerPkgPath, markerPkgAlias, markerPkgImportPath))
 		return
 	}
 
 	switch markerFuncName {
 	case "Default":
-		slog.Info(fmt.Sprintf("Interpreting goat.Default for field %s (current Pkg: %s)", optMeta.Name, currentPkgPath))
+		slog.InfoContext(context.Background(), fmt.Sprintf("Interpreting goat.Default for field %s (current Pkg: %s)", optMeta.Name, currentPkgPath))
 		if len(callExpr.Args) > 0 {
 			// Default value is the first argument
 			defaultEvalResult := astutils.EvaluateArg(callExpr.Args[0])
 			if defaultEvalResult.IdentifierName == "" { // If it's a literal or directly evaluatable value
 				optMeta.DefaultValue = defaultEvalResult.Value
-				slog.Info(fmt.Sprintf("  Default value: %v", optMeta.DefaultValue))
+				slog.InfoContext(context.Background(), fmt.Sprintf("  Default value: %v", optMeta.DefaultValue))
 			} else { // Default value is an identifier
-				slog.Info(fmt.Sprintf("  Default value for field %s is an identifier '%s' (pkg '%s'). Attempting resolution.", optMeta.Name, defaultEvalResult.IdentifierName, defaultEvalResult.PkgName))
+				slog.InfoContext(context.Background(), fmt.Sprintf("  Default value for field %s is an identifier '%s' (pkg '%s'). Attempting resolution.", optMeta.Name, defaultEvalResult.IdentifierName, defaultEvalResult.PkgName))
 				// defaultEvalResult already contains IdentifierName and PkgName
 				// fileAst is the AST of the file where goat.Default is called
 				// currentPkgPath is the import path of this file
@@ -193,18 +194,18 @@ func extractMarkerInfo(
 					if enumEvalResult.Value != nil {
 						if s, ok := enumEvalResult.Value.([]any); ok {
 							optMeta.EnumValues = s
-							slog.Info(fmt.Sprintf("  Enum values for Default from direct evaluation: %v", optMeta.EnumValues))
+							slog.InfoContext(context.Background(), fmt.Sprintf("  Enum values for Default from direct evaluation: %v", optMeta.EnumValues))
 						} else {
-							slog.Info(fmt.Sprintf("  Enum values for Default for field %s from direct evaluation was not []any, but %T", optMeta.Name, enumEvalResult.Value))
+							slog.InfoContext(context.Background(), fmt.Sprintf("  Enum values for Default for field %s from direct evaluation was not []any, but %T", optMeta.Name, enumEvalResult.Value))
 						}
 					} else if enumEvalResult.IdentifierName != "" {
-						slog.Info(fmt.Sprintf("  Enum constraint for Default for field %s is an identifier '%s' (pkg '%s'). Loader resolution for this case is not yet fully implemented in Default.", optMeta.Name, enumEvalResult.IdentifierName, enumEvalResult.PkgName))
+						slog.InfoContext(context.Background(), fmt.Sprintf("  Enum constraint for Default for field %s is an identifier '%s' (pkg '%s'). Loader resolution for this case is not yet fully implemented in Default.", optMeta.Name, enumEvalResult.IdentifierName, enumEvalResult.PkgName))
 						// Per subtask, log that loader resolution for Default's direct identifier enum is not yet fully implemented.
 						// If we wanted to implement it, we would call:
 						// extractEnumValuesFromEvalResult(enumEvalResult, optMeta, fileAst, loader, currentPkgPath, "Default (direct ident)")
 					} else {
 						// This case handles where enumEvalResult.Value is nil AND enumEvalResult.IdentifierName is empty.
-						slog.Info(fmt.Sprintf("  Enum argument for Default for field %s (type %T) could not be evaluated to a literal slice or a resolvable identifier. EvalResult: %+v", optMeta.Name, enumArg, enumEvalResult))
+						slog.InfoContext(context.Background(), fmt.Sprintf("  Enum argument for Default for field %s (type %T) could not be evaluated to a literal slice or a resolvable identifier. EvalResult: %+v", optMeta.Name, enumArg, enumEvalResult))
 					}
 				}
 			}
@@ -264,9 +265,9 @@ func extractMarkerInfo(
 			fileArgEvalResult := astutils.EvaluateArg(callExpr.Args[0])
 			if fileArgEvalResult.IdentifierName == "" {
 				optMeta.DefaultValue = fileArgEvalResult.Value
-				slog.Info(fmt.Sprintf("  Default path: %v", optMeta.DefaultValue))
+				slog.InfoContext(context.Background(), fmt.Sprintf("  Default path: %v", optMeta.DefaultValue))
 			} else {
-				slog.Info(fmt.Sprintf("  Default path for field %s is an identifier '%s' (pkg '%s'). Resolution of identifiers for file paths is not yet implemented here. DefaultValue will be nil.", optMeta.Name, fileArgEvalResult.IdentifierName, fileArgEvalResult.PkgName))
+				slog.InfoContext(context.Background(), fmt.Sprintf("  Default path for field %s is an identifier '%s' (pkg '%s'). Resolution of identifiers for file paths is not yet implemented here. DefaultValue will be nil.", optMeta.Name, fileArgEvalResult.IdentifierName, fileArgEvalResult.PkgName))
 				optMeta.DefaultValue = nil
 			}
 			optMeta.TypeName = "string" // File paths are strings
@@ -282,12 +283,12 @@ func extractMarkerInfo(
 							switch optionFuncName {
 							case "MustExist":
 								optMeta.FileMustExist = true
-								slog.Info(fmt.Sprintf("  FileOption: MustExist"))
+								slog.InfoContext(context.Background(), fmt.Sprintf("  FileOption: MustExist"))
 							case "GlobPattern":
 								optMeta.FileGlobPattern = true
-								slog.Info(fmt.Sprintf("  FileOption: GlobPattern"))
+								slog.InfoContext(context.Background(), fmt.Sprintf("  FileOption: GlobPattern"))
 							default:
-								slog.Info(fmt.Sprintf("  Unknown FileOption: %s", optionFuncName))
+								slog.InfoContext(context.Background(), fmt.Sprintf("  Unknown FileOption: %s", optionFuncName))
 							}
 						}
 					}

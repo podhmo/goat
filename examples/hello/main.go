@@ -2,7 +2,9 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"log/slog"
@@ -83,7 +85,7 @@ Flags:
 	envConfigFileWasSet := false
 
 	if options.ConfigFile == initialDefaultConfigFile && !isFlagExplicitlySet["config-file"] && !envConfigFileWasSet {
-		slog.Error("Missing required flag or environment variable not set", "flag", "config-file", "option", "ConfigFile")
+		slog.ErrorContext(context.Background(), "Missing required flag or environment variable not set", errors.New("Missing required flag or environment variable not set"), "flag", "config-file", "option", "ConfigFile")
 		os.Exit(1)
 	}
 
@@ -101,7 +103,7 @@ Flags:
 	err = run(*options)
 
 	if err != nil {
-		slog.Error("Runtime error", "error", err)
+		slog.ErrorContext(context.Background(), "Runtime error", "error", err)
 		os.Exit(1)
 	}
 }
