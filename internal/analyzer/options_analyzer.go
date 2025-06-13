@@ -217,6 +217,73 @@ func AnalyzeOptions( // Renamed from AnalyzeOptionsV3
 			IsPointer:  astutils.IsPointerType(fieldInfo.TypeExpr),
 			IsRequired: !astutils.IsPointerType(fieldInfo.TypeExpr),
 		}
+		opt.UnderlyingKind = "" // Initialize
+
+		var typeExprForKindCheck ast.Expr = fieldInfo.TypeExpr
+		// Use opt.IsPointer as it's already determined by astutils.IsPointerType
+		if opt.IsPointer {
+			if starExpr, ok := fieldInfo.TypeExpr.(*ast.StarExpr); ok {
+				typeExprForKindCheck = starExpr.X
+			}
+		}
+
+		var resolvedTypeSpec *ast.TypeSpec
+		var resolveErr error
+
+		switch te := typeExprForKindCheck.(type) {
+		case *ast.Ident: // Type is in the current package
+			typeSpec, _, err := currentPkg.FindTypeSpec(te.Name)
+			if err == nil {
+				resolvedTypeSpec = typeSpec
+			} else {
+				resolveErr = fmt.Errorf("error finding typespec for %s in current pkg: %w", te.Name, err)
+			}
+		case *ast.SelectorExpr: // Type is in an imported package
+			pkgSelectorIdent, okX := te.X.(*ast.Ident)
+			if !okX {
+				resolveErr = fmt.Errorf("unsupported selector expression X: %T for field %s", te.X, fieldInfo.Name)
+				break // Break from switch
+			}
+			// fileContainingOptionsStruct is available from the outer scope in AnalyzeOptions
+			// currentPkg is also available.
+			_, definingPkg, err := currentPkg.GetImportPathBySelector(pkgSelectorIdent.Name, fileContainingOptionsStruct)
+			if err == nil && definingPkg != nil {
+				typeSpec, _, err := definingPkg.FindTypeSpec(te.Sel.Name)
+				if err == nil {
+					resolvedTypeSpec = typeSpec
+				} else {
+					resolveErr = fmt.Errorf("error finding typespec for %s in pkg %s: %w", te.Sel.Name, definingPkg.ImportPath, err)
+				}
+			} else if err != nil {
+				resolveErr = fmt.Errorf("error resolving import for selector %s for field %s: %w", pkgSelectorIdent.Name, fieldInfo.Name, err)
+			} else {
+				resolveErr = fmt.Errorf("definingPkg is nil for selector %s for field %s", pkgSelectorIdent.Name, fieldInfo.Name)
+			}
+		default:
+			// Not a type name we can easily look up (e.g., could be built-in, or complex like []string, map, func)
+			// opt.UnderlyingKind remains ""
+		}
+
+		if resolveErr != nil {
+			// Optional: log this error for debugging if needed, but don't fail the whole analysis.
+			// For example:
+			// fmt.Printf("analyzer: warning: could not fully resolve type for UnderlyingKind check for field %s: %v\n", fieldInfo.Name, resolveErr)
+		}
+
+		if resolvedTypeSpec != nil && resolvedTypeSpec.Type != nil {
+			if ident, ok := resolvedTypeSpec.Type.(*ast.Ident); ok {
+				// ident.Name will be the string representation of the underlying type
+				// e.g., "string", "int", "bool" for basic types.
+				switch ident.Name {
+				case "string", "int", "bool", "float64", "float32", "int64", "int32", "int16", "int8", "uint64", "uint32", "uint16", "uint8", "uintptr", "byte", "rune":
+					opt.UnderlyingKind = ident.Name
+				default:
+					// Not a basic type we're explicitly handling for UnderlyingKind.
+					// opt.UnderlyingKind remains ""
+				}
+			}
+		}
+		// End of UnderlyingKind determination
 
 		isUnmarshaler, errUnmarshaler := fieldInfo.ImplementsInterface("encoding", "TextUnmarshaler")
 		if errUnmarshaler != nil {

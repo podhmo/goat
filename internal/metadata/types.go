@@ -38,6 +38,7 @@ type OptionMetadata struct {
 	EnumValues        []any  // Allowed enum values (from goat.Enum or struct tag)
 	IsTextUnmarshaler bool   // True if the field's type implements encoding.TextUnmarshaler
 	IsTextMarshaler   bool   // True if the field's type implements encoding.TextMarshaler
+	UnderlyingKind    string // Stores the underlying kind if the type is a named basic type (e.g., "string", "int")
 
 	// File-specific options
 	FileMustExist   bool `json:"fileMustExist,omitempty"`
