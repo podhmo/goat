@@ -193,8 +193,9 @@ func TestEvaluateArg(t *testing.T) {
 	}
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
+			ctx := context.Background()
 			expr := parseExpr(t, tc.exprStr)
-			evalResult := EvaluateArg(expr) // Returns EvalResult now
+			evalResult := EvaluateArg(ctx, expr) // Returns EvalResult now
 			if evalResult.IdentifierName != "" {
 				t.Errorf("For expr '%s', expected a direct value, but got identifier '%s' (pkg '%s')",
 					tc.exprStr, evalResult.IdentifierName, evalResult.PkgName)
@@ -221,11 +222,12 @@ func TestEvaluateSliceArg(t *testing.T) {
 	}
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
+			ctx := context.Background()
 			exprNode, err := parser.ParseExpr(tc.exprStr) // Use ParseExpr for slice literals
 			if err != nil {
 				t.Fatalf("Failed to parse expr %s: %v", tc.exprStr, err)
 			}
-			evalResult := EvaluateSliceArg(exprNode) // Returns EvalResult
+			evalResult := EvaluateSliceArg(ctx, exprNode) // Returns EvalResult
 
 			if evalResult.IdentifierName != "" {
 				// This test suite for EvaluateSliceArg expects direct slice evaluations, not identifiers.

@@ -277,7 +277,8 @@ func scanMain(ctx context.Context, fset *token.FileSet, opts *Options) (*metadat
 	llCfg := loader.Config{
 		Fset: fset,
 		// Pass ctx to customLocator.Locate
-		Locator: func(pattern string, buildCtx loader.BuildContext) ([]loader.PackageMetaInfo, error) {
+		Locator: func(localCtx context.Context, pattern string, buildCtx loader.BuildContext) ([]loader.PackageMetaInfo, error) {
+			// Pass the existing `ctx` from scanMain's scope to customLocator.Locate
 			return customLocator.Locate(ctx, pattern, buildCtx)
 		},
 	}
@@ -289,7 +290,7 @@ func scanMain(ctx context.Context, fset *token.FileSet, opts *Options) (*metadat
 	// but it's a common way to get the canonical import path.
 	// The alternative would be complex AST walking for package decl and trying to map to dir.
 	slog.DebugContext(ctx, "Goat: Loading package info for target directory", "directory", targetDir, "pattern", ".")
-	loadedPkgs, err := l.Load(".") // This uses the customLocator, so it runs 'go list .' in targetDir
+	loadedPkgs, err := l.Load(ctx, ".") // This uses the customLocator, so it runs 'go list .' in targetDir
 	if err != nil {
 		return nil, targetFileAst, fmt.Errorf("failed to load package info for directory %s (pattern .): %w", targetDir, err)
 	}

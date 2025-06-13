@@ -107,7 +107,10 @@ func TestGoModLocator_Locate_RelativePaths(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			results, err := locator.Locate(tc.pattern, buildCtx)
+			ctx := context.Background()
+			results, err := locator.Locate(ctx, tc.pattern, buildCtx)
+			ctx := context.Background()
+			results, err := locator.Locate(ctx, tc.pattern, buildCtx)
 
 			if tc.expectErr {
 				if err == nil {
@@ -346,7 +349,8 @@ func TestGoModLocator_Locate_NotFound(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			_, err := locator.Locate(tc.pattern, buildCtx)
+			ctx := context.Background()
+			_, err := locator.Locate(ctx, tc.pattern, buildCtx)
 			if err == nil {
 				t.Errorf("Expected an error for pattern '%s', but got nil", tc.pattern)
 				return
@@ -515,7 +519,10 @@ func TestGoModLocator_Locate_ExternalDependency(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			results, err := locator.Locate(tc.pattern, buildCtx)
+			ctx := context.Background()
+			results, err := locator.Locate(ctx, tc.pattern, buildCtx)
+			ctx := context.Background()
+			results, err := locator.Locate(ctx, tc.pattern, buildCtx)
 
 			if tc.expectErr {
 				if err == nil {

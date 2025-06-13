@@ -121,7 +121,7 @@ func extractMarkerInfo(
 	if !ok {
 		// Value is not a function call, could be a direct literal (TODO: handle direct literals as defaults)
 		// Check if it's an identifier that needs resolution (e.g. o.MyEnum = MyEnumValues)
-		evalRes := astutils.EvaluateArg(valueExpr) // Use EvaluateArg for single values
+		evalRes := astutils.EvaluateArg(ctx, valueExpr) // Use EvaluateArg for single values
 		if evalRes.IdentifierName != "" {
 			// This is an attempt to handle cases like `FieldName: MyEnumVariable`
 			// where MyEnumVariable itself is a slice. This is complex because optMeta.Type
@@ -155,7 +155,7 @@ func extractMarkerInfo(
 		slog.InfoContext(ctx, fmt.Sprintf("Interpreting goat.Default for field %s (current Pkg: %s)", optMeta.Name, currentPkgPath))
 		if len(callExpr.Args) > 0 {
 			// Default value is the first argument
-			defaultEvalResult := astutils.EvaluateArg(callExpr.Args[0])
+			defaultEvalResult := astutils.EvaluateArg(ctx, callExpr.Args[0])
 			if defaultEvalResult.IdentifierName == "" { // If it's a literal or directly evaluatable value
 				optMeta.DefaultValue = defaultEvalResult.Value
 				slog.InfoContext(ctx, fmt.Sprintf("  Default value: %v", optMeta.DefaultValue))
@@ -185,14 +185,14 @@ func extractMarkerInfo(
 
 					if isGoatEnumCall {
 						if len(enumInnerCallExpr.Args) > 0 {
-							evalResult := astutils.EvaluateSliceArg(enumInnerCallExpr.Args[0])
+							evalResult := astutils.EvaluateSliceArg(ctx, enumInnerCallExpr.Args[0])
 							extractEnumValuesFromEvalResult(ctx, evalResult, optMeta, fileAst, loader, currentPkgPath, "Default (via goat.Enum)")
 						}
 					} else {
 						slog.DebugContext(ctx, fmt.Sprintf("Second argument to goat.Default for field %s is a call to %s.%s, not goat.Enum. Ignoring for enum constraints.", optMeta.Name, innerPkgAlias, innerFuncName))
 					}
 				} else { // goat.Default("val", MyEnumVarOrSliceLiteral)
-					enumEvalResult := astutils.EvaluateSliceArg(enumArg)
+					enumEvalResult := astutils.EvaluateSliceArg(ctx, enumArg)
 					if enumEvalResult.Value != nil {
 						if s, ok := enumEvalResult.Value.([]any); ok {
 							optMeta.EnumValues = s
@@ -226,7 +226,7 @@ func extractMarkerInfo(
 		}
 
 		if valuesArg != nil {
-			evalResult := astutils.EvaluateSliceArg(valuesArg)
+			evalResult := astutils.EvaluateSliceArg(ctx, valuesArg)
 
 			// Check if EvaluateSliceArg could not resolve valuesArg into a simple slice
 			// This happens if valuesArg is a composite literal with identifiers, e.g., []customtypes.MyCustomEnum{customtypes.OptionX}
@@ -235,7 +235,7 @@ func extractMarkerInfo(
 					slog.DebugContext(ctx, fmt.Sprintf("Enum for field %s is a composite literal. Attempting to resolve elements.", optMeta.Name))
 					var resolvedEnumStrings []any
 					for _, elt := range compLit.Elts {
-						elementEvalResult := astutils.EvaluateArg(elt) // Evaluate each element
+						elementEvalResult := astutils.EvaluateArg(ctx, elt) // Evaluate each element
 						// fileAst is the AST of the file where goat.Enum is called.
 						// currentPkgPath is the import path of this file.
 						// Pass fileAst as fileAstForContext for resolving package aliases within elt if it's a qualified identifier.
@@ -264,7 +264,7 @@ func extractMarkerInfo(
 	case "File":
 		slog.DebugContext(ctx, fmt.Sprintf("Interpreting goat.File for field %s", optMeta.Name))
 		if len(callExpr.Args) > 0 {
-			fileArgEvalResult := astutils.EvaluateArg(callExpr.Args[0])
+			fileArgEvalResult := astutils.EvaluateArg(ctx, callExpr.Args[0])
 			if fileArgEvalResult.IdentifierName == "" {
 				optMeta.DefaultValue = fileArgEvalResult.Value
 				slog.InfoContext(ctx, fmt.Sprintf("  Default path: %v", optMeta.DefaultValue))

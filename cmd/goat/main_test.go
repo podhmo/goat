@@ -419,8 +419,9 @@ func TestHelpGenerateHelpOutput(t *testing.T) {
 		TargetFile:             tmpFile,
 	}
 
+	ctx := context.Background()
 	fset := token.NewFileSet()
-	cmdMetadata, _, err := scanMain(fset, opts)
+	cmdMetadata, _, err := scanMain(ctx, fset, opts)
 	if err != nil {
 		t.Fatalf("scanMain() error = %v", err)
 	}

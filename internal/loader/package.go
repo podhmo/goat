@@ -103,7 +103,7 @@ func (p *Package) Files() (map[string]*ast.File, error) {
 // ResolveImport resolves an import path declared within this package
 // to its corresponding Package object.
 // The importPath must be the canonical, unquoted import path string.
-func (p *Package) ResolveImport(importPath string) (*Package, error) {
+func (p *Package) ResolveImport(ctx context.Context, importPath string) (*Package, error) {
 	// First, ensure this package's ASTs are parsed to know its declared imports.
 	if err := p.ensureParsed(); err != nil {
 		return nil, fmt.Errorf("cannot resolve import %q from %q: failed to parse source package: %w", importPath, p.ImportPath, err)
@@ -145,7 +145,7 @@ func (p *Package) ResolveImport(importPath string) (*Package, error) {
 	}
 
 	// Ask the loader to resolve it
-	resolvedPkg, err := p.loader.resolveImport(p.ImportPath, importPath)
+	resolvedPkg, err := p.loader.resolveImport(ctx, p.ImportPath, importPath)
 	if err != nil {
 		return nil, err // Error already includes context
 	}
@@ -308,7 +308,7 @@ func (p *Package) GetMethodsForType(typeName string) ([]*ast.FuncDecl, error) {
 // GetImportPathBySelector resolves a package selector (e.g., "json" from json.Marshal)
 // used in a given astFile to its full import path and the resolved *Package.
 // It uses the package's own resolved imports.
-func (p *Package) GetImportPathBySelector(selectorName string, astFile *ast.File) (string, *Package, error) {
+func (p *Package) GetImportPathBySelector(ctx context.Context, selectorName string, astFile *ast.File) (string, *Package, error) {
 	if astFile == nil {
 		return "", nil, fmt.Errorf("astFile cannot be nil for GetImportPathBySelector in package %s", p.ImportPath)
 	}
@@ -316,7 +316,7 @@ func (p *Package) GetImportPathBySelector(selectorName string, astFile *ast.File
 	for _, importSpec := range astFile.Imports {
 		importPath := strings.Trim(importSpec.Path.Value, "\"")
 		// Resolve the import using the package's context to ensure it's loaded/cached.
-		resolvedPkg, err := p.ResolveImport(importPath)
+		resolvedPkg, err := p.ResolveImport(ctx, importPath)
 		if err != nil {
 			// Could log this error or collect, but for now, if one import fails to resolve,
 			// it might not be the one we're looking for anyway.

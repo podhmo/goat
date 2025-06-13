@@ -67,7 +67,7 @@ func (fi *FieldInfo) GetTag(key string) string {
 // targetInterfacePackagePath is the full import path of the package defining the interface.
 // targetInterfaceName is the name of the interface.
 // This is a simplified AST-based check and has limitations (e.g., complex type matching in signatures).
-func (fi *FieldInfo) ImplementsInterface(targetInterfacePackagePath string, targetInterfaceName string) (bool, error) {
+func (fi *FieldInfo) ImplementsInterface(ctx context.Context, targetInterfacePackagePath string, targetInterfaceName string) (bool, error) {
 	if fi.ParentStruct == nil || fi.ParentStruct.pkg == nil {
 		return false, fmt.Errorf("FieldInfo has no ParentStruct or parent package context")
 	}
@@ -113,7 +113,7 @@ func (fi *FieldInfo) ImplementsInterface(targetInterfacePackagePath string, targ
 			return false, fmt.Errorf("could not find defining AST file for struct %s", fi.ParentStruct.Name)
 		}
 
-		_, definingPkg, err := currentPackage.GetImportPathBySelector(pkgSelectorIdent.Name, structDefiningFile)
+		_, definingPkg, err := currentPackage.GetImportPathBySelector(ctx, pkgSelectorIdent.Name, structDefiningFile)
 		if err != nil {
 			return false, fmt.Errorf("failed to resolve package for selector '%s' in field '%s': %w", pkgSelectorIdent.Name, fi.Name, err)
 		}
@@ -147,7 +147,7 @@ func (fi *FieldInfo) ImplementsInterface(targetInterfacePackagePath string, targ
 	} else {
 		// Resolve the interface's package using the loader from the struct's package context.
 		// The loader needs a 'from' path for context, using currentPackage.ImportPath.
-		resolvedInterfacePkg, err := currentPackage.loader.resolveImport(currentPackage.ImportPath, targetInterfacePackagePath)
+		resolvedInterfacePkg, err := currentPackage.loader.resolveImport(ctx, currentPackage.ImportPath, targetInterfacePackagePath)
 		if err != nil {
 			return false, fmt.Errorf("failed to resolve interface package '%s': %w", targetInterfacePackagePath, err)
 		}
