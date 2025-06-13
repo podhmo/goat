@@ -81,3 +81,10 @@ This function:
 - When the import path refers to the root of an external dependency module.
 
 This change ensures more accurate package metadata collection, which is crucial for dependent tools and analysis.
+
+## Clarifying Existing Library Usage
+
+- **Issue Context**: A request was made to use `golang.org/x/mod/modfile` for parsing `go.mod` files in `internal/loader`.
+- **Resolution**: Investigation revealed that `internal/loader/locator.go` (specifically the `GoModLocator`) already utilized this library for `go.mod` parsing via the `parseGoMod` function.
+- **Action Taken**: A clarifying comment was added to the `parseGoMod` function to make this usage explicit. This helps in confirming adherence to such requirements if the codebase is audited or reviewed for specific library uses.
+- **Learning**: When an issue requests the use of a specific library or technique, first thoroughly verify its current usage. If already implemented, clarification (e.g., via comments or documentation updates) might be the appropriate resolution, rather than assuming a missing implementation. This ensures that the intent of the issue (confirming best practices or specific dependencies) is met.

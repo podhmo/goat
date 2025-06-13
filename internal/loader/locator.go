@@ -305,7 +305,7 @@ func (gml *GoModLocator) Locate(pattern string, buildCtx BuildContext) ([]Packag
 	return nil, fmt.Errorf("GoModLocator: package %q not found by any method (relative, in-module, or go.mod dependency)", pattern)
 }
 
-// parseGoMod reads and parses a go.mod file.
+// parseGoMod reads and parses a go.mod file using the golang.org/x/mod/modfile package.
 func (gml *GoModLocator) parseGoMod(modFilePath string) (*modfile.File, error) {
 	data, err := os.ReadFile(modFilePath)
 	if err != nil {
