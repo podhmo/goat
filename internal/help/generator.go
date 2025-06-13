@@ -3,6 +3,7 @@ package help
 import (
 	"fmt"
 	"io"
+	"path/filepath"
 	"strings"
 
 	"github.com/podhmo/goat/internal/metadata"
@@ -20,8 +21,16 @@ func GenerateHelp(cmdMeta *metadata.CommandMetadata) string {
 }
 
 func generateHelp(w io.Writer, cmdMeta *metadata.CommandMetadata) {
-	fmt.Fprintf(w, "%s - %s\n\n", cmdMeta.Name, strings.ReplaceAll(cmdMeta.Description, "\n", "\n         "))
-	fmt.Fprintf(w, "Usage:\n  %s [flags]\n\n", cmdMeta.Name) // Removed CommandArgsPlaceholder and trailing space
+	extractedCmdName := cmdMeta.Name
+	if strings.HasSuffix(cmdMeta.Name, "/main.go") {
+		extractedCmdName = filepath.Dir(cmdMeta.Name)
+	} else {
+		base := filepath.Base(cmdMeta.Name)
+		extractedCmdName = strings.TrimSuffix(base, filepath.Ext(base))
+	}
+
+	fmt.Fprintf(w, "%s - %s\n\n", extractedCmdName, strings.ReplaceAll(cmdMeta.Description, "\n", "\n         "))
+	fmt.Fprintf(w, "Usage:\n  %s [flags]\n\n", extractedCmdName) // Removed CommandArgsPlaceholder and trailing space
 	fmt.Fprintln(w, "Flags:")
 
 	// Find max length of option names for alignment (include -h, --help)

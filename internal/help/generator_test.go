@@ -117,3 +117,91 @@ func TestGenerateHelp_NilMetadata(t *testing.T) {
 		t.Errorf("Expected error message for nil metadata, got: %s", helpMsg)
 	}
 }
+
+func TestGenerateHelp_fooMainGo(t *testing.T) {
+	cmdMeta := &metadata.CommandMetadata{
+		Name:        "foo/main.go",
+		Description: "Test for foo/main.go.",
+	}
+	expectedName := "foo"
+	actualHelp := GenerateHelp(cmdMeta)
+
+	// Normalize line endings
+	actualHelp = strings.ReplaceAll(actualHelp, "\r\n", "\n")
+
+	expectedHeader := expectedName + " - Test for foo/main.go."
+	if !strings.Contains(actualHelp, expectedHeader) {
+		t.Errorf("GenerateHelp() with 'foo/main.go' did not display name correctly in header.\nExpected to contain: %q\nGot:\n%s", expectedHeader, actualHelp)
+	}
+
+	expectedUsage := "Usage:\n  " + expectedName + " [flags]"
+	if !strings.Contains(actualHelp, expectedUsage) {
+		t.Errorf("GenerateHelp() with 'foo/main.go' did not display name correctly in usage.\nExpected to contain: %q\nGot:\n%s", expectedUsage, actualHelp)
+	}
+}
+
+func TestGenerateHelp_fooBarGo(t *testing.T) {
+	cmdMeta := &metadata.CommandMetadata{
+		Name:        "foo/bar.go",
+		Description: "Test for foo/bar.go.",
+	}
+	expectedName := "bar"
+	actualHelp := GenerateHelp(cmdMeta)
+
+	// Normalize line endings
+	actualHelp = strings.ReplaceAll(actualHelp, "\r\n", "\n")
+
+	expectedHeader := expectedName + " - Test for foo/bar.go."
+	if !strings.Contains(actualHelp, expectedHeader) {
+		t.Errorf("GenerateHelp() with 'foo/bar.go' did not display name correctly in header.\nExpected to contain: %q\nGot:\n%s", expectedHeader, actualHelp)
+	}
+
+	expectedUsage := "Usage:\n  " + expectedName + " [flags]"
+	if !strings.Contains(actualHelp, expectedUsage) {
+		t.Errorf("GenerateHelp() with 'foo/bar.go' did not display name correctly in usage.\nExpected to contain: %q\nGot:\n%s", expectedUsage, actualHelp)
+	}
+}
+
+func TestGenerateHelp_bazGo(t *testing.T) {
+	cmdMeta := &metadata.CommandMetadata{
+		Name:        "baz.go",
+		Description: "Test for baz.go.",
+	}
+	expectedName := "baz"
+	actualHelp := GenerateHelp(cmdMeta)
+
+	// Normalize line endings
+	actualHelp = strings.ReplaceAll(actualHelp, "\r\n", "\n")
+
+	expectedHeader := expectedName + " - Test for baz.go."
+	if !strings.Contains(actualHelp, expectedHeader) {
+		t.Errorf("GenerateHelp() with 'baz.go' did not display name correctly in header.\nExpected to contain: %q\nGot:\n%s", expectedHeader, actualHelp)
+	}
+
+	expectedUsage := "Usage:\n  " + expectedName + " [flags]"
+	if !strings.Contains(actualHelp, expectedUsage) {
+		t.Errorf("GenerateHelp() with 'baz.go' did not display name correctly in usage.\nExpected to contain: %q\nGot:\n%s", expectedUsage, actualHelp)
+	}
+}
+
+func TestGenerateHelp_qux(t *testing.T) {
+	cmdMeta := &metadata.CommandMetadata{
+		Name:        "qux",
+		Description: "Test for qux.",
+	}
+	expectedName := "qux"
+	actualHelp := GenerateHelp(cmdMeta)
+
+	// Normalize line endings
+	actualHelp = strings.ReplaceAll(actualHelp, "\r\n", "\n")
+
+	expectedHeader := expectedName + " - Test for qux."
+	if !strings.Contains(actualHelp, expectedHeader) {
+		t.Errorf("GenerateHelp() with 'qux' did not display name correctly in header.\nExpected to contain: %q\nGot:\n%s", expectedHeader, actualHelp)
+	}
+
+	expectedUsage := "Usage:\n  " + expectedName + " [flags]"
+	if !strings.Contains(actualHelp, expectedUsage) {
+		t.Errorf("GenerateHelp() with 'qux' did not display name correctly in usage.\nExpected to contain: %q\nGot:\n%s", expectedUsage, actualHelp)
+	}
+}
