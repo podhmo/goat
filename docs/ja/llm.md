@@ -40,8 +40,8 @@ make test
 - 1. docs/knowledge.mdに知見を記述すること
 - 2. 知見とはこのプロジェクト固有の意思決定のことです
 
-# 禁止事項
+# 制約事項
 
-## go/packagesについて
-
-`go/packages`はimportがeagerになってしまうので使わないこと。
+- 禁止。`go/packages`はimportがeagerになってしまうので使わないこと。
+- 強制。ログにはlog/slogを使うこと
+- 禁止。logパッケージを使わないこと。
