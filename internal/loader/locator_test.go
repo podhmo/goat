@@ -1,6 +1,7 @@
 package loader
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -107,7 +108,8 @@ func TestGoModLocator_Locate_RelativePaths(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			results, err := locator.Locate(tc.pattern, buildCtx)
+			ctx := context.Background()
+			results, err := locator.Locate(ctx, tc.pattern, buildCtx)
 
 			if tc.expectErr {
 				if err == nil {
@@ -133,54 +135,14 @@ func TestGoModLocator_Locate_RelativePaths(t *testing.T) {
 			tc.expectedMeta.ModuleDir = filepath.Clean(tc.expectedMeta.ModuleDir)
 			meta.ModuleDir = filepath.Clean(meta.ModuleDir)
 
-			// Sort file slices for consistent comparison
-			// reflect.DeepEqual doesn't care about order for slices if they are otherwise identical in content,
-			// but it's good practice if order isn't guaranteed by the function under test.
-			// For GoFiles, TestGoFiles, XTestGoFiles, listGoFiles doesn't guarantee order.
-			// However, for simplicity in this example, if the number of files is small and fixed,
-			// we can rely on the current deterministic (though not explicitly sorted) output of listGoFiles.
-			// For robust tests, sort these slices. For now, we'll assume order is stable for these test cases.
-
 			if !reflect.DeepEqual(*tc.expectedMeta, meta) {
 				t.Errorf("Mismatch for pattern '%s'. Overall structs not equal.\nExpected: %+v\nGot:      %+v",
 					tc.pattern, *tc.expectedMeta, meta)
-				// Field by field comparison
-				if tc.expectedMeta.ImportPath != meta.ImportPath {
-					t.Errorf("Field Mismatch: ImportPath. Expected: '%s', Got: '%s'", tc.expectedMeta.ImportPath, meta.ImportPath)
-				}
-				if tc.expectedMeta.Name != meta.Name {
-					t.Errorf("Field Mismatch: Name. Expected: '%s', Got: '%s'", tc.expectedMeta.Name, meta.Name)
-				}
-				if tc.expectedMeta.Dir != meta.Dir {
-					t.Errorf("Field Mismatch: Dir. Expected: '%s', Got: '%s'", tc.expectedMeta.Dir, meta.Dir)
-				}
-				if !reflect.DeepEqual(tc.expectedMeta.GoFiles, meta.GoFiles) {
-					t.Errorf("Field Mismatch: GoFiles. Expected: %v, Got: %v", tc.expectedMeta.GoFiles, meta.GoFiles)
-				}
-				if !reflect.DeepEqual(tc.expectedMeta.TestGoFiles, meta.TestGoFiles) {
-					t.Errorf("Field Mismatch: TestGoFiles. Expected: %v, Got: %v", tc.expectedMeta.TestGoFiles, meta.TestGoFiles)
-				}
-				if !reflect.DeepEqual(tc.expectedMeta.XTestGoFiles, meta.XTestGoFiles) {
-					t.Errorf("Field Mismatch: XTestGoFiles. Expected: %v, Got: %v", tc.expectedMeta.XTestGoFiles, meta.XTestGoFiles)
-				}
-				if !reflect.DeepEqual(tc.expectedMeta.DirectImports, meta.DirectImports) {
-					t.Errorf("Field Mismatch: DirectImports. Expected: %v, Got: %v", tc.expectedMeta.DirectImports, meta.DirectImports)
-				}
-				if tc.expectedMeta.ModulePath != meta.ModulePath {
-					t.Errorf("Field Mismatch: ModulePath. Expected: '%s', Got: '%s'", tc.expectedMeta.ModulePath, meta.ModulePath)
-				}
-				if tc.expectedMeta.ModuleDir != meta.ModuleDir {
-					t.Errorf("Field Mismatch: ModuleDir. Expected: '%s', Got: '%s'", tc.expectedMeta.ModuleDir, meta.ModuleDir)
-				}
-				if tc.expectedMeta.Error != meta.Error {
-					t.Errorf("Field Mismatch: Error. Expected: '%s', Got: '%s'", tc.expectedMeta.Error, meta.Error)
-				}
 			}
 		})
 	}
 }
 
-// setupTestDirNoModule creates a temporary directory with specified Go files but no go.mod file.
 func setupTestDirNoModule(t *testing.T, files map[string]string) string {
 	tmpDir, err := os.MkdirTemp("", "locator_test_nomodule_")
 	if err != nil {
@@ -202,7 +164,7 @@ func setupTestDirNoModule(t *testing.T, files map[string]string) string {
 func TestGoModLocator_Locate_NoModuleContext(t *testing.T) {
 	files := map[string]string{
 		"localpkg/mylib.go": "package localpkg\n\nfunc MyFunc() {}",
-		"another.go":        "package main", // A file in the root of the temp dir
+		"another.go":        "package main",
 	}
 	testSetupDir := setupTestDirNoModule(t, files)
 	defer os.RemoveAll(testSetupDir)
@@ -213,7 +175,7 @@ func TestGoModLocator_Locate_NoModuleContext(t *testing.T) {
 	testCases := []struct {
 		name            string
 		pattern         string
-		expectedMeta    *PackageMetaInfo // Pointer to allow for nil in error cases
+		expectedMeta    *PackageMetaInfo
 		expectErr       bool
 		expectedErrText string
 	}{
@@ -221,15 +183,15 @@ func TestGoModLocator_Locate_NoModuleContext(t *testing.T) {
 			name:    "relative path ./localpkg in no-module context",
 			pattern: "./localpkg",
 			expectedMeta: &PackageMetaInfo{
-				ImportPath:    "./localpkg", // Relative path is preserved as import path
+				ImportPath:    "./localpkg",
 				Name:          "localpkg",
 				Dir:           filepath.Join(testSetupDir, "localpkg"),
 				GoFiles:       []string{"mylib.go"},
 				TestGoFiles:   []string{},
 				XTestGoFiles:  []string{},
 				DirectImports: []string{},
-				ModulePath:    "", // No module context
-				ModuleDir:     "", // No module context
+				ModulePath:    "",
+				ModuleDir:     "",
 			},
 			expectErr: false,
 		},
@@ -238,7 +200,7 @@ func TestGoModLocator_Locate_NoModuleContext(t *testing.T) {
 			pattern: "./",
 			expectedMeta: &PackageMetaInfo{
 				ImportPath:    "./",
-				Name:          "main", // From another.go
+				Name:          "main",
 				Dir:           testSetupDir,
 				GoFiles:       []string{"another.go"},
 				TestGoFiles:   []string{},
@@ -253,13 +215,14 @@ func TestGoModLocator_Locate_NoModuleContext(t *testing.T) {
 			name:            "absolute import path in no-module context",
 			pattern:         "example.com/somelib/foo",
 			expectErr:       true,
-			expectedErrText: "package \"example.com/somelib/foo\" not found", // No go.mod to resolve from
+			expectedErrText: "package \"example.com/somelib/foo\" not found",
 		},
 	}
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			results, err := locator.Locate(tc.pattern, buildCtx)
+			ctx := context.Background()
+			results, err := locator.Locate(ctx, tc.pattern, buildCtx)
 
 			if tc.expectErr {
 				if err == nil {
@@ -282,7 +245,6 @@ func TestGoModLocator_Locate_NoModuleContext(t *testing.T) {
 
 			tc.expectedMeta.Dir = filepath.Clean(tc.expectedMeta.Dir)
 			meta.Dir = filepath.Clean(meta.Dir)
-			// ModuleDir will be empty, clean won't affect it but good for consistency
 			tc.expectedMeta.ModuleDir = filepath.Clean(tc.expectedMeta.ModuleDir)
 			meta.ModuleDir = filepath.Clean(meta.ModuleDir)
 
@@ -317,6 +279,7 @@ func TestGoModLocator_Locate_NoModuleContext(t *testing.T) {
 		})
 	}
 }
+
 func TestGoModLocator_Locate_NotFound(t *testing.T) {
 	moduleName := "example.com/testmodule"
 	testModuleDir := setupTestModule(t, moduleName, map[string]string{
@@ -346,7 +309,8 @@ func TestGoModLocator_Locate_NotFound(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			_, err := locator.Locate(tc.pattern, buildCtx)
+			ctx := context.Background()
+			_, err := locator.Locate(ctx, tc.pattern, buildCtx)
 			if err == nil {
 				t.Errorf("Expected an error for pattern '%s', but got nil", tc.pattern)
 				return
@@ -358,36 +322,11 @@ func TestGoModLocator_Locate_NotFound(t *testing.T) {
 	}
 }
 
-// setupMockGoModCache creates a directory structure mimicking a Go module cache
-// for a given dependency.
 func setupMockGoModCache(t *testing.T, depModulePath, depVersion string, files map[string]string) string {
-	// Use a subdirectory within the main test temp dir for better cleanup, or a new global temp
-	// For simplicity, let's create a new temp dir for the cache.
 	mockCacheRoot, err := os.MkdirTemp("", "mock_gomodcache_")
 	if err != nil {
 		t.Fatalf("Failed to create mock GOMODCACHE root: %v", err)
 	}
-
-	// Mimic `go mod download` path escaping for module path
-	// Example: github.com/user/repo -> github.com/user/repo
-	// For uppercase in path: github.com/Azure/azure-sdk-for-go -> github.com/!azure/azure-sdk-for-go
-	// The GoModLocator itself uses module.EscapePath, so the cache should reflect that.
-	// For this test, we'll assume simple lowercase paths for the mock dependency for simplicity,
-	// or handle escaping if the chosen dep path requires it.
-	// Let's assume depModulePath is already in the form it would appear in the cache dir name (e.g. no '!').
-	// A more robust solution would use module.EscapePath here if testing complex module paths.
-
-	// escapedModulePath := strings.ReplaceAll(depModulePath, "/", string(filepath.Separator)) // This was unused
-	// This is a simplified escaping. Real escaping is more complex (e.g. ! for uppercase).
-	// For test `github.com/stretchr/testify`, it becomes `github.com/stretchr/testify`.
-	// If a module path had uppercase, like `github.com/Azure/azure-sdk-for-go`, it would be `github.com/!azure/azure-sdk-for-go`.
-	// The `module.EscapePath` function in `locator.go` does the correct escaping when forming the path to look up.
-	// So, the directory in our mock cache should match that escaped form.
-
-	// Let's use a dep path that doesn't require complex escaping for the test to keep it simple.
-	// e.g., "my.test/somelib"
-	// If we use "github.com/stretchr/testify", the actual cache uses "github.com/stretchr/testify@version".
-	// The `module.EscapePath` in `locator.go` is applied to `depModPath` before joining with `@version`.
 
 	actualEscapedPath, err := module.EscapePath(depModulePath)
 	if err != nil {
@@ -399,8 +338,7 @@ func setupMockGoModCache(t *testing.T, depModulePath, depVersion string, files m
 		t.Fatalf("Failed to create directory for mock dependency %s in cache: %v", depModulePath, err)
 	}
 
-	// Create go.mod for the dependency
-	depGoModContent := "module " + depModulePath + "\n\ngo 1.16\n" // Minimal go.mod
+	depGoModContent := "module " + depModulePath + "\n\ngo 1.16\n"
 	if err := os.WriteFile(filepath.Join(depCacheDir, "go.mod"), []byte(depGoModContent), 0644); err != nil {
 		t.Fatalf("Failed to write go.mod for mock dependency %s: %v", depModulePath, err)
 	}
@@ -418,7 +356,6 @@ func setupMockGoModCache(t *testing.T, depModulePath, depVersion string, files m
 }
 
 func TestGoModLocator_Locate_ExternalDependency(t *testing.T) {
-	// 1. Setup mock GOMODCACHE
 	depModulePath := "my.test/somelib"
 	depVersion := "v1.0.0"
 	depFiles := map[string]string{
@@ -428,7 +365,6 @@ func TestGoModLocator_Locate_ExternalDependency(t *testing.T) {
 	mockCacheRoot := setupMockGoModCache(t, depModulePath, depVersion, depFiles)
 	defer os.RemoveAll(mockCacheRoot)
 
-	// Set GOMODCACHE environment variable for this test
 	originalGoModCache, originalGoModCacheExists := os.LookupEnv("GOMODCACHE")
 	if err := os.Setenv("GOMODCACHE", mockCacheRoot); err != nil {
 		t.Fatalf("Failed to set GOMODCACHE: %v", err)
@@ -445,15 +381,13 @@ func TestGoModLocator_Locate_ExternalDependency(t *testing.T) {
 		}
 	}()
 
-	// 2. Setup main test module that requires the dependency
 	mainModuleName := "example.com/mainmod"
 	mainModuleFiles := map[string]string{
 		"main.go": "package main\n\nimport _ \"" + depModulePath + "/core\"\n\nfunc main() {}",
 	}
-	testModuleDir := setupTestModule(t, mainModuleName, mainModuleFiles) // This creates a basic go.mod
+	testModuleDir := setupTestModule(t, mainModuleName, mainModuleFiles)
 	defer os.RemoveAll(testModuleDir)
 
-	// Add require directive to the main module's go.mod
 	mainGoModPath := filepath.Join(testModuleDir, "go.mod")
 	mainGoModContent, err := os.ReadFile(mainGoModPath)
 	if err != nil {
@@ -464,7 +398,6 @@ func TestGoModLocator_Locate_ExternalDependency(t *testing.T) {
 		t.Fatalf("Failed to write updated go.mod for main module: %v", err)
 	}
 
-	// 3. Initialize locator and perform test
 	locator := &GoModLocator{WorkingDir: testModuleDir}
 	buildCtx := BuildContext{}
 
@@ -475,7 +408,7 @@ func TestGoModLocator_Locate_ExternalDependency(t *testing.T) {
 
 	testCases := []struct {
 		name         string
-		pattern      string // Import path of a package from the dependency
+		pattern      string
 		expectedMeta *PackageMetaInfo
 		expectErr    bool
 	}{
@@ -515,7 +448,8 @@ func TestGoModLocator_Locate_ExternalDependency(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			results, err := locator.Locate(tc.pattern, buildCtx)
+			ctx := context.Background()
+			results, err := locator.Locate(ctx, tc.pattern, buildCtx)
 
 			if tc.expectErr {
 				if err == nil {
@@ -578,7 +512,7 @@ func TestGoModLocator_Locate_CurrentModule(t *testing.T) {
 	defer os.RemoveAll(testModuleDir)
 
 	locator := &GoModLocator{WorkingDir: testModuleDir}
-	buildCtx := BuildContext{} // Minimal context
+	buildCtx := BuildContext{}
 
 	testCases := []struct {
 		name         string
@@ -604,15 +538,15 @@ func TestGoModLocator_Locate_CurrentModule(t *testing.T) {
 		},
 		{
 			name:    "main package in current module by module path",
-			pattern: "example.com/currentmod", // This should resolve to the main package at the root
+			pattern: "example.com/currentmod",
 			expectedMeta: &PackageMetaInfo{
 				ImportPath:    "example.com/currentmod",
-				Name:          "main", // Assuming package name in main.go is 'main'
+				Name:          "main",
 				Dir:           testModuleDir,
 				GoFiles:       []string{"main.go"},
 				TestGoFiles:   []string{},
 				XTestGoFiles:  []string{},
-				DirectImports: []string{}, // Adjust if main.go has imports parsed by locator
+				DirectImports: []string{},
 				ModulePath:    moduleName,
 				ModuleDir:     testModuleDir,
 			},
@@ -622,13 +556,13 @@ func TestGoModLocator_Locate_CurrentModule(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			results, err := locator.Locate(tc.pattern, buildCtx)
+			ctx := context.Background()
+			results, err := locator.Locate(ctx, tc.pattern, buildCtx)
 
 			if tc.expectErr {
 				if err == nil {
 					t.Errorf("Expected an error, got nil")
 				}
-				// Add more detailed error string checking if necessary
 				return
 			}
 			if err != nil {
@@ -639,13 +573,11 @@ func TestGoModLocator_Locate_CurrentModule(t *testing.T) {
 			}
 			meta := results[0]
 
-			// Normalize paths
 			tc.expectedMeta.Dir = filepath.Clean(tc.expectedMeta.Dir)
 			meta.Dir = filepath.Clean(meta.Dir)
 			tc.expectedMeta.ModuleDir = filepath.Clean(tc.expectedMeta.ModuleDir)
 			meta.ModuleDir = filepath.Clean(meta.ModuleDir)
 
-			// Ensure slices are non-nil for comparison if they are empty
 			if tc.expectedMeta.GoFiles == nil {
 				tc.expectedMeta.GoFiles = []string{}
 			}
@@ -673,7 +605,6 @@ func TestGoModLocator_Locate_CurrentModule(t *testing.T) {
 
 			if !reflect.DeepEqual(*tc.expectedMeta, meta) {
 				t.Errorf("Result mismatch.\nExpected: %+v\nGot:      %+v", *tc.expectedMeta, meta)
-				// Detailed field comparison can be added here if needed, similar to TestGoModLocator_Locate_RelativePaths
 			}
 		})
 	}

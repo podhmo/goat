@@ -79,6 +79,7 @@ func run(opts Options) error {
 }
 
 func main() {
+	ctx := context.Background()
 	isFlagExplicitlySet := make(map[string]bool)
 
 	flag.Usage = func() {
@@ -163,7 +164,7 @@ imported from another package.`)
 	if !isValidChoice_LocalEnumField {
 		var currentValueForMsg interface{} = options.LocalEnumField
 
-		slog.ErrorContext(context.Background(), "Invalid value for flag", errors.New("Invalid value for flag"), "flag", "local-enum-field", "value", currentValueForMsg, "allowedChoices", strings.Join(allowedChoices_LocalEnumField, ", "))
+		slog.ErrorContext(ctx, "Invalid value for flag", errors.New("Invalid value for flag"), "flag", "local-enum-field", "value", currentValueForMsg, "allowedChoices", strings.Join(allowedChoices_LocalEnumField, ", "))
 		os.Exit(1)
 	}
 
@@ -176,7 +177,7 @@ imported from another package.`)
 	if !isValidChoice_ImportedEnumField {
 		var currentValueForMsg interface{} = options.ImportedEnumField
 
-		slog.ErrorContext(context.Background(), "Invalid value for flag", errors.New("Invalid value for flag"), "flag", "imported-enum-field", "value", currentValueForMsg, "allowedChoices", strings.Join(allowedChoices_ImportedEnumField, ", "))
+		slog.ErrorContext(ctx, "Invalid value for flag", errors.New("Invalid value for flag"), "flag", "imported-enum-field", "value", currentValueForMsg, "allowedChoices", strings.Join(allowedChoices_ImportedEnumField, ", "))
 		os.Exit(1)
 	}
 
@@ -204,7 +205,7 @@ imported from another package.`)
 		}
 		// If nil, currentValueForMsg remains options.OptionalImportedEnumField (which will print as <nil>)
 
-		slog.ErrorContext(context.Background(), "Invalid value for flag", errors.New("Invalid value for flag"), "flag", "optional-imported-enum-field", "value", currentValueForMsg, "allowedChoices", strings.Join(allowedChoices_OptionalImportedEnumField, ", "))
+		slog.ErrorContext(ctx, "Invalid value for flag", errors.New("Invalid value for flag"), "flag", "optional-imported-enum-field", "value", currentValueForMsg, "allowedChoices", strings.Join(allowedChoices_OptionalImportedEnumField, ", "))
 		os.Exit(1)
 	}
 
@@ -222,7 +223,7 @@ imported from another package.`)
 	err = run(*options)
 
 	if err != nil {
-		slog.ErrorContext(context.Background(), "Runtime error", "error", err)
+		slog.ErrorContext(ctx, "Runtime error", "error", err)
 		os.Exit(1)
 	}
 }

@@ -1,6 +1,7 @@
 package analyzer
 
 import (
+	"context"
 	"go/ast"
 	"go/parser"
 	"go/token"
@@ -202,10 +203,11 @@ func main() { RunWithoutOptions(nil) }
 			// So the import path is "testmodule". tc.packageName is the `package foo` name.
 			targetPackageID := "testmodule" // Module name defined in parseTestFiles
 
+			ctx := context.Background()
 			llCfg := loader.Config{Fset: fset}
 			loader := loader.New(llCfg)
 			// Pass "" for initializerFuncNameOption for existing tests (conventional lookup)
-			cmdMeta, _, err := Analyze(fset, astFiles, tc.runFuncName, "", targetPackageID, moduleRootDir, loader)
+			cmdMeta, _, err := Analyze(ctx, fset, astFiles, tc.runFuncName, "", targetPackageID, moduleRootDir, loader)
 
 			// InitializerFunc is determined before AnalyzeOptions is called.
 			// So, we should be able to check it even if Analyze later returns an error from AnalyzeOptions.
@@ -360,9 +362,10 @@ func main() { run(Opts{}) }
 			}
 			targetPackageID := "testmodule"
 
+			ctx := context.Background()
 			llCfg := loader.Config{Fset: fset}
 			loader := loader.New(llCfg)
-			cmdMeta, _, err := Analyze(fset, astFiles, tc.runFuncName, tc.initializerFuncNameOption, targetPackageID, moduleRootDir, loader)
+			cmdMeta, _, err := Analyze(ctx, fset, astFiles, tc.runFuncName, tc.initializerFuncNameOption, targetPackageID, moduleRootDir, loader)
 
 			if cmdMeta == nil {
 				if tc.expectErrorInAnalyze && err != nil {

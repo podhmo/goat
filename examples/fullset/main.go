@@ -142,6 +142,7 @@ func run(ctx context.Context, opts *Options) error {
 }
 
 func main() {
+	ctx := context.Background()
 	isFlagExplicitlySet := make(map[string]bool)
 
 	flag.Usage = func() {
@@ -197,7 +198,7 @@ Flags:
 		if v, err := strconv.Atoi(val); err == nil {
 			*options.Age = v
 		} else {
-			slog.WarnContext(context.Background(), "Could not parse environment variable as *int for option", "envVar", "SIMPLE_AGE", "option", "Age", "value", val, "error", err)
+			slog.WarnContext(ctx, "Could not parse environment variable as *int for option", "envVar", "SIMPLE_AGE", "option", "Age", "value", val, "error", err)
 		}
 
 	}
@@ -225,7 +226,7 @@ Flags:
 		if v, err := strconv.ParseBool(val); err == nil {
 			options.SuperVerbose = v
 		} else {
-			slog.WarnContext(context.Background(), "Could not parse environment variable as bool for option", "envVar", "SIMPLE_SUPER_VERBOSE", "option", "SuperVerbose", "value", val, "error", err)
+			slog.WarnContext(ctx, "Could not parse environment variable as bool for option", "envVar", "SIMPLE_SUPER_VERBOSE", "option", "SuperVerbose", "value", val, "error", err)
 		}
 
 	}
@@ -247,7 +248,7 @@ Flags:
 		if v, err := strconv.ParseBool(val); err == nil {
 			options.EnableFeatureX = v
 		} else {
-			slog.WarnContext(context.Background(), "Could not parse environment variable as bool for option", "envVar", "FULLSET_FEATURE_X", "option", "EnableFeatureX", "value", val, "error", err)
+			slog.WarnContext(ctx, "Could not parse environment variable as bool for option", "envVar", "FULLSET_FEATURE_X", "option", "EnableFeatureX", "value", val, "error", err)
 		}
 
 	}
@@ -256,7 +257,7 @@ Flags:
 
 		err := (&options.HostIP).UnmarshalText([]byte(val))
 		if err != nil {
-			slog.WarnContext(context.Background(), "Could not parse environment variable for TextUnmarshaler option; using default or previously set value.", "envVar", "FULLSET_HOST_IP", "option", "host-ip", "value", val, "error", err)
+			slog.WarnContext(ctx, "Could not parse environment variable for TextUnmarshaler option; using default or previously set value.", "envVar", "FULLSET_HOST_IP", "option", "host-ip", "value", val, "error", err)
 		}
 
 	}
@@ -344,7 +345,7 @@ Defaults to "output" if not specified by the user.` /* Original Default: output,
 	}
 
 	if options.Name == initialDefaultName && !isFlagExplicitlySet["name"] && !envNameWasSet {
-		slog.ErrorContext(context.Background(), "Missing required flag or environment variable not set", errors.New("Missing required flag or environment variable not set"), "flag", "name", "envVar", "SIMPLE_NAME", "option", "Name")
+		slog.ErrorContext(ctx, "Missing required flag or environment variable not set", errors.New("Missing required flag or environment variable not set"), "flag", "name", "envVar", "SIMPLE_NAME", "option", "Name")
 		os.Exit(1)
 	}
 
@@ -356,7 +357,7 @@ Defaults to "output" if not specified by the user.` /* Original Default: output,
 	}
 
 	if options.LogLevel == initialDefaultLogLevel && !isFlagExplicitlySet["log-level"] && !envLogLevelWasSet {
-		slog.ErrorContext(context.Background(), "Missing required flag or environment variable not set", errors.New("Missing required flag or environment variable not set"), "flag", "log-level", "envVar", "SIMPLE_LOG_LEVEL", "option", "LogLevel")
+		slog.ErrorContext(ctx, "Missing required flag or environment variable not set", errors.New("Missing required flag or environment variable not set"), "flag", "log-level", "envVar", "SIMPLE_LOG_LEVEL", "option", "LogLevel")
 		os.Exit(1)
 	}
 
@@ -369,7 +370,7 @@ Defaults to "output" if not specified by the user.` /* Original Default: output,
 	if !isValidChoice_LogLevel {
 		var currentValueForMsg interface{} = options.LogLevel
 
-		slog.ErrorContext(context.Background(), "Invalid value for flag", errors.New("Invalid value for flag"), "flag", "log-level", "value", currentValueForMsg, "allowedChoices", strings.Join(allowedChoices_LogLevel, ", "))
+		slog.ErrorContext(ctx, "Invalid value for flag", errors.New("Invalid value for flag"), "flag", "log-level", "value", currentValueForMsg, "allowedChoices", strings.Join(allowedChoices_LogLevel, ", "))
 		os.Exit(1)
 	}
 
@@ -377,7 +378,7 @@ Defaults to "output" if not specified by the user.` /* Original Default: output,
 	envOutputDirWasSet := false
 
 	if options.OutputDir == initialDefaultOutputDir && !isFlagExplicitlySet["output-dir"] && !envOutputDirWasSet {
-		slog.ErrorContext(context.Background(), "Missing required flag or environment variable not set", errors.New("Missing required flag or environment variable not set"), "flag", "output-dir", "option", "OutputDir")
+		slog.ErrorContext(ctx, "Missing required flag or environment variable not set", errors.New("Missing required flag or environment variable not set"), "flag", "output-dir", "option", "OutputDir")
 		os.Exit(1)
 	}
 
@@ -389,7 +390,7 @@ Defaults to "output" if not specified by the user.` /* Original Default: output,
 	}
 
 	if options.Mode == initialDefaultMode && !isFlagExplicitlySet["mode"] && !envModeWasSet {
-		slog.ErrorContext(context.Background(), "Missing required flag or environment variable not set", errors.New("Missing required flag or environment variable not set"), "flag", "mode", "envVar", "SIMPLE_MODE", "option", "Mode")
+		slog.ErrorContext(ctx, "Missing required flag or environment variable not set", errors.New("Missing required flag or environment variable not set"), "flag", "mode", "envVar", "SIMPLE_MODE", "option", "Mode")
 		os.Exit(1)
 	}
 
@@ -402,7 +403,7 @@ Defaults to "output" if not specified by the user.` /* Original Default: output,
 	if !isValidChoice_Mode {
 		var currentValueForMsg interface{} = options.Mode
 
-		slog.ErrorContext(context.Background(), "Invalid value for flag", errors.New("Invalid value for flag"), "flag", "mode", "value", currentValueForMsg, "allowedChoices", strings.Join(allowedChoices_Mode, ", "))
+		slog.ErrorContext(ctx, "Invalid value for flag", errors.New("Invalid value for flag"), "flag", "mode", "value", currentValueForMsg, "allowedChoices", strings.Join(allowedChoices_Mode, ", "))
 		os.Exit(1)
 	}
 
@@ -414,7 +415,7 @@ Defaults to "output" if not specified by the user.` /* Original Default: output,
 	}
 
 	if options.ConfigFile == initialDefaultConfigFile && !isFlagExplicitlySet["config-file"] && !envConfigFileWasSet {
-		slog.ErrorContext(context.Background(), "Missing required flag or environment variable not set", errors.New("Missing required flag or environment variable not set"), "flag", "config-file", "envVar", "FULLSET_CONFIG_FILE", "option", "ConfigFile")
+		slog.ErrorContext(ctx, "Missing required flag or environment variable not set", errors.New("Missing required flag or environment variable not set"), "flag", "config-file", "envVar", "FULLSET_CONFIG_FILE", "option", "ConfigFile")
 		os.Exit(1)
 	}
 
@@ -426,7 +427,7 @@ Defaults to "output" if not specified by the user.` /* Original Default: output,
 	}
 
 	if options.Pattern == initialDefaultPattern && !isFlagExplicitlySet["pattern"] && !envPatternWasSet {
-		slog.ErrorContext(context.Background(), "Missing required flag or environment variable not set", errors.New("Missing required flag or environment variable not set"), "flag", "pattern", "envVar", "FULLSET_PATTERN", "option", "Pattern")
+		slog.ErrorContext(ctx, "Missing required flag or environment variable not set", errors.New("Missing required flag or environment variable not set"), "flag", "pattern", "envVar", "FULLSET_PATTERN", "option", "Pattern")
 		os.Exit(1)
 	}
 
@@ -441,10 +442,10 @@ Defaults to "output" if not specified by the user.` /* Original Default: output,
 	var err error
 
 	// Run function expects context and options arguments
-	err = run(context.Background(), options)
+	err = run(ctx, options)
 
 	if err != nil {
-		slog.ErrorContext(context.Background(), "Runtime error", "error", err)
+		slog.ErrorContext(ctx, "Runtime error", "error", err)
 		os.Exit(1)
 	}
 }

@@ -1,6 +1,7 @@
 package loader
 
 import (
+	"context"
 	"fmt"
 	"go/token"
 	"os" // New import for os.Getwd()
@@ -66,12 +67,12 @@ func New(cfg Config) *Loader {
 // Load loads the packages matching the given patterns.
 // It only loads the metadata for the top-level packages.
 // Dependent packages are loaded lazily when accessed.
-func (l *Loader) Load(patterns ...string) ([]*Package, error) {
+func (l *Loader) Load(ctx context.Context, patterns ...string) ([]*Package, error) {
 	var pkgs []*Package
 	var errs []error
 
 	for _, pattern := range patterns {
-		metaInfos, err := l.cfg.Locator(pattern, l.cfg.Context)
+		metaInfos, err := l.cfg.Locator(ctx, pattern, l.cfg.Context)
 		if err != nil {
 			errs = append(errs, fmt.Errorf("error locating package for pattern %q: %w", pattern, err))
 			continue
@@ -108,7 +109,7 @@ func (l *Loader) Load(patterns ...string) ([]*Package, error) {
 
 // resolveImport is called by a Package to resolve one of its imports.
 // It ensures that the imported package is loaded and returns it.
-func (l *Loader) resolveImport(importerPath string, importPath string) (*Package, error) {
+func (l *Loader) resolveImport(ctx context.Context, importerPath string, importPath string) (*Package, error) {
 	l.mu.Lock()
 	if pkg, ok := l.cache[importPath]; ok {
 		l.mu.Unlock()
@@ -118,7 +119,7 @@ func (l *Loader) resolveImport(importerPath string, importPath string) (*Package
 
 	// If not in cache, try to locate and load it.
 	// The locator should be able to handle an absolute import path.
-	metaInfos, err := l.cfg.Locator(importPath, l.cfg.Context)
+	metaInfos, err := l.cfg.Locator(ctx, importPath, l.cfg.Context)
 	if err != nil {
 		return nil, fmt.Errorf("loader: failed to locate imported package %q (imported by %q): %w", importPath, importerPath, err)
 	}

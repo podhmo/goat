@@ -1,6 +1,7 @@
 package interpreter
 
 import (
+	"context"
 	"go/ast"
 	"go/parser"
 	"go/token"
@@ -54,9 +55,10 @@ func NewOpts() *Options {
 	}
 
 	// Provide dummy loader and currentPkgPath for tests not focusing on identifier resolution
+	ctx := context.Background()
 	dummyLoader := loader.New(loader.Config{})
 	dummyCurrentPkgPath := "github.com/podhmo/goat/internal/interpreter/testpkgs/simpledefaults"
-	err := InterpretInitializer(fileAst, "Options", "NewOpts", optionsMeta, goatPkgImportPath, dummyCurrentPkgPath, dummyLoader)
+	err := InterpretInitializer(ctx, fileAst, "Options", "NewOpts", optionsMeta, goatPkgImportPath, dummyCurrentPkgPath, dummyLoader)
 	if err != nil {
 		t.Fatalf("InterpretInitializer failed: %v", err)
 	}
@@ -101,6 +103,7 @@ func TestInterpretInitializer_EnumNewScenarios(t *testing.T) {
 	// However, ld is already created. For these tests, ld.Load will parse files itself.
 	// The fileAst passed to InterpretInitializer is the one it directly inspects.
 
+	ctx := context.Background()
 	optionsMeta := []*metadata.OptionMetadata{
 		{Name: "EnumCompositeDirect"},
 		{Name: "EnumCompositeDirectMixed"},
@@ -121,7 +124,7 @@ func TestInterpretInitializer_EnumNewScenarios(t *testing.T) {
 
 	// The InterpretInitializer function needs the *ast.File of the file containing NewOptions,
 	// the currentPkgPath should be the import path of that file.
-	err = InterpretInitializer(entryFileAst, "Options", "NewOptions", optionsMeta,
+	err = InterpretInitializer(ctx, entryFileAst, "Options", "NewOptions", optionsMeta,
 		testMarkerPkgImportPath, // This is how `g.` calls will be checked
 		mainPkgImportPath,       // Import path of the package where NewOptions is defined
 		ld)
@@ -415,11 +418,12 @@ func TestResolveEvalResultToEnumString(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			ctx := context.Background()
 			// Create a dummy *ast.File for context, primarily for GetImportPath
 			// Its content doesn't matter as much as its Imports list.
 			fileAstForContext, currentPkgPathForContext := newTestContext(t, tt.currentPkgPath, tt.importsInTestFile)
 
-			strVal, success := resolveEvalResultToEnumString(tt.elementEvalResult, ld, currentPkgPathForContext, fileAstForContext)
+			strVal, success := resolveEvalResultToEnumString(ctx, tt.elementEvalResult, ld, currentPkgPathForContext, fileAstForContext)
 
 			if success != tt.expectedSuccess {
 				t.Errorf("resolveEvalResultToEnumString() success = %v, want %v", success, tt.expectedSuccess)
@@ -455,9 +459,10 @@ func InitOptions() *Options {
 		{Name: "Mode", CliName: "mode", TypeName: "string"},
 	}
 
+	ctx := context.Background()
 	dummyLoader := loader.New(loader.Config{})
 	dummyCurrentPkgPath := "github.com/podhmo/goat/internal/interpreter/testpkgs/enumandcombined"
-	err := InterpretInitializer(fileAst, "Options", "InitOptions", optionsMeta, goatPkgImportPath, dummyCurrentPkgPath, dummyLoader)
+	err := InterpretInitializer(ctx, fileAst, "Options", "InitOptions", optionsMeta, goatPkgImportPath, dummyCurrentPkgPath, dummyLoader)
 	if err != nil {
 		t.Fatalf("InterpretInitializer failed: %v", err)
 	}
@@ -501,9 +506,10 @@ func New() *Options {
 		{Name: "Path", CliName: "path", TypeName: "string"},
 	}
 
+	ctx := context.Background()
 	dummyLoader := loader.New(loader.Config{})
 	dummyCurrentPkgPath := "github.com/podhmo/goat/internal/interpreter/testpkgs/assignmentstyle"
-	err := InterpretInitializer(fileAst, "Options", "New", optionsMeta, goatPkgImportPath, dummyCurrentPkgPath, dummyLoader)
+	err := InterpretInitializer(ctx, fileAst, "Options", "New", optionsMeta, goatPkgImportPath, dummyCurrentPkgPath, dummyLoader)
 	if err != nil {
 		t.Fatalf("InterpretInitializer with assignment style failed: %v", err)
 	}
@@ -527,9 +533,10 @@ func New() *Options {
 	fileAst := parseTestFileForInterpreter(t, content)
 	optionsMeta := []*metadata.OptionMetadata{{Name: "Name"}}
 
+	ctx := context.Background()
 	dummyLoader := loader.New(loader.Config{})
 	dummyCurrentPkgPath := "github.com/podhmo/goat/internal/interpreter/testpkgs/nongoatpkgcall"
-	err := InterpretInitializer(fileAst, "Options", "New", optionsMeta, goatPkgImportPath, dummyCurrentPkgPath, dummyLoader) // goatPkgImportPath is for "github.com/podhmo/goat"
+	err := InterpretInitializer(ctx, fileAst, "Options", "New", optionsMeta, goatPkgImportPath, dummyCurrentPkgPath, dummyLoader) // goatPkgImportPath is for "github.com/podhmo/goat"
 	if err != nil {
 		t.Fatalf("InterpretInitializer failed: %v", err)
 	}
@@ -540,10 +547,11 @@ func New() *Options {
 
 func TestInterpretInitializer_InitializerNotFound(t *testing.T) {
 	content := `package main; type Options struct{}`
+	ctx := context.Background()
 	fileAst := parseTestFileForInterpreter(t, content)
 	dummyLoader := loader.New(loader.Config{})
 	dummyCurrentPkgPath := "github.com/podhmo/goat/internal/interpreter/testpkgs/initializererror"
-	err := InterpretInitializer(fileAst, "Options", "NonExistentInit", nil, goatPkgImportPath, dummyCurrentPkgPath, dummyLoader)
+	err := InterpretInitializer(ctx, fileAst, "Options", "NonExistentInit", nil, goatPkgImportPath, dummyCurrentPkgPath, dummyLoader)
 	if err == nil {
 		t.Fatal("InterpretInitializer should fail if initializer func not found")
 	}
@@ -657,6 +665,7 @@ func New() *Config { return &Config{ Input: g.File("in.txt", other.SomeOption())
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			ctx := context.Background()
 			fileAst := parseTestFileForInterpreter(t, tt.content)
 			// Make a deep copy of initialOptMeta for each test run if it can be modified by InterpretInitializer
 			currentOptionsMeta := make([]*metadata.OptionMetadata, len(tt.initialOptMeta))
@@ -669,7 +678,7 @@ func New() *Config { return &Config{ Input: g.File("in.txt", other.SomeOption())
 
 			dummyLoader := loader.New(loader.Config{})
 			dummyCurrentPkgPath := "github.com/podhmo/goat/internal/interpreter/testpkgs/filemarkers/" + tt.name
-			err := InterpretInitializer(fileAst, tt.optionsName, tt.initializerName, currentOptionsMeta, goatPkgImportPath, dummyCurrentPkgPath, dummyLoader)
+			err := InterpretInitializer(ctx, fileAst, tt.optionsName, tt.initializerName, currentOptionsMeta, goatPkgImportPath, dummyCurrentPkgPath, dummyLoader)
 
 			if tt.expectError {
 				if err == nil {
@@ -786,7 +795,8 @@ func TestInterpretInitializer_EnumResolution(t *testing.T) {
 	// Call InterpretInitializer
 	// The currentPkgPath needs to be the canonical import path of mainpkg
 	// as the loader would see it, relative to the loader's configured module root.
-	err = InterpretInitializer(fileAst, "Options", "NewOptions", optionsMeta,
+	ctx := context.Background()
+	err = InterpretInitializer(ctx, fileAst, "Options", "NewOptions", optionsMeta,
 		testMarkerPkgImportPath, // How goat markers are identified
 		mainPkgPath,             // Canonical path for the package being processed
 		ld)

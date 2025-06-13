@@ -1,6 +1,7 @@
 package loader
 
 import (
+	"context"
 	"fmt"
 	"go/ast"
 	"go/parser"
@@ -15,7 +16,7 @@ import (
 // testdataLocator is a custom PackageLocator for tests.
 // It expects 'pattern' to be a module-like path such as "example.com/simplepkg"
 // which it maps to a directory in "./testdata/" (e.g., "./testdata/simplepkg").
-func testdataLocator(pattern string, buildCtx BuildContext) ([]PackageMetaInfo, error) {
+func testdataLocator(ctx context.Context, pattern string, buildCtx BuildContext) ([]PackageMetaInfo, error) {
 	// Determine the base directory for testdata relative to this file.
 	// _, currentFilePath, _, ok := runtime.Caller(0) // This might be tricky if locator is not in _test.go
 	// For simplicity, assume tests are run from a context where "./testdata" is accessible
@@ -125,7 +126,8 @@ func TestLoadSimplePackage(t *testing.T) {
 	}
 	loader := New(cfg)
 
-	pkgs, err := loader.Load("example.com/simplepkg") // Use specific "module" path
+	ctx := context.Background()
+	pkgs, err := loader.Load(ctx, "example.com/simplepkg") // Use specific "module" path
 	if err != nil {
 		t.Fatalf("Failed to load package: %v", err)
 	}
@@ -164,7 +166,8 @@ func TestGetStruct(t *testing.T) {
 		Locator: testdataLocator,
 	}
 	loader := New(cfg)
-	pkgs, err := loader.Load("example.com/simplepkg") // Using custom locator
+	ctx := context.Background()
+	pkgs, err := loader.Load(ctx, "example.com/simplepkg") // Using custom locator
 	if err != nil {
 		t.Fatalf("Failed to load package 'example.com/simplepkg': %v", err)
 	}
@@ -235,7 +238,8 @@ func TestResolveImport(t *testing.T) {
 		Locator: testdataLocator,
 	}
 	loader := New(cfg)
-	pkgs, err := loader.Load("example.com/simplepkg") // Use custom locator
+	ctx := context.Background()
+	pkgs, err := loader.Load(ctx, "example.com/simplepkg") // Use custom locator
 	if err != nil {
 		t.Fatalf("Failed to load package 'example.com/simplepkg': %v", err)
 	}
@@ -250,7 +254,7 @@ func TestResolveImport(t *testing.T) {
 		t.Fatalf("Prerequisite GetStruct on simplepkg failed: %v", err)
 	}
 
-	resolvedImport, err := pkg.ResolveImport("example.com/anotherpkg")
+	resolvedImport, err := pkg.ResolveImport(ctx, "example.com/anotherpkg")
 	if err != nil {
 		t.Fatalf("Failed to resolve import 'example.com/anotherpkg': %v", err)
 	}
@@ -273,7 +277,8 @@ func TestLazyLoading(t *testing.T) {
 		Locator: testdataLocator,
 	}
 	loader := New(cfg)
-	pkgs, err := loader.Load("example.com/simplepkg") // Use custom locator
+	ctx := context.Background()
+	pkgs, err := loader.Load(ctx, "example.com/simplepkg") // Use custom locator
 	if err != nil {
 		t.Fatalf("Failed to load package 'example.com/simplepkg': %v", err)
 	}
@@ -320,7 +325,7 @@ func TestLazyLoading(t *testing.T) {
 	}
 
 	// 5. Trigger import resolution
-	resolvedImport, err := pkg.ResolveImport("example.com/anotherpkg")
+	resolvedImport, err := pkg.ResolveImport(ctx, "example.com/anotherpkg")
 	if err != nil {
 		t.Fatalf("Failed to resolve import 'example.com/anotherpkg': %v", err)
 	}
@@ -366,7 +371,8 @@ func TestGetStructWithEmbeddedForeignStruct(t *testing.T) {
 	loader := New(cfg)
 
 	// 1. Load the userpkg package
-	pkgs, err := loader.Load("example.com/embed_foreign_pkg_user")
+	ctx := context.Background()
+	pkgs, err := loader.Load(ctx, "example.com/embed_foreign_pkg_user")
 	if err != nil {
 		t.Fatalf("Failed to load package 'example.com/embed_foreign_pkg_user': %v", err)
 	}
@@ -491,7 +497,7 @@ func TestGetStructWithEmbeddedForeignStruct(t *testing.T) {
 	}
 
 	// 6. Resolve the imported package for BaseStruct
-	basePkg, err := userPkg.ResolveImport(basePkgFullImportPath)
+	basePkg, err := userPkg.ResolveImport(ctx, basePkgFullImportPath)
 	if err != nil {
 		t.Fatalf("Failed to resolve import '%s' for BaseStruct: %v", basePkgFullImportPath, err)
 	}

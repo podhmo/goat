@@ -24,6 +24,7 @@ func run(opts Options) error { // Parameter type changed to Options, name to opt
 }
 
 func main() {
+	ctx := context.Background()
 	isFlagExplicitlySet := make(map[string]bool)
 
 	flag.Usage = func() {
@@ -85,7 +86,7 @@ Flags:
 	envConfigFileWasSet := false
 
 	if options.ConfigFile == initialDefaultConfigFile && !isFlagExplicitlySet["config-file"] && !envConfigFileWasSet {
-		slog.ErrorContext(context.Background(), "Missing required flag or environment variable not set", errors.New("Missing required flag or environment variable not set"), "flag", "config-file", "option", "ConfigFile")
+		slog.ErrorContext(ctx, "Missing required flag or environment variable not set", errors.New("Missing required flag or environment variable not set"), "flag", "config-file", "option", "ConfigFile")
 		os.Exit(1)
 	}
 
@@ -103,7 +104,7 @@ Flags:
 	err = run(*options)
 
 	if err != nil {
-		slog.ErrorContext(context.Background(), "Runtime error", "error", err)
+		slog.ErrorContext(ctx, "Runtime error", "error", err)
 		os.Exit(1)
 	}
 }

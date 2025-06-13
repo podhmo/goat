@@ -2,6 +2,7 @@ package loader
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"go/build"  // Added this import
@@ -80,7 +81,7 @@ type PackageMetaInfo struct {
 // PackageLocator is a function type that locates packages based on a pattern
 // and returns their metadata.
 // The build context provides parameters like GOOS, GOARCH, and build tags.
-type PackageLocator func(pattern string, buildCtx BuildContext) ([]PackageMetaInfo, error)
+type PackageLocator func(ctx context.Context, pattern string, buildCtx BuildContext) ([]PackageMetaInfo, error)
 
 // GoModLocator is a PackageLocator that resolves import paths
 // without relying on the `go list` command.
@@ -90,7 +91,7 @@ type GoModLocator struct {
 
 // Locate implements the PackageLocator interface for GoModLocator.
 // It resolves package paths without using `go list`.
-func (gml *GoModLocator) Locate(pattern string, buildCtx BuildContext) ([]PackageMetaInfo, error) {
+func (gml *GoModLocator) Locate(ctx context.Context, pattern string, buildCtx BuildContext) ([]PackageMetaInfo, error) {
 	if gml.WorkingDir == "" { // Use Exported field
 		wd, err := os.Getwd()
 		if err != nil {
@@ -399,7 +400,7 @@ func (gml *GoModLocator) listGoFiles(dirPath string) (goFiles, testGoFiles, xTes
 }
 
 // GoListLocator is a PackageLocator that uses `go list` command.
-func GoListLocator(pattern string, buildCtx BuildContext) ([]PackageMetaInfo, error) {
+func GoListLocator(ctx context.Context, pattern string, buildCtx BuildContext) ([]PackageMetaInfo, error) {
 	args := []string{"list", "-json"}
 	if len(buildCtx.BuildTags) > 0 {
 		args = append(args, "-tags", strings.Join(buildCtx.BuildTags, ","))

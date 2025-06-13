@@ -27,6 +27,7 @@ func main() {
 	// The key is that `Dir` in `PackageMetaInfo` must be valid when `Package.ensureParsed` is called.
 
 	fmt.Println("Running custom locator example...")
+	ctx := context.Background() // Create a top-level context
 	cfg := loader.Config{
 		Locator: myCustomLocator,
 		Context: loader.BuildContext{
@@ -37,14 +38,14 @@ func main() {
 	loaderInst := loader.New(cfg) // Renamed variable to avoid conflict if 'loader' is package name
 
 	// Use a pattern that our custom locator understands
-	pkgs, err := loaderInst.Load("custom/pkg/one")
+	pkgs, err := loaderInst.Load(ctx, "custom/pkg/one")
 	if err != nil {
-		slog.ErrorContext(context.Background(), fmt.Sprintf("Failed to load packages with custom locator: %v", err))
+		slog.ErrorContext(ctx, fmt.Sprintf("Failed to load packages with custom locator: %v", err))
 		os.Exit(1)
 	}
 
 	if len(pkgs) == 0 {
-		slog.ErrorContext(context.Background(), fmt.Sprintf("Custom locator returned no packages for 'custom/pkg/one'"), "error", errors.New(fmt.Sprintf("Custom locator returned no packages for 'custom/pkg/one'")))
+		slog.ErrorContext(ctx, fmt.Sprintf("Custom locator returned no packages for 'custom/pkg/one'"), "error", errors.New(fmt.Sprintf("Custom locator returned no packages for 'custom/pkg/one'")))
 		os.Exit(1)
 	}
 
@@ -82,9 +83,9 @@ func main() {
 	if len(pkgOne.RawMeta.DirectImports) > 0 {
 		importToResolve := pkgOne.RawMeta.DirectImports[0]
 		fmt.Printf("Attempting to resolve direct import: %s\n", importToResolve)
-		resolvedImport, err := pkgOne.ResolveImport(importToResolve)
+		resolvedImport, err := pkgOne.ResolveImport(ctx, importToResolve)
 		if err != nil {
-			slog.ErrorContext(context.Background(), fmt.Sprintf("Failed to resolve import %s: %v", importToResolve, err))
+			slog.ErrorContext(ctx, fmt.Sprintf("Failed to resolve import %s: %v", importToResolve, err))
 			os.Exit(1)
 		}
 		fmt.Printf("Successfully resolved imported package: %s (Dir: %s)\n", resolvedImport.Name, resolvedImport.Dir)
@@ -110,8 +111,8 @@ func main() {
 // myCustomLocator is a mock locator for demonstration.
 // In a real scenario, this would interact with a custom build system,
 // read a proprietary project manifest, or scan a non-standard directory structure.
-func myCustomLocator(pattern string, buildCtx loader.BuildContext) ([]loader.PackageMetaInfo, error) {
-	fmt.Printf("CustomLocator called with pattern: %q, BuildContext: %+v\n", pattern, buildCtx)
+func myCustomLocator(ctx context.Context, pattern string, buildCtx loader.BuildContext) ([]loader.PackageMetaInfo, error) {
+	fmt.Printf("CustomLocator called with pattern: %q, BuildContext: %+v, ContextParam: %v\n", pattern, buildCtx, ctx)
 
 	// This locator only "knows" about a fake package "custom/pkg/one".
 	// It assumes a flat file structure in a predefined base directory.
