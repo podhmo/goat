@@ -7,7 +7,7 @@ import (
 	"go/token"
 	"io"
 	"os"
-	"os/exec" // Added for go mod tidy
+	"os/exec"       // Added for go mod tidy
 	"path/filepath" // Added for filepath.Join
 	"strings"
 	"testing"

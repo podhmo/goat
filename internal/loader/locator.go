@@ -91,13 +91,20 @@ type GoModLocator struct {
 // Locate implements the PackageLocator interface for GoModLocator.
 // It resolves package paths without using `go list`.
 func (gml *GoModLocator) Locate(pattern string, buildCtx BuildContext) ([]PackageMetaInfo, error) {
+	if gml.workingDir == "" {
+		wd, err := os.Getwd()
+		if err != nil {
+			return nil, fmt.Errorf("GoModLocator.Locate: failed to get current working directory: %w", err)
+		}
+		gml.workingDir = wd
+	}
 	var pkgName string // Declare pkgName
 	// Handle vendor paths (placeholder)
 	if strings.Contains(pattern, "/vendor/") || strings.HasPrefix(pattern, "vendor/") {
 		return nil, errors.New("GoModLocator.Locate: vendor directory handling is not yet implemented")
 	}
 
-	if strings.HasPrefix(pattern, "./") || strings.HasPrefix(pattern, "../") {
+	if pattern == "." || strings.HasPrefix(pattern, "./") || strings.HasPrefix(pattern, "../") {
 		// Handle relative path
 		pkgDir := filepath.Clean(filepath.Join(gml.workingDir, pattern))
 		absPkgDir, err := filepath.Abs(pkgDir) // Ensure pkgDir is absolute
