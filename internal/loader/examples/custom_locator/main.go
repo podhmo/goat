@@ -2,7 +2,7 @@ package main
 
 import (
 	"fmt"
-	"log"
+	"log/slog"
 	"os"
 	"path/filepath"
 
@@ -37,11 +37,13 @@ func main() {
 	// Use a pattern that our custom locator understands
 	pkgs, err := loaderInst.Load("custom/pkg/one")
 	if err != nil {
-		log.Fatalf("Failed to load packages with custom locator: %v", err)
+		slog.Error(fmt.Sprintf("Failed to load packages with custom locator: %v", err))
+		os.Exit(1)
 	}
 
 	if len(pkgs) == 0 {
-		log.Fatalf("Custom locator returned no packages for 'custom/pkg/one'")
+		slog.Error(fmt.Sprintf("Custom locator returned no packages for 'custom/pkg/one'"))
+		os.Exit(1)
 	}
 
 	pkgOne := pkgs[0]
@@ -57,7 +59,8 @@ func main() {
 	// Attempt to get a struct. This will trigger parsing of the dummy file.
 	structInfo, err := pkgOne.GetStruct("CustomStruct")
 	if err != nil {
-		log.Fatalf("Failed to get CustomStruct from %s: %v", pkgOne.ImportPath, err)
+		slog.Error(fmt.Sprintf("Failed to get CustomStruct from %s: %v", pkgOne.ImportPath, err))
+		os.Exit(1)
 	}
 
 	fmt.Printf("Found struct: %s\n", structInfo.Name)
@@ -79,7 +82,8 @@ func main() {
 		fmt.Printf("Attempting to resolve direct import: %s\n", importToResolve)
 		resolvedImport, err := pkgOne.ResolveImport(importToResolve)
 		if err != nil {
-			log.Fatalf("Failed to resolve import %s: %v", importToResolve, err)
+			slog.Error(fmt.Sprintf("Failed to resolve import %s: %v", importToResolve, err))
+			os.Exit(1)
 		}
 		fmt.Printf("Successfully resolved imported package: %s (Dir: %s)\n", resolvedImport.Name, resolvedImport.Dir)
 		// Store its temp dir too if it's different
