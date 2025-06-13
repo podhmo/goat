@@ -4,10 +4,10 @@ import (
 	"go/ast"
 	"go/parser"
 	"go/token"
-	"log/slog"
 	"os"
 	"path/filepath"
 	"testing"
+	"log/slog"
 
 	"github.com/podhmo/goat/internal/loader" // Changed
 	// "strings" // No longer used directly in the simplified parseTestFiles

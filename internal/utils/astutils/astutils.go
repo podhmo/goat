@@ -1,6 +1,7 @@
 package astutils
 
 import (
+	"context"
 	"fmt"
 	"go/ast"
 	"go/token"
@@ -117,27 +118,27 @@ func EvaluateArg(arg ast.Expr) EvalResult {
 			if err == nil {
 				return EvalResult{Value: i}
 			}
-			slog.Info(fmt.Sprintf("EvaluateArg: failed to parse integer literal %s: %v", v.Value, err))
+			slog.InfoContext(context.Background(), fmt.Sprintf("EvaluateArg: failed to parse integer literal %s: %v", v.Value, err))
 		case token.FLOAT:
 			f, err := strconv.ParseFloat(v.Value, 64)
 			if err == nil {
 				return EvalResult{Value: f}
 			}
-			slog.Info(fmt.Sprintf("EvaluateArg: failed to parse float literal %s: %v", v.Value, err))
+			slog.InfoContext(context.Background(), fmt.Sprintf("EvaluateArg: failed to parse float literal %s: %v", v.Value, err))
 		case token.STRING:
 			s, err := strconv.Unquote(v.Value)
 			if err == nil {
 				return EvalResult{Value: s}
 			}
-			slog.Info(fmt.Sprintf("EvaluateArg: failed to unquote string literal %s: %v", v.Value, err))
+			slog.InfoContext(context.Background(), fmt.Sprintf("EvaluateArg: failed to unquote string literal %s: %v", v.Value, err))
 		case token.CHAR:
 			s, err := strconv.Unquote(v.Value) // char is rune, often represented as string in Go
 			if err == nil && len(s) == 1 {
 				return EvalResult{Value: []rune(s)[0]}
 			}
-			slog.Info(fmt.Sprintf("EvaluateArg: failed to unquote or invalid char literal %s: %v", v.Value, err))
+			slog.InfoContext(context.Background(), fmt.Sprintf("EvaluateArg: failed to unquote or invalid char literal %s: %v", v.Value, err))
 		default:
-			slog.Info(fmt.Sprintf("EvaluateArg: unsupported basic literal type: %s, returning as raw string", v.Kind))
+			slog.InfoContext(context.Background(), fmt.Sprintf("EvaluateArg: unsupported basic literal type: %s, returning as raw string", v.Kind))
 			return EvalResult{Value: v.Value} // return raw token value as string
 		}
 		// If parsing failed for supported types, return empty EvalResult
@@ -151,7 +152,7 @@ func EvaluateArg(arg ast.Expr) EvalResult {
 		case "nil":
 			return EvalResult{Value: nil}
 		default:
-			slog.Info(fmt.Sprintf("EvaluateArg: identified identifier %s for further resolution", v.Name))
+			slog.InfoContext(context.Background(), fmt.Sprintf("EvaluateArg: identified identifier %s for further resolution", v.Name))
 			return EvalResult{IdentifierName: v.Name}
 		}
 	case *ast.UnaryExpr:
@@ -167,29 +168,29 @@ func EvaluateArg(arg ast.Expr) EvalResult {
 				case int: // Check if this case is reachable given current literal parsing
 					return EvalResult{Value: -val}
 				default:
-					slog.Info(fmt.Sprintf("EvaluateArg: unary minus operator can only be applied to known numeric types, got %T for value of %s", evalRes.Value, ExprToTypeName(v.X)))
+					slog.InfoContext(context.Background(), fmt.Sprintf("EvaluateArg: unary minus operator can only be applied to known numeric types, got %T for value of %s", evalRes.Value, ExprToTypeName(v.X)))
 					return EvalResult{}
 				}
 			}
 			// If evalRes.Value is nil, it might be an identifier or unresolved.
 			// For now, we don't support unary ops on unresolved identifiers (e.g. -MyConst)
 			// unless MyConst resolves to a number. This would require more advanced resolution.
-			slog.Info(fmt.Sprintf("EvaluateArg: unary minus operand %s (type %T) could not be resolved to a value or is an identifier", ExprToTypeName(v.X), v.X))
+			slog.InfoContext(context.Background(), fmt.Sprintf("EvaluateArg: unary minus operand %s (type %T) could not be resolved to a value or is an identifier", ExprToTypeName(v.X), v.X))
 			return EvalResult{}
 		}
-		slog.Info(fmt.Sprintf("EvaluateArg: unsupported unary expression operator: %s", v.Op))
+		slog.InfoContext(context.Background(), fmt.Sprintf("EvaluateArg: unsupported unary expression operator: %s", v.Op))
 		return EvalResult{}
 	case *ast.SelectorExpr: // e.g. pkg.MyConst
 		if xIdent, okX := v.X.(*ast.Ident); okX { // Should be a package name
 			// v.Sel is already *ast.Ident, no type assertion needed here.
 			selIdent := v.Sel
-			slog.Info(fmt.Sprintf("EvaluateArg: identified selector %s.%s for further resolution", xIdent.Name, selIdent.Name))
+			slog.InfoContext(context.Background(), fmt.Sprintf("EvaluateArg: identified selector %s.%s for further resolution", xIdent.Name, selIdent.Name))
 			return EvalResult{IdentifierName: selIdent.Name, PkgName: xIdent.Name}
 		}
-		slog.Info(fmt.Sprintf("EvaluateArg: unsupported selector expression, expected X to be *ast.Ident but got %T for X in X.Sel", v.X))
+		slog.InfoContext(context.Background(), fmt.Sprintf("EvaluateArg: unsupported selector expression, expected X to be *ast.Ident but got %T for X in X.Sel", v.X))
 		return EvalResult{}
 	default:
-		slog.Info(fmt.Sprintf("EvaluateArg: argument is not a basic literal, identifier, unary or selector expression, got %T", arg))
+		slog.InfoContext(context.Background(), fmt.Sprintf("EvaluateArg: argument is not a basic literal, identifier, unary or selector expression, got %T", arg))
 		return EvalResult{}
 	}
 }
@@ -209,30 +210,30 @@ func EvaluateSliceArg(arg ast.Expr) EvalResult {
 				results = append(results, evalRes.Value)
 			} else if evalRes.IdentifierName != "" {
 				// Element is an identifier, this slice is not purely literal.
-				slog.Info(fmt.Sprintf("EvaluateSliceArg: composite literal element %s (pkg %s) is an identifier, direct slice evaluation cannot fully resolve here.", evalRes.IdentifierName, evalRes.PkgName))
+				slog.InfoContext(context.Background(), fmt.Sprintf("EvaluateSliceArg: composite literal element %s (pkg %s) is an identifier, direct slice evaluation cannot fully resolve here.", evalRes.IdentifierName, evalRes.PkgName))
 				return EvalResult{} // Not a simple literal slice.
 			} else {
 				// Element could not be evaluated to a value and is not an identifier.
-				slog.Info(fmt.Sprintf("EvaluateSliceArg: failed to evaluate element %s of composite literal to a value and it's not an identifier.", ExprToTypeName(elt)))
+				slog.InfoContext(context.Background(), fmt.Sprintf("EvaluateSliceArg: failed to evaluate element %s of composite literal to a value and it's not an identifier.", ExprToTypeName(elt)))
 				return EvalResult{}
 			}
 		}
 		return EvalResult{Value: results}
 	case *ast.Ident:
 		// This could be an identifier for a slice variable, requires further resolution
-		slog.Info(fmt.Sprintf("EvaluateSliceArg: argument is an identifier %s, requires loader resolution", v.Name))
+		slog.InfoContext(context.Background(), fmt.Sprintf("EvaluateSliceArg: argument is an identifier %s, requires loader resolution", v.Name))
 		return EvalResult{IdentifierName: v.Name}
 	case *ast.SelectorExpr: // e.g. pkg.MyEnumSlice
 		if xIdent, okX := v.X.(*ast.Ident); okX { // Package name
 			// v.Sel is already *ast.Ident, no type assertion needed here.
 			selIdent := v.Sel
-			slog.Info(fmt.Sprintf("EvaluateSliceArg: argument is a selector %s.%s, requires loader resolution", xIdent.Name, selIdent.Name))
+			slog.InfoContext(context.Background(), fmt.Sprintf("EvaluateSliceArg: argument is a selector %s.%s, requires loader resolution", xIdent.Name, selIdent.Name))
 			return EvalResult{IdentifierName: selIdent.Name, PkgName: xIdent.Name}
 		}
-		slog.Info(fmt.Sprintf("EvaluateSliceArg: unsupported selector expression for slice, expected X to be *ast.Ident but got %T for X in X.Sel", v.X))
+		slog.InfoContext(context.Background(), fmt.Sprintf("EvaluateSliceArg: unsupported selector expression for slice, expected X to be *ast.Ident but got %T for X in X.Sel", v.X))
 		return EvalResult{}
 	default:
-		slog.Info(fmt.Sprintf("EvaluateSliceArg: argument is not a composite literal, identifier, or selector, got %T", arg))
+		slog.InfoContext(context.Background(), fmt.Sprintf("EvaluateSliceArg: argument is not a composite literal, identifier, or selector, got %T", arg))
 		return EvalResult{}
 	}
 }
