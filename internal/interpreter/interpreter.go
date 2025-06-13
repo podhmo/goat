@@ -5,6 +5,7 @@ import (
 	"go/ast"
 	"go/token"
 	"log"
+	"strconv" // Added strconv import
 
 	"github.com/podhmo/goat/internal/loader"
 	"github.com/podhmo/goat/internal/metadata"
@@ -155,10 +156,19 @@ func extractMarkerInfo(
 			if defaultEvalResult.IdentifierName == "" { // If it's a literal or directly evaluatable value
 				optMeta.DefaultValue = defaultEvalResult.Value
 				log.Printf("  Default value: %v", optMeta.DefaultValue)
-			} else {
-				// Default value is an identifier, needs resolution (not currently implemented for defaults)
-				log.Printf("  Default value for field %s is an identifier '%s' (pkg '%s'). Resolution of identifiers for default values is not yet implemented here. DefaultValue will be nil.", optMeta.Name, defaultEvalResult.IdentifierName, defaultEvalResult.PkgName)
-				optMeta.DefaultValue = nil // Explicitly set to nil or some other indicator if preferred
+			} else { // Default value is an identifier
+				log.Printf("  Default value for field %s is an identifier '%s' (pkg '%s'). Attempting resolution.", optMeta.Name, defaultEvalResult.IdentifierName, defaultEvalResult.PkgName)
+				// defaultEvalResult already contains IdentifierName and PkgName
+				// fileAst is the AST of the file where goat.Default is called
+				// currentPkgPath is the import path of this file
+				resolvedStrVal, success := resolveEvalResultToEnumString(defaultEvalResult, loader, currentPkgPath, fileAst)
+				if success {
+					optMeta.DefaultValue = resolvedStrVal
+					log.Printf("  Successfully resolved identifier default value: %v", optMeta.DefaultValue)
+				} else {
+					log.Printf("  Failed to resolve identifier default value for '%s'. DefaultValue will be nil.", defaultEvalResult.IdentifierName)
+					optMeta.DefaultValue = nil
+				}
 			}
 
 			// Subsequent args could be an Enum call for enumConstraint
@@ -199,11 +209,54 @@ func extractMarkerInfo(
 				}
 			}
 		}
-	case "Enum": // Handles o.MyField = goat.Enum(MyEnumValues) or o.MyField = goat.Enum(pkg.MyEnumValues)
+	case "Enum":
 		log.Printf("Interpreting goat.Enum for field %s (current Pkg: %s)", optMeta.Name, currentPkgPath)
-		if len(callExpr.Args) == 1 {
-			evalResult := astutils.EvaluateSliceArg(callExpr.Args[0])
-			extractEnumValuesFromEvalResult(evalResult, optMeta, fileAst, loader, currentPkgPath, "Enum (direct)")
+		var valuesArg ast.Expr
+		if len(callExpr.Args) == 1 { // goat.Enum(MyEnumValuesVarOrLiteral)
+			valuesArg = callExpr.Args[0]
+		} else if len(callExpr.Args) == 2 { // goat.Enum((*MyType)(nil), MyEnumValuesVarOrLiteral)
+			// The second argument is the slice of enum values
+			valuesArg = callExpr.Args[1]
+		} else {
+			log.Printf("  Warning: goat.Enum for field %s called with unexpected number of arguments: %d. Expected 1 or 2.", optMeta.Name, len(callExpr.Args))
+			return // or break, depending on desired error handling
+		}
+
+		if valuesArg != nil {
+			evalResult := astutils.EvaluateSliceArg(valuesArg)
+
+			// Check if EvaluateSliceArg could not resolve valuesArg into a simple slice
+			// This happens if valuesArg is a composite literal with identifiers, e.g., []customtypes.MyCustomEnum{customtypes.OptionX}
+			if evalResult.Value == nil && evalResult.IdentifierName == "" {
+				if compLit, ok := valuesArg.(*ast.CompositeLit); ok {
+					log.Printf("  Enum for field %s is a composite literal. Attempting to resolve elements.", optMeta.Name)
+					var resolvedEnumStrings []any
+					for _, elt := range compLit.Elts {
+						elementEvalResult := astutils.EvaluateArg(elt) // Evaluate each element
+						// fileAst is the AST of the file where goat.Enum is called.
+						// currentPkgPath is the import path of this file.
+						// Pass fileAst as fileAstForContext for resolving package aliases within elt if it's a qualified identifier.
+						strVal, success := resolveEvalResultToEnumString(elementEvalResult, loader, currentPkgPath, fileAst)
+						if success {
+							resolvedEnumStrings = append(resolvedEnumStrings, strVal)
+						} else {
+							log.Printf("  Warning: Could not resolve enum element '%s' for field %s in composite literal. Element EvalResult: %+v", astutils.ExprToTypeName(elt), optMeta.Name, elementEvalResult)
+						}
+					}
+					if len(resolvedEnumStrings) > 0 {
+						optMeta.EnumValues = resolvedEnumStrings
+						log.Printf("  Successfully resolved enum values from composite literal for field %s: %v", optMeta.Name, optMeta.EnumValues)
+					} else {
+						log.Printf("  Warning: Composite literal for enum field %s did not yield any resolvable string values.", optMeta.Name)
+					}
+				} else {
+					log.Printf("  Warning: Enum argument for field %s could not be processed as a slice or composite literal. Arg type: %T. EvalResult: %+v", optMeta.Name, valuesArg, evalResult)
+				}
+			} else {
+				// Existing logic: valuesArg was either a literal slice evaluatable by EvaluateSliceArg,
+				// or an identifier pointing to a slice (e.g., goat.Enum(MyEnumVariable)).
+				extractEnumValuesFromEvalResult(evalResult, optMeta, fileAst, loader, currentPkgPath, "Enum (direct)")
+			}
 		}
 	case "File":
 		log.Printf("Interpreting goat.File for field %s", optMeta.Name)
@@ -249,6 +302,147 @@ func extractMarkerInfo(
 
 // extractEnumValuesFromEvalResult is a helper to resolve enum values from EvalResult.
 // It populates optMeta.EnumValues if resolution is successful.
+
+// resolveEvalResultToEnumString takes an EvalResult (typically from astutils.EvaluateArg
+// called on an individual enum value like customtypes.OptionX) and resolves it to its
+// underlying string value. This is used when enums are defined via composite literals
+// with identifiers.
+func resolveEvalResultToEnumString(
+	elementEvalResult astutils.EvalResult,
+	loader *loader.Loader,
+	currentPkgPath string, // Package path where the goat.Enum call is made or where the variable holding the enum is defined
+	fileAstForContext *ast.File, // *ast.File where the identifier is used (for resolving local package aliases)
+) (string, bool) {
+	log.Printf("  [resolveEvalResultToEnumString] --- ENTER --- EvalResult: %+v", elementEvalResult)
+
+	if elementEvalResult.Value != nil {
+		log.Printf("  [resolveEvalResultToEnumString] Path A1 (Value is not nil)")
+		if strVal, ok := elementEvalResult.Value.(string); ok {
+			log.Printf("  [resolveEvalResultToEnumString] Value is direct string: \"%s\"", strVal)
+			return strVal, true
+		}
+		// If Value is not nil but not a string, it's an unexpected type for an enum string.
+		if elementEvalResult.Value != nil {
+			log.Printf("  [resolveEvalResultToEnumString] Warning: elementEvalResult.Value is not a string, but %T (%v). Cannot use as enum string.", elementEvalResult.Value, elementEvalResult.Value)
+			return "", false
+		}
+		// If Value is nil, then IdentifierName must be present. // This comment needs review based on structure
+		if elementEvalResult.IdentifierName == "" { // This path is only reachable if Value is non-nil and not a string due to the return above.
+			log.Printf("  [resolveEvalResultToEnumString] Path A2 (Value is not nil, not string, and IdentifierName is empty) - Error. EvalResult: %+v", elementEvalResult)
+			return "", false
+		}
+		// If Value was non-nil, not a string, and IdentifierName was not empty, it would fall through Block 1.
+		// This is an undesirable fallthrough from block A.
+		log.Printf("  [resolveEvalResultToEnumString] Path A3 (Value is not nil, not string, and IdentifierName is NOT empty) - Potential Fallthrough from Block A. EvalResult: %+v", elementEvalResult)
+		// This path should ideally not continue to IdentifierName processing without returning false,
+		// as Value was present but unusable. For now, let it fall to the next section.
+	}
+
+	// Value is nil path (or Path A3 fallthrough)
+	log.Printf("  [resolveEvalResultToEnumString] Path B (Value is nil or fell through A3). EvalResult: %+v", elementEvalResult)
+	if elementEvalResult.IdentifierName == "" {
+		log.Printf("  [resolveEvalResultToEnumString] Path B1 (IdentifierName is empty). EvalResult: %+v", elementEvalResult)
+		return "", false
+	}
+
+	// IdentifierName is present.
+	log.Printf("  [resolveEvalResultToEnumString] Path B2 (IdentifierName is NOT empty: '%s'). Processing as identifier.", elementEvalResult.IdentifierName)
+	// This 'if' is somewhat redundant if logic flows correctly, but good for explicit block.
+	if elementEvalResult.IdentifierName != "" {
+		log.Printf("  [resolveEvalResultToEnumString] Path B2-MAIN (Executing main logic for identifier '%s')", elementEvalResult.IdentifierName)
+		identName := elementEvalResult.IdentifierName
+		pkgAlias := elementEvalResult.PkgName
+		// log.Printf("  [resolveEvalResultToEnumString] Resolving identifier '%s' (pkg alias '%s') from package '%s' using context file '%s'", identName, pkgAlias, currentPkgPath, fileAstForContext.Name.Name) // Original detailed log
+		targetPkgPath := ""
+		if pkgAlias != "" { // Qualified identifier like mypkg.MyConst
+			resolvedImportPath := astutils.GetImportPath(fileAstForContext, pkgAlias)
+			if resolvedImportPath == "" {
+				log.Printf("  [resolveEvalResultToEnumString] Error: Could not resolve import path for package alias '%s' in file '%s' (used for enum element const '%s')", pkgAlias, fileAstForContext.Name.Name, identName)
+				return "", false
+			}
+			targetPkgPath = resolvedImportPath
+			log.Printf("  [resolveEvalResultToEnumString] Resolved package alias '%s' to import path '%s' for identifier '%s'", pkgAlias, targetPkgPath, identName)
+		} else { // Unqualified identifier, assume current package context
+			targetPkgPath = currentPkgPath
+			if targetPkgPath == "" {
+				log.Printf("  [resolveEvalResultToEnumString] Error: Current package path ('%s') is empty or invalid, cannot resolve unqualified identifier '%s'", currentPkgPath, identName)
+				return "", false
+			}
+			log.Printf("  [resolveEvalResultToEnumString] Identifier '%s' is unqualified, using current package path '%s'", identName, targetPkgPath)
+		}
+
+		log.Printf("  [resolveEvalResultToEnumString] Attempting to load package: '%s' for const identifier '%s'", targetPkgPath, identName)
+		loadedPkgs, err := loader.Load(targetPkgPath)
+		if err != nil {
+			log.Printf("  [resolveEvalResultToEnumString] Error: Failed loading package '%s' for const identifier '%s': %v", targetPkgPath, identName, err)
+			return "", false
+		}
+		if len(loadedPkgs) == 0 {
+			log.Printf("  [resolveEvalResultToEnumString] Error: No package found at path '%s' when resolving const identifier '%s'", targetPkgPath, identName)
+			return "", false
+		}
+		pkg := loadedPkgs[0]
+		log.Printf("  [resolveEvalResultToEnumString] Successfully loaded package '%s' (name: '%s') for const '%s'", pkg.ImportPath, pkg.Name, identName)
+
+		pkgFiles, err := pkg.Files()
+		if err != nil {
+			log.Printf("  [resolveEvalResultToEnumString] Error: Failed getting files for package '%s' to resolve const '%s': %v", pkg.ImportPath, identName, err)
+			return "", false
+		}
+
+		for _, fileAst := range pkgFiles {
+			var foundVal string
+			var declFound bool
+			log.Printf("  [resolveEvalResultToEnumString] Searching for CONST '%s' in file '%s' of package '%s'", identName, fileAst.Name.Name, pkg.ImportPath)
+			ast.Inspect(fileAst, func(node ast.Node) bool {
+				if genDecl, ok := node.(*ast.GenDecl); ok && genDecl.Tok == token.CONST {
+					for _, spec := range genDecl.Specs {
+						if valSpec, ok := spec.(*ast.ValueSpec); ok {
+							for i, nameIdentNode := range valSpec.Names {
+								if nameIdentNode.Name == identName {
+									declFound = true
+									log.Printf("  [resolveEvalResultToEnumString] Found const declaration for '%s' in package '%s', file '%s'", identName, pkg.ImportPath, fileAst.Name.Name)
+									if len(valSpec.Values) > i {
+										if basicLit, ok := valSpec.Values[i].(*ast.BasicLit); ok && basicLit.Kind == token.STRING {
+											unquotedVal, errUnquote := strconv.Unquote(basicLit.Value) // Changed to strconv.Unquote
+											if errUnquote != nil {
+												log.Printf("  [resolveEvalResultToEnumString] Error: Failed unquoting string for const '%s' in package '%s', raw value '%s': %v", identName, pkg.ImportPath, basicLit.Value, errUnquote)
+												return false // Stop inspection for this const
+											}
+											foundVal = unquotedVal
+											log.Printf("  [resolveEvalResultToEnumString] Successfully resolved identifier '%s' in package '%s' to string value: \"%s\"", identName, pkg.ImportPath, foundVal)
+											return false // Stop inspection, value found
+										}
+										log.Printf("  [resolveEvalResultToEnumString] Error: Const '%s' in package '%s', file '%s' is not a basic string literal. AST node type %T, value: %s", identName, pkg.ImportPath, fileAst.Name.Name, valSpec.Values[i], astutils.ExprToTypeName(valSpec.Values[i]))
+									} else {
+										log.Printf("  [resolveEvalResultToEnumString] Error: Const '%s' in package '%s', file '%s' has no value spec", identName, pkg.ImportPath, fileAst.Name.Name)
+									}
+									return false // Stop for this const name, whether successful or not
+								}
+							}
+						}
+					}
+				}
+				return true // Continue inspection
+			}) // End ast.Inspect
+
+			log.Printf("  [resolveEvalResultToEnumString] Check before return in file '%s': declFound=%v, foundVal='%s'", fileAst.Name.Name, declFound, foundVal)
+			if declFound && foundVal != "" {
+				return foundVal, true
+			}
+			if declFound { // Found declaration but not a usable string value
+				log.Printf("  [resolveEvalResultToEnumString] Warning: Const '%s' in package '%s', file '%s' was found but not resolved to a string.", identName, pkg.ImportPath, fileAst.Name.Name)
+				return "", false
+			}
+		} // End for _, fileAst := range pkgFiles
+		log.Printf("  [resolveEvalResultToEnumString] Error: Const identifier '%s' not found in any file of package '%s' (path searched: '%s')", identName, pkg.ImportPath, targetPkgPath)
+		return "", false
+	}
+
+	// This point should ideally not be reached if the logic for identifier resolution (Path B2-MAIN) is complete and returns.
+	log.Printf("  [resolveEvalResultToEnumString] Error: Unhandled case or fallthrough AFTER main logic block for identifiers. EvalResult: %+v", elementEvalResult)
+	return "", false
+}
 
 // resolveConstStringValue searches for a constant `constName` in the given `pkg`
 // and returns its string value if it's a basic literal string.
@@ -399,79 +593,89 @@ func extractEnumValuesFromEvalResult(
 								if compLit, ok := initializerExpr.(*ast.CompositeLit); ok {
 									// Special handling for []string{string(CONST_A), string(CONST_B), ...}
 									var tempValues []any
-									elementsAreResolvable := true
+									// elementsAreResolvable := true // Removed: allow partial success
+									someElementsFailed := false // Track if any element fails
 									for _, elt := range compLit.Elts {
 										if callExpr, okElt := elt.(*ast.CallExpr); okElt {
+											eltStrForLog := astutils.ExprToTypeName(elt)
 											if funIdent, okFun := callExpr.Fun.(*ast.Ident); okFun && funIdent.Name == "string" && len(callExpr.Args) == 1 {
 												arg := callExpr.Args[0]
 												var constStrVal string
 												var constFound bool
 
 												if constIdent, okConst := arg.(*ast.Ident); okConst {
-													// string(ConstInSamePkg)
-													// pkg here is the package where evalResult.IdentifierName (the enum slice variable) is defined.
+													log.Printf("    [extractEnumValuesFromEvalResult] Field %s, Var %s: Processing element %s (string(ConstInSamePkg))", optMeta.Name, evalResult.IdentifierName, eltStrForLog)
 													constStrVal, constFound = resolveConstStringValue(constIdent.Name, pkg, loadedFileAst)
 												} else if selExpr, okSel := arg.(*ast.SelectorExpr); okSel {
-													// string(otherpkg.Const)
+													log.Printf("    [extractEnumValuesFromEvalResult] Field %s, Var %s: Processing element %s (string(otherpkg.Const))", optMeta.Name, evalResult.IdentifierName, eltStrForLog)
 													if pkgNameIdent, okPkgName := selExpr.X.(*ast.Ident); okPkgName {
 														selPkgAlias := pkgNameIdent.Name
 														constNameToResolve := selExpr.Sel.Name
-														// We need to find the import path for selPkgAlias using the file where the var (e.g. MyLocalEnumValues) is declared (loadedFileAst)
 														resolvedSelImportPath := astutils.GetImportPath(loadedFileAst, selPkgAlias)
 														if resolvedSelImportPath == "" {
-															log.Printf("    Could not resolve import path for package alias '%s' in file %s (used in string(%s.%s))", selPkgAlias, loadedFileAst.Name.Name, selPkgAlias, constNameToResolve)
-															elementsAreResolvable = false
-															break
+															log.Printf("    [extractEnumValuesFromEvalResult] Field %s, Var %s: Error: Could not resolve import path for package alias '%s' in file '%s' (used in string(%s.%s)) for element %s", optMeta.Name, evalResult.IdentifierName, selPkgAlias, loadedFileAst.Name.Name, selPkgAlias, constNameToResolve, eltStrForLog)
+															someElementsFailed = true
+															continue // Skip this element
 														}
-														// Load the selected package
 														selPkgs, errSel := loader.Load(resolvedSelImportPath)
 														if errSel != nil || len(selPkgs) == 0 {
-															log.Printf("    Could not load package '%s' for resolving const '%s' in string(%s.%s): %v", resolvedSelImportPath, constNameToResolve, selPkgAlias, constNameToResolve, errSel)
-															elementsAreResolvable = false
-															break
+															log.Printf("    [extractEnumValuesFromEvalResult] Field %s, Var %s: Error: Could not load package '%s' for resolving const '%s' in string(%s.%s) for element %s: %v", optMeta.Name, evalResult.IdentifierName, resolvedSelImportPath, constNameToResolve, selPkgAlias, constNameToResolve, eltStrForLog, errSel)
+															someElementsFailed = true
+															continue // Skip this element
 														}
-														constStrVal, constFound = resolveConstStringValue(constNameToResolve, selPkgs[0], nil) // Pass nil for identFile as const is in another package
+														constStrVal, constFound = resolveConstStringValue(constNameToResolve, selPkgs[0], nil)
 													} else {
-														log.Printf("    Unhandled selector expression in string() argument: X is %T, not *ast.Ident", selExpr.X)
-														elementsAreResolvable = false
-														break
+														log.Printf("    [extractEnumValuesFromEvalResult] Field %s, Var %s: Error: Unhandled selector expression in string() argument: X is %T, not *ast.Ident for element %s", optMeta.Name, evalResult.IdentifierName, selExpr.X, eltStrForLog)
+														someElementsFailed = true
+														continue // Skip this element
 													}
 												} else {
-													log.Printf("    Unhandled argument to string() conversion: %T", arg)
-													elementsAreResolvable = false
-													break
+													log.Printf("    [extractEnumValuesFromEvalResult] Field %s, Var %s: Error: Unhandled argument to string() conversion: %T for element %s", optMeta.Name, evalResult.IdentifierName, arg, eltStrForLog)
+													someElementsFailed = true
+													continue // Skip this element
 												}
 
 												if constFound {
 													tempValues = append(tempValues, constStrVal)
+													log.Printf("    [extractEnumValuesFromEvalResult] Field %s, Var %s: Successfully resolved element %s to value '%s'", optMeta.Name, evalResult.IdentifierName, eltStrForLog, constStrVal)
 												} else {
-													log.Printf("    Could not resolve constant value for element %s in initializer of %s", astutils.ExprToTypeName(elt), evalResult.IdentifierName)
-													elementsAreResolvable = false
-													break
+													log.Printf("    [extractEnumValuesFromEvalResult] Field %s, Var %s: Error: Could not resolve constant value for element %s in initializer of %s", optMeta.Name, evalResult.IdentifierName, eltStrForLog, evalResult.IdentifierName)
+													someElementsFailed = true
+													// continue: already at end of this path for element
 												}
 											} else { // Not a string(IDENT) or string(pkg.IDENT) call
-												log.Printf("    Element is a CallExpr but not the expected string(IDENT) pattern: %s", astutils.ExprToTypeName(elt))
-												elementsAreResolvable = false
-												break
+												log.Printf("    [extractEnumValuesFromEvalResult] Field %s, Var %s: Warning: Element %s is a CallExpr but not the expected string(IDENT) pattern.", optMeta.Name, evalResult.IdentifierName, eltStrForLog)
+												someElementsFailed = true
+												// continue: already at end of this path for element
 											}
-										} else { // Not a CallExpr, try EvaluateArg directly
-											elemEval := astutils.EvaluateArg(elt)
-											if elemEval.Value != nil {
-												tempValues = append(tempValues, elemEval.Value)
+										} else { // Not a CallExpr, try to resolve it using the new function
+											eltStr := astutils.ExprToTypeName(elt)
+											log.Printf("    [extractEnumValuesFromEvalResult] Field %s, Var %s: Processing variable initializer element: %s", optMeta.Name, evalResult.IdentifierName, eltStr)
+											elementEvalResult := astutils.EvaluateArg(elt)
+											strVal, success := resolveEvalResultToEnumString(elementEvalResult, loader, pkg.ImportPath, loadedFileAst)
+											if success {
+												tempValues = append(tempValues, strVal)
+												log.Printf("    [extractEnumValuesFromEvalResult] Field %s, Var %s: Successfully resolved element %s to value '%s' via resolveEvalResultToEnumString", optMeta.Name, evalResult.IdentifierName, eltStr, strVal)
 											} else {
-												log.Printf("    Could not evaluate composite literal element %s directly for %s.", astutils.ExprToTypeName(elt), evalResult.IdentifierName)
-												elementsAreResolvable = false
-												break
+												log.Printf("    [extractEnumValuesFromEvalResult] Field %s, Var %s: Warning: Failed to resolve enum value from variable initializer element '%s'. Element EvalResult: %+v", optMeta.Name, evalResult.IdentifierName, eltStr, elementEvalResult)
+												someElementsFailed = true
+												// continue: already at end of this path for element
 											}
 										}
+									} // End of for loop: for _, elt := range compLit.Elts
+
+									foundValues = tempValues // Assign collected values (can be empty or partial)
+									foundDecl = true         // We found and processed the var declaration
+
+									if someElementsFailed {
+										log.Printf("    Warning: Some elements of composite literal for '%s' in package '%s' could not be resolved.", evalResult.IdentifierName, pkg.ImportPath)
 									}
-									if elementsAreResolvable {
-										foundValues = tempValues
+									if len(foundValues) > 0 {
 										log.Printf("    Successfully resolved enum identifier '%s' in package '%s' by custom composite literal parsing to values: %v", evalResult.IdentifierName, pkg.ImportPath, foundValues)
-										foundDecl = true
-									} else {
-										log.Printf("    Failed to resolve all elements of composite literal for '%s' in package '%s'.", evalResult.IdentifierName, pkg.ImportPath)
+									} else if !someElementsFailed { // No values and no failures means it was an empty literal
+										log.Printf("    Enum identifier '%s' in package '%s' resolved to an empty list (all elements processed successfully but yielded no strings, or literal was empty).", evalResult.IdentifierName, pkg.ImportPath)
 									}
+									// If someElementsFailed and len(foundValues)==0, the warning above covers it.
 								} else {
 									// Fallback to original logic if initializer is not a CompositeLit (e.g. alias to another var)
 									resolvedSlice := astutils.EvaluateSliceArg(initializerExpr)

@@ -107,7 +107,7 @@ func (gml *GoModLocator) Locate(pattern string, buildCtx BuildContext) ([]Packag
 	if pattern == "." || strings.HasPrefix(pattern, "./") || strings.HasPrefix(pattern, "../") {
 		// Handle relative path
 		pkgDir := filepath.Clean(filepath.Join(gml.WorkingDir, pattern)) // Use Exported field
-		absPkgDir, err := filepath.Abs(pkgDir) // Ensure pkgDir is absolute
+		absPkgDir, err := filepath.Abs(pkgDir)                           // Ensure pkgDir is absolute
 		if err != nil {
 			return nil, fmt.Errorf("could not get absolute path for relative dir %s: %w", pkgDir, err)
 		}

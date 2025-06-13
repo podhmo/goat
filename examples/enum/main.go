@@ -45,9 +45,9 @@ type Options struct {
 // NewOptions initializes Options with default values and enum constraints.
 func NewOptions() *Options {
 	return &Options{
-		LocalEnumField:            goat.Default(LocalA, goat.Enum(MyLocalEnumValues)),                                 // Changed
-		ImportedEnumField:         goat.Default(customtypes.OptionX, goat.Enum(customtypes.MyCustomEnumValues)),       // Changed
-		OptionalImportedEnumField: goat.Enum(nil, []string{string(customtypes.OptionX), string(customtypes.OptionY)}), // Unchanged
+		LocalEnumField:            goat.Default(LocalA, goat.Enum(MyLocalEnumValues)),                           // Changed
+		ImportedEnumField:         goat.Default(customtypes.OptionX, goat.Enum(customtypes.MyCustomEnumValues)), // Changed
+		OptionalImportedEnumField: goat.Enum((*customtypes.MyCustomEnum)(nil), []customtypes.MyCustomEnum{customtypes.OptionX, customtypes.OptionY}),
 	}
 }
 
@@ -90,7 +90,7 @@ Flags:
   --local-enum-field             mylocalenum LocalEnumField demonstrates a locally defined enum. (required) (env: ENUM_LOCAL_ENUM) (allowed: "local-a", "local-b")
   --imported-enum-field          mycustomenum ImportedEnumField demonstrates an enum imported from another package. (required) (env: ENUM_IMPORTED_ENUM) (allowed: "option-x", "option-y", "option-z")
   --optional-imported-enum-field mycustomenum OptionalImportedEnumField demonstrates an optional enum (pointer type)
-                                        imported from another package. (env: ENUM_OPTIONAL_IMPORTED_ENUM)
+                                        imported from another package. (env: ENUM_OPTIONAL_IMPORTED_ENUM) (allowed: "option-x", "option-y")
 
   -h, --help                             Show this help message and exit
 `)
@@ -121,14 +121,26 @@ Flags:
 
 	if val, ok := os.LookupEnv("ENUM_OPTIONAL_IMPORTED_ENUM"); ok {
 
-		// This handles non-pointer named types with an underlying kind of string (e.g., string-based enums)
-		options.OptionalImportedEnumField = *customtypes.MyCustomEnum(val)
+		// This handles pointer to named types with an underlying kind of string (e.g., *MyEnum)
+		typedVal := customtypes.MyCustomEnum(val)
+		options.OptionalImportedEnumField = &typedVal
 
 	}
 
 	// End of range .Options for env vars
 
 	// 3. Set flags.
+
+	// Handles *MyCustomEnum if EnumValues are present and not TextUnmarshaler
+	// Ensure the field is initialized if nil, as flag.Var needs a non-nil flag.Value.
+	// The initializer (NewOptions) would have run. If it set a non-nil default, that's used.
+	// If the default from NewOptions was nil (as in our case for OptionalImportedEnumField),
+	// then we must initialize it here before passing to flag.Var.
+	if options.OptionalImportedEnumField == nil {
+		options.OptionalImportedEnumField = new(customtypes.MyCustomEnum)
+	}
+	flag.Var(options.OptionalImportedEnumField, "optional-imported-enum-field", `OptionalImportedEnumField demonstrates an optional enum (pointer type)
+imported from another package.`)
 
 	// End of range .Options for flags
 
@@ -163,6 +175,34 @@ Flags:
 		var currentValueForMsg interface{} = options.ImportedEnumField
 
 		slog.Error("Invalid value for flag", "flag", "imported-enum-field", "value", currentValueForMsg, "allowedChoices", strings.Join(allowedChoices_ImportedEnumField, ", "))
+		os.Exit(1)
+	}
+
+	isValidChoice_OptionalImportedEnumField := false
+	allowedChoices_OptionalImportedEnumField := []string{"option-x", "option-y"}
+
+	// Catches other pointer enums, e.g. *MyCustomEnum
+	if options.OptionalImportedEnumField != nil {
+		currentValue_OptionalImportedEnumFieldStr := fmt.Sprintf("%v", *options.OptionalImportedEnumField)
+		isValidChoice_OptionalImportedEnumField = slices.Contains(allowedChoices_OptionalImportedEnumField, currentValue_OptionalImportedEnumFieldStr)
+	} else { // Field is nil
+
+		// For optional pointer enums, nil is a valid state (means not provided).
+		// If EnumValues are defined, it implies that if a value IS provided, it must be one of them.
+		// If it's nil, it hasn't been provided, so it's "valid" in terms of choice.
+		isValidChoice_OptionalImportedEnumField = true
+
+	}
+
+	if !isValidChoice_OptionalImportedEnumField {
+		var currentValueForMsg interface{} = options.OptionalImportedEnumField
+
+		if options.OptionalImportedEnumField != nil {
+			currentValueForMsg = *options.OptionalImportedEnumField
+		}
+		// If nil, currentValueForMsg remains options.OptionalImportedEnumField (which will print as <nil>)
+
+		slog.Error("Invalid value for flag", "flag", "optional-imported-enum-field", "value", currentValueForMsg, "allowedChoices", strings.Join(allowedChoices_OptionalImportedEnumField, ", "))
 		os.Exit(1)
 	}
 
