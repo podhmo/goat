@@ -217,7 +217,7 @@ func AnalyzeOptions( // Renamed from AnalyzeOptionsV3
 			IsPointer:  astutils.IsPointerType(fieldInfo.TypeExpr),
 			IsRequired: !astutils.IsPointerType(fieldInfo.TypeExpr),
 		}
-		opt.UnderlyingKindIsString = false // Initialize
+		opt.UnderlyingKind = "" // Initialize
 
 		var typeExprForKindCheck ast.Expr = fieldInfo.TypeExpr
 		// Use opt.IsPointer as it's already determined by astutils.IsPointerType
@@ -261,23 +261,29 @@ func AnalyzeOptions( // Renamed from AnalyzeOptionsV3
 			}
 		default:
 			// Not a type name we can easily look up (e.g., could be built-in, or complex like []string, map, func)
-			// UnderlyingKindIsString remains false
+			// opt.UnderlyingKind remains ""
 		}
 
 		if resolveErr != nil {
 			// Optional: log this error for debugging if needed, but don't fail the whole analysis.
 			// For example:
-			// fmt.Printf("analyzer: warning: could not fully resolve type for UnderlyingKindIsString check for field %s: %v\n", fieldInfo.Name, resolveErr)
+			// fmt.Printf("analyzer: warning: could not fully resolve type for UnderlyingKind check for field %s: %v\n", fieldInfo.Name, resolveErr)
 		}
 
 		if resolvedTypeSpec != nil && resolvedTypeSpec.Type != nil {
 			if ident, ok := resolvedTypeSpec.Type.(*ast.Ident); ok {
-				if ident.Name == "string" {
-					opt.UnderlyingKindIsString = true
+				// ident.Name will be the string representation of the underlying type
+				// e.g., "string", "int", "bool" for basic types.
+				switch ident.Name {
+				case "string", "int", "bool", "float64", "float32", "int64", "int32", "int16", "int8", "uint64", "uint32", "uint16", "uint8", "uintptr", "byte", "rune":
+					opt.UnderlyingKind = ident.Name
+				default:
+					// Not a basic type we're explicitly handling for UnderlyingKind.
+					// opt.UnderlyingKind remains ""
 				}
 			}
 		}
-		// End of UnderlyingKindIsString determination
+		// End of UnderlyingKind determination
 
 		isUnmarshaler, errUnmarshaler := fieldInfo.ImplementsInterface("encoding", "TextUnmarshaler")
 		if errUnmarshaler != nil {

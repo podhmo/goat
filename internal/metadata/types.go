@@ -27,18 +27,18 @@ type RunFuncInfo struct {
 
 // OptionMetadata holds information about a single command-line option.
 type OptionMetadata struct {
-	Name                   string // Original field name in the Options struct (e.g., "UserName")
-	CliName                string // CLI flag name (e.g., "user-name")
-	TypeName               string // Go type of the field (e.g., "string", "*int", "[]string")
-	HelpText               string // Description for the option (from field comment)
-	IsPointer              bool   // True if the field is a pointer type (often implies optional)
-	IsRequired             bool   // True if the option must be provided
-	EnvVar                 string // Environment variable name to read from (from `env` tag)
-	DefaultValue           any    // Default value (from goat.Default or struct tag)
-	EnumValues             []any  // Allowed enum values (from goat.Enum or struct tag)
-	IsTextUnmarshaler      bool   // True if the field's type implements encoding.TextUnmarshaler
-	IsTextMarshaler        bool   // True if the field's type implements encoding.TextMarshaler
-	UnderlyingKindIsString bool   // True if the field type is a named type whose underlying kind is string
+	Name              string // Original field name in the Options struct (e.g., "UserName")
+	CliName           string // CLI flag name (e.g., "user-name")
+	TypeName          string // Go type of the field (e.g., "string", "*int", "[]string")
+	HelpText          string // Description for the option (from field comment)
+	IsPointer         bool   // True if the field is a pointer type (often implies optional)
+	IsRequired        bool   // True if the option must be provided
+	EnvVar            string // Environment variable name to read from (from `env` tag)
+	DefaultValue      any    // Default value (from goat.Default or struct tag)
+	EnumValues        []any  // Allowed enum values (from goat.Enum or struct tag)
+	IsTextUnmarshaler bool   // True if the field's type implements encoding.TextUnmarshaler
+	IsTextMarshaler   bool   // True if the field's type implements encoding.TextMarshaler
+	UnderlyingKind    string // Stores the underlying kind if the type is a named basic type (e.g., "string", "int")
 
 	// File-specific options
 	FileMustExist   bool `json:"fileMustExist,omitempty"`
