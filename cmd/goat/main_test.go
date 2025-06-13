@@ -7,6 +7,7 @@ import (
 	"go/token"
 	"io"
 	"os"
+	"os/exec" // Added for go mod tidy
 	"path/filepath" // Added for filepath.Join
 	"strings"
 	"testing"
@@ -50,6 +51,16 @@ func Default[T any](defaultValue T, enumConstraint ...[]T) T {
 	if err := os.WriteFile(tmpGoFile, []byte(appFileContent), 0644); err != nil {
 		t.Fatalf("Failed to write temp Go file %s: %v", tmpGoFile, err)
 	}
+
+	// Run go mod tidy
+	cmd := exec.Command("go", "mod", "tidy")
+	cmd.Dir = tmpDir
+	cmdStderr := &bytes.Buffer{}
+	cmd.Stderr = cmdStderr
+	if err := cmd.Run(); err != nil {
+		t.Fatalf("Failed to run 'go mod tidy' in %s: %v\nStderr: %s", tmpDir, err, cmdStderr.String())
+	}
+
 	return tmpGoFile
 }
 

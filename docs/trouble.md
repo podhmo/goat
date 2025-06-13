@@ -26,3 +26,7 @@ During the development and testing of `internal/loader/locator.go` and its assoc
     - The default locator in the code is "golist".
     - The help message for the `-locator` flag was updated to display `(gomod or golist)`, implying "gomod" is a preferred or new default, even though the actual default in the code remains "golist" due to the test issues.
 - **Status**: Not resolved. The underlying reason for "gomod" causing test failures needs further investigation if "gomod" is to become the true default.
+- **Further Attempts**: Efforts were made to make the tests pass with "gomod" as the default. This included an attempt to run `go mod tidy` within the test setup for `cmd/goat/main_test.go` (specifically in the `setupTestAppWithGoMod` function).
+- **Outcome of Attempts**: These attempts were unsuccessful. The tests continued to fail with errors like `GoModLocator: package "." not found` when "gomod" was the default, even with `go mod tidy` being executed.
+- **Final Decision**: Due to the inability to resolve these test failures within a reasonable scope, the default locator in `cmd/goat/main.go` has been kept as "golist" to ensure test suite stability. The help message for the `-locator` flag still suggests `(gomod or golist)`.
+- **Status**: Remains unresolved. Making "gomod" the default locator would require a more in-depth investigation of the test environment, the behavior of Go tooling like `go list` in temporary/ad-hoc module setups, and its interaction with the `GoModLocator` implementation.
