@@ -1,7 +1,8 @@
 package mainpkg
 
 import (
-	"testcmdmodule/internal/goat" // Assuming this is the marker package path used in tests
+	"testcmdmodule/internal/goat"               // Assuming this is the marker package path used in tests
+	"testdata/enumtests_module/src/customtypes" // Added import for customtypes
 	ext "testdata/enumtests_module/src/externalpkg"
 )
 
@@ -12,10 +13,10 @@ var SamePkgEnum = []string{"alpha", "beta", "gamma"}
 
 // Local constants for testing resolution within the same package
 type MyLocalEnum string
+
 const LocalStringConst MyLocalEnum = "local-val-1"
 const LocalStringConst2 MyLocalEnum = "local-val-2"
 const LocalIntConst int = 10
-
 
 type Options struct {
 	// Existing fields for TestInterpretInitializer_EnumResolution
@@ -42,9 +43,9 @@ type Options struct {
 	EnumCompositeDirectFails      string
 
 	// --- For extractEnumValuesFromEvalResult (variable composite literals) ---
-	EnumVarCustomType      string
-	EnumVarMixed           string
-	EnumVarWithNonString   string
+	EnumVarCustomType    string
+	EnumVarMixed         string
+	EnumVarWithNonString string
 }
 
 // Variables for testing enums resolved from variables (new tests)
@@ -54,7 +55,6 @@ var MyCustomEnumSlice = []customtypes.MyEnum{customtypes.EnumValA, customtypes.E
 var MyMixedValSlice = []any{customtypes.EnumValA, "literal-in-var", LocalStringConst} // customtypes.EnumValA needs to be string-compatible
 var MyCustomEnumWithNonStringSlice = []any{customtypes.EnumValA, customtypes.NotStringConst}
 
-
 func NewOptions() *Options {
 	// Marker package alias 'goat' should point to "testcmdmodule/internal/goat" as per existing test.
 	// New test for resolveEvalResultToEnumString uses 'g' as "github.com/podhmo/goat".
@@ -63,17 +63,17 @@ func NewOptions() *Options {
 
 	return &Options{
 		// Existing fields
-		FieldSamePkg:        goat.Enum(SamePkgEnum),
-		FieldExternalPkg:    goat.Enum(ext.ExternalEnumValues),
-		FieldDefaultSamePkg: goat.Default("defaultAlpha", goat.Enum(SamePkgEnum)),
-		FieldDefaultExtPkg:  goat.Default("defaultDelta", goat.Enum(ext.ExternalEnumValues)),
-		FieldDefaultIdent:   goat.Default("defaultBeta", SamePkgEnum),
+		FieldSamePkg:         goat.Enum(SamePkgEnum),
+		FieldExternalPkg:     goat.Enum(ext.ExternalEnumValues),
+		FieldDefaultSamePkg:  goat.Default("defaultAlpha", goat.Enum(SamePkgEnum)),
+		FieldDefaultExtPkg:   goat.Default("defaultDelta", goat.Enum(ext.ExternalEnumValues)),
+		FieldDefaultIdent:    goat.Default("defaultBeta", SamePkgEnum),
 		FieldUnresolvedIdent: goat.Enum(NonExistentVar),
 
 		// --- New initializations for new test fields ---
 		FieldForDirectString:  goat.Default("direct-string-default"), // For resolveEvalResultToEnumString test for direct value
-		FieldForLocalConst:    goat.Default(LocalStringConst),   // For resolveEvalResultToEnumString test for local const
-		FieldForImportedConst: goat.Default(customtypes.EnumValA), // For resolveEvalResultToEnumString test for imported const
+		FieldForLocalConst:    goat.Default(LocalStringConst),        // For resolveEvalResultToEnumString test for local const
+		FieldForImportedConst: goat.Default(customtypes.EnumValA),    // For resolveEvalResultToEnumString test for imported const
 
 		EnumCompositeDirect:           goat.Enum(nil, []customtypes.MyEnum{customtypes.EnumValA, customtypes.EnumValB}),
 		EnumCompositeDirectMixed:      goat.Enum(nil, []any{customtypes.EnumValA, "literal-b", LocalStringConst2}),
