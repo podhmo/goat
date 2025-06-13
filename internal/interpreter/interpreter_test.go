@@ -43,6 +43,359 @@ func NewOpts() *Options {
 		Verbose: g.Default(true),
 	}
 }
+
+// TestInterpretInitializer_EnumNewScenarios tests new enum resolution scenarios,
+// particularly direct composite literals with identifiers and variables resolving to such.
+func TestInterpretInitializer_EnumNewScenarios(t *testing.T) {
+	const testMarkerPkgImportPath = "github.com/podhmo/goat" // Using standard goat path for these, assuming test setup aligns or it's not strictly checked by GetImportPath logic here
+	const mainPkgImportPath = "enumtests_module/src/mainpkg"
+	const customTypesImportPath = "enumtests_module/src/customtypes"
+
+	moduleRoot := "./testdata/enumtests_module"
+	ld := newTestLoader(t, moduleRoot)
+
+	// Parse the mainpkg.go file which now contains all necessary definitions
+	mainGoFile := moduleRoot + "/src/mainpkg/main.go"
+	fsetForFile := token.NewFileSet() // Use a specific fset for parsing the file for InterpretInitializer
+	entryFileAst, err := parser.ParseFile(fsetForFile, mainGoFile, nil, parser.ParseComments)
+	if err != nil {
+		t.Fatalf("Failed to parse test file %s: %v", mainGoFile, err)
+	}
+	// The loader should also use this fset if it's supposed to load this specific AST.
+	// However, ld is already created. For these tests, ld.Load will parse files itself.
+	// The fileAst passed to InterpretInitializer is the one it directly inspects.
+
+	optionsMeta := []*metadata.OptionMetadata{
+		{Name: "EnumCompositeDirect"},
+		{Name: "EnumCompositeDirectMixed"},
+		{Name: "EnumCompositeDirectLocalConst"},
+		{Name: "EnumCompositeDirectFails"},
+		{Name: "EnumVarCustomType"},
+		{Name: "EnumVarMixed"},
+		{Name: "EnumVarWithNonString"},
+		// Fields for resolveEvalResultToEnumString via goat.Default
+		{Name: "FieldForDirectString"},
+		{Name: "FieldForLocalConst"},
+		{Name: "FieldForImportedConst"},
+	}
+	optionsMap := make(map[string]*metadata.OptionMetadata)
+	for i := range optionsMeta {
+		optionsMap[optionsMeta[i].Name] = &optionsMeta[i] // Store pointers
+	}
+
+	// The InterpretInitializer function needs the *ast.File of the file containing NewOptions,
+	// the currentPkgPath should be the import path of that file.
+	err = InterpretInitializer(entryFileAst, "Options", "NewOptions", optionsMeta,
+		testMarkerPkgImportPath, // This is how `g.` calls will be checked
+		mainPkgImportPath,       // Import path of the package where NewOptions is defined
+		ld)
+	if err != nil {
+		t.Fatalf("InterpretInitializer failed: %v", err)
+	}
+
+	tests := []struct {
+		fieldName          string
+		expectedEnumValues []any
+		expectedDefault    any // For fields testing defaults used by resolveEvalResultToEnumString
+	}{
+		// --- extractMarkerInfo (direct composite literals) ---
+		{
+			fieldName:          "EnumCompositeDirect",
+			expectedEnumValues: []any{"val-a", "val-b"},
+		},
+		{
+			fieldName:          "EnumCompositeDirectMixed",
+			expectedEnumValues: []any{"val-a", "literal-b", "local-val-2"},
+		},
+		{
+			fieldName:          "EnumCompositeDirectLocalConst",
+			expectedEnumValues: []any{"local-val-1", "local-val-2"},
+		},
+		{
+			fieldName: "EnumCompositeDirectFails",
+			// customtypes.NotStringConst (int) should fail resolution by resolveEvalResultToEnumString
+			expectedEnumValues: []any{"val-a"},
+		},
+		// --- extractEnumValuesFromEvalResult (variable composite literals) ---
+		{
+			fieldName:          "EnumVarCustomType", // MyCustomEnumSlice = []customtypes.MyEnum{customtypes.EnumValA, customtypes.EnumValB}
+			expectedEnumValues: []any{"val-a", "val-b"},
+		},
+		{
+			fieldName:          "EnumVarMixed", // MyMixedValSlice = []any{customtypes.EnumValA, "literal-in-var", LocalStringConst}
+			expectedEnumValues: []any{"val-a", "literal-in-var", "local-val-1"},
+		},
+		{
+			fieldName: "EnumVarWithNonString", // MyCustomEnumWithNonStringSlice = []any{customtypes.EnumValA, customtypes.NotStringConst}
+			// customtypes.NotStringConst (int) should fail resolution
+			expectedEnumValues: []any{"val-a"},
+		},
+		// --- For resolveEvalResultToEnumString (via Default values in mainpkg.NewOptions) ---
+		{
+			fieldName:       "FieldForDirectString",
+			expectedDefault: "direct-string-default",
+		},
+		{
+			fieldName:       "FieldForLocalConst", // Default(LocalStringConst) -> "local-val-1"
+			expectedDefault: MyLocalEnum("local-val-1"), // The type from astutils.EvaluateArg will be the underlying type
+		},
+		{
+			fieldName:       "FieldForImportedConst", // Default(customtypes.EnumValA) -> "val-a"
+			expectedDefault: customtypes.MyEnum("val-a"), // Underlying type after evaluation
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.fieldName, func(t *testing.T) {
+			opt := optionsMap[tt.fieldName]
+			if opt == nil {
+				t.Fatalf("Option %s not found in metadata", tt.fieldName)
+			}
+
+			if tt.expectedEnumValues != nil {
+				if !reflect.DeepEqual(opt.EnumValues, tt.expectedEnumValues) {
+					t.Errorf("Field '%s': Expected EnumValues %v (type %T), got %v (type %T)",
+						tt.fieldName, tt.expectedEnumValues, tt.expectedEnumValues, opt.EnumValues, opt.EnumValues)
+				}
+			} else if len(opt.EnumValues) > 0 {
+				t.Errorf("Field '%s': Expected nil/empty EnumValues, got %v", tt.fieldName, opt.EnumValues)
+			}
+
+			if tt.expectedDefault != nil {
+				// Note: Default values from astutils.EvaluateArg might have types like customtypes.MyEnum
+				// instead of just string, if the const itself was typed.
+				if !reflect.DeepEqual(opt.DefaultValue, tt.expectedDefault) {
+					t.Errorf("Field '%s': Expected DefaultValue %v (type %T), got %v (type %T)",
+						tt.fieldName, tt.expectedDefault, tt.expectedDefault, opt.DefaultValue, opt.DefaultValue)
+				}
+			}
+		})
+	}
+}
+
+func newTestLoader(t *testing.T, moduleRootRelPath string) *loader.Loader {
+	t.Helper()
+	fset := token.NewFileSet()
+	gml := &loader.GoModLocator{}
+	gml.WorkingDir = moduleRootRelPath // e.g., "./testdata/enumtests_module"
+	ld := loader.New(loader.Config{
+		Locator: gml.Locate,
+		Fset:    fset,
+	})
+	return ld
+}
+
+// newTestContextForPkg creates a minimal *ast.File for a given package structure, primarily for import path resolution.
+// currentPkgSourcePath is the path to the source file that would contain the goat.Enum call.
+// currentPkgImportPath is the canonical import path for the current package.
+func newTestContext(t *testing.T, currentPkgImportPath string, imports map[string]string) (*ast.File, string) {
+	t.Helper()
+	var importSpecs []*ast.ImportSpec
+	for alias, path := range imports {
+		spec := &ast.ImportSpec{
+			Path: &ast.BasicLit{Kind: token.STRING, Value: strconv.Quote(path)},
+		}
+		if alias != "" && alias != lastPathPart(path) { // Add alias if it's explicit and not default
+			spec.Name = ast.NewIdent(alias)
+		}
+		importSpecs = append(importSpecs, spec)
+	}
+
+	return &ast.File{
+		Name:    ast.NewIdent(lastPathPart(currentPkgImportPath)), // e.g., "mainpkg"
+		Decls:   []ast.Decl{&ast.GenDecl{Tok: token.IMPORT, Specs: importSpecsToAstSpecs(importSpecs)}},
+		Imports: importSpecs, // For astutils.GetImportPath
+	}, currentPkgImportPath
+}
+
+func importSpecsToAstSpecs(specs []*ast.ImportSpec) []ast.Spec {
+	astSpecs := make([]ast.Spec, len(specs))
+	for i, s := range specs {
+		astSpecs[i] = s
+	}
+	return astSpecs
+}
+
+func lastPathPart(path string) string {
+	parts := strings.Split(path, "/")
+	return parts[len(parts)-1]
+}
+
+func TestResolveEvalResultToEnumString(t *testing.T) {
+	// Setup loader assuming 'enumtests_module' is our module context.
+	// The paths used for currentPkgPath and for resolving imports inside testdata
+	// should align with this module structure.
+	moduleRoot := "./testdata/enumtests_module"
+	ld := newTestLoader(t, moduleRoot)
+
+	// Define canonical import paths for test packages
+	// These must match what the loader would determine based on moduleRoot.
+	// For a module 'enumtests_module' with sources in 'src/', these are:
+	const mainPkgImportPath = "enumtests_module/src/mainpkg"
+	const customTypesImportPath = "enumtests_module/src/customtypes"
+
+	// Test cases
+	tests := []struct {
+		name                string
+		elementEvalResult   astutils.EvalResult
+		currentPkgPath      string            // Import path of the package where the resolving is happening
+		importsInTestFile   map[string]string // Simulates imports in the file where the enum element is used
+		expectedString      string
+		expectedSuccess     bool
+		expectedErrorMsg    string // Optional: for checking specific error log patterns (not implemented in this test)
+	}{
+		{
+			name:              "direct string value",
+			elementEvalResult: astutils.EvalResult{Value: "direct-str"},
+			currentPkgPath:    mainPkgImportPath,
+			importsInTestFile: nil,
+			expectedString:    "direct-str",
+			expectedSuccess:   true,
+		},
+		{
+			name:              "nil value, no identifier",
+			elementEvalResult: astutils.EvalResult{Value: nil, IdentifierName: ""},
+			currentPkgPath:    mainPkgImportPath,
+			importsInTestFile: nil,
+			expectedString:    "",
+			expectedSuccess:   false,
+		},
+		{
+			name:              "non-string value",
+			elementEvalResult: astutils.EvalResult{Value: 123},
+			currentPkgPath:    mainPkgImportPath,
+			importsInTestFile: nil,
+			expectedString:    "",
+			expectedSuccess:   false,
+		},
+		{
+			name: "identifier for local const in current package",
+			elementEvalResult: astutils.EvalResult{
+				IdentifierName: "LocalStringConst", // Defined in mainpkg.go
+			},
+			currentPkgPath:    mainPkgImportPath, // Resolution happens as if we are in mainpkg
+			importsInTestFile: nil,               // No specific imports needed for alias resolution
+			expectedString:    "local-val-1",     // Value of LocalStringConst
+			expectedSuccess:   true,
+		},
+		{
+			name: "qualified identifier for imported const",
+			elementEvalResult: astutils.EvalResult{
+				IdentifierName: "EnumValA",
+				PkgName:        "ct", // Alias used in the "calling" context
+			},
+			currentPkgPath: mainPkgImportPath, // Context of the call
+			importsInTestFile: map[string]string{ // Imports in the file where ct.EnumValA would be written
+				"ct": customTypesImportPath,
+			},
+			expectedString:  "val-a", // Value of customtypes.EnumValA
+			expectedSuccess: true,
+		},
+		{
+			name: "qualified identifier, default alias for imported const",
+			elementEvalResult: astutils.EvalResult{
+				IdentifierName: "EnumValB",
+				PkgName:        "customtypes", // Default alias (last part of import path)
+			},
+			currentPkgPath: mainPkgImportPath,
+			importsInTestFile: map[string]string{
+				// No explicit alias, so "customtypes" should map to customTypesImportPath
+				"": customTypesImportPath, // Representing `import "enumtests_module/src/customtypes"`
+			},
+			expectedString:  "val-b",
+			expectedSuccess: true,
+		},
+		{
+			name: "identifier not found (local)",
+			elementEvalResult: astutils.EvalResult{
+				IdentifierName: "NonExistentLocalConst",
+			},
+			currentPkgPath:    mainPkgImportPath,
+			importsInTestFile: nil,
+			expectedString:    "",
+			expectedSuccess:   false,
+		},
+		{
+			name: "identifier not found (imported)",
+			elementEvalResult: astutils.EvalResult{
+				IdentifierName: "NonExistentRemoteConst",
+				PkgName:        "ct",
+			},
+			currentPkgPath: mainPkgImportPath,
+			importsInTestFile: map[string]string{
+				"ct": customTypesImportPath,
+			},
+			expectedString:    "",
+			expectedSuccess:   false,
+		},
+		{
+			name: "const is not a string (local)", // mainpkg.go needs a non-string const for this
+			elementEvalResult: astutils.EvalResult{
+				IdentifierName: "LocalIntConst", // Needs to be added to mainpkg.go: const LocalIntConst int = 10
+			},
+			currentPkgPath:    mainPkgImportPath,
+			importsInTestFile: nil,
+			expectedString:    "",
+			expectedSuccess:   false,
+		},
+		{
+			name: "const is not a string (imported)",
+			elementEvalResult: astutils.EvalResult{
+				IdentifierName: "NotStringConst", // This is an int const in customtypes
+				PkgName:        "ct",
+			},
+			currentPkgPath: mainPkgImportPath,
+			importsInTestFile: map[string]string{
+				"ct": customTypesImportPath,
+			},
+			expectedString:    "",
+			expectedSuccess:   false,
+		},
+		{
+			name: "package alias not resolvable",
+			elementEvalResult: astutils.EvalResult{
+				IdentifierName: "EnumValA",
+				PkgName:        "unresolvableAlias",
+			},
+			currentPkgPath:    mainPkgImportPath,
+			importsInTestFile: nil, // No import for "unresolvableAlias"
+			expectedString:    "",
+			expectedSuccess:   false,
+		},
+		{
+			name: "package cannot be loaded (bad import path)",
+			elementEvalResult: astutils.EvalResult{
+				IdentifierName: "EnumValA",
+				PkgName:        "badpkg",
+			},
+			currentPkgPath: mainPkgImportPath,
+			importsInTestFile: map[string]string{
+				"badpkg": "enumtests_module/src/nonexistentpkg", // Path that loader will fail on
+			},
+			expectedString:    "",
+			expectedSuccess:   false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Create a dummy *ast.File for context, primarily for GetImportPath
+			// Its content doesn't matter as much as its Imports list.
+			fileAstForContext, currentPkgPathForContext := newTestContext(t, tt.currentPkgPath, tt.importsInTestFile)
+
+			strVal, success := resolveEvalResultToEnumString(tt.elementEvalResult, ld, currentPkgPathForContext, fileAstForContext)
+
+			if success != tt.expectedSuccess {
+				t.Errorf("resolveEvalResultToEnumString() success = %v, want %v", success, tt.expectedSuccess)
+			}
+			if strVal != tt.expectedString {
+				t.Errorf("resolveEvalResultToEnumString() strVal = %q, want %q", strVal, tt.expectedString)
+			}
+			// TODO: Check logs for tt.expectedErrorMsg if that becomes necessary
+		})
+	}
+}
+
 `
 	fileAst := parseTestFileForInterpreter(t, content)
 	optionsMeta := []*metadata.OptionMetadata{
