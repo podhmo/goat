@@ -95,7 +95,7 @@ func NewOptions() *Options {
 // run is the core logic for this CLI tool.
 // It receives the parsed and validated options.
 // This function's doc comment is used as the main help text for the command.
-func run(opts Options) error {
+func run(ctx context.Context, opts *Options) error {
 	fmt.Printf("Hello, %s!\n", opts.Name)
 
 	if opts.Age != nil {
@@ -440,8 +440,8 @@ Defaults to "output" if not specified by the user.` /* Original Default: output,
 
 	var err error
 
-	// Run function expects an options argument
-	err = run(*options)
+	// Run function expects context and options arguments
+	err = run(context.Background(), options)
 
 	if err != nil {
 		slog.ErrorContext(context.Background(), "Runtime error", "error", err)

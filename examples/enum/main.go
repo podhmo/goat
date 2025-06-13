@@ -89,8 +89,8 @@ Usage:
   enum [flags]
 
 Flags:
-  --local-enum-field             mylocalenum LocalEnumField demonstrates a locally defined enum. (required) (env: ENUM_LOCAL_ENUM) (allowed: "local-a", "local-b")
-  --imported-enum-field          mycustomenum ImportedEnumField demonstrates an enum imported from another package. (required) (env: ENUM_IMPORTED_ENUM) (allowed: "option-x", "option-y", "option-z")
+  --local-enum-field             mylocalenum LocalEnumField demonstrates a locally defined enum. (default: "local-a") (env: ENUM_LOCAL_ENUM) (allowed: "local-a", "local-b")
+  --imported-enum-field          mycustomenum ImportedEnumField demonstrates an enum imported from another package. (default: "option-x") (env: ENUM_IMPORTED_ENUM) (allowed: "option-x", "option-y", "option-z")
   --optional-imported-enum-field mycustomenum OptionalImportedEnumField demonstrates an optional enum (pointer type)
                                         imported from another package. (env: ENUM_OPTIONAL_IMPORTED_ENUM) (allowed: "option-x", "option-y")
 

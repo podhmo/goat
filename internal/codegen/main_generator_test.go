@@ -847,6 +847,74 @@ func TestGenerateMain_InitializerInMainPackage(t *testing.T) {
 	assertCodeContains(t, actualCode, "err = Run(options)")
 }
 
+func TestGenerateMain_WithContextOnly(t *testing.T) {
+	cmdMeta := &metadata.CommandMetadata{
+		Name: "ctxonlycmd",
+		RunFunc: &metadata.RunFuncInfo{
+			Name:                       "RunCtxOnly",
+			PackageName:                "main",
+			ContextArgName:             "ctx",
+			ContextArgType:             "context.Context",
+			OptionsArgTypeNameStripped: "", // No options
+		},
+		Options: []*metadata.OptionMetadata{},
+	}
+	actualCode, err := GenerateMain(cmdMeta, "Test context only", true)
+	if err != nil {
+		t.Fatalf("GenerateMain for context only failed: %v", err)
+	}
+	assertCodeContains(t, actualCode, "err = RunCtxOnly(context.Background())")
+	assertCodeNotContains(t, actualCode, "var options") // Ensure no options struct is declared
+}
+
+func TestGenerateMain_WithContextAndOptionsPointer(t *testing.T) {
+	cmdMeta := &metadata.CommandMetadata{
+		Name: "ctxoptscmd",
+		RunFunc: &metadata.RunFuncInfo{
+			Name:                       "RunCtxOptsPtr",
+			PackageName:                "main",
+			ContextArgName:             "ctx",
+			ContextArgType:             "context.Context",
+			OptionsArgTypeNameStripped: "MyOptions",
+			OptionsArgIsPointer:        true,
+		},
+		Options: []*metadata.OptionMetadata{
+			{Name: "TestOption", TypeName: "string", DefaultValue: "hello"},
+		},
+	}
+	actualCode, err := GenerateMain(cmdMeta, "Test context and options pointer", true)
+	if err != nil {
+		t.Fatalf("GenerateMain for context and options pointer failed: %v", err)
+	}
+	assertCodeContains(t, actualCode, "var options *MyOptions")
+	assertCodeContains(t, actualCode, `options.TestOption = "hello"`)
+	assertCodeContains(t, actualCode, "err = RunCtxOptsPtr(context.Background(), options)")
+}
+
+func TestGenerateMain_WithContextAndOptionsValue(t *testing.T) {
+	cmdMeta := &metadata.CommandMetadata{
+		Name: "ctxoptsvalcmd",
+		RunFunc: &metadata.RunFuncInfo{
+			Name:                       "RunCtxOptsVal",
+			PackageName:                "main",
+			ContextArgName:             "ctx",
+			ContextArgType:             "context.Context",
+			OptionsArgTypeNameStripped: "MyOptions",
+			OptionsArgIsPointer:        false, // Value type
+		},
+		Options: []*metadata.OptionMetadata{
+			{Name: "AnotherOption", TypeName: "int", DefaultValue: 123},
+		},
+	}
+	actualCode, err := GenerateMain(cmdMeta, "Test context and options value", true)
+	if err != nil {
+		t.Fatalf("GenerateMain for context and options value failed: %v", err)
+	}
+	assertCodeContains(t, actualCode, "var options *MyOptions") // Still a pointer internally for setup
+	assertCodeContains(t, actualCode, "options.AnotherOption = 123")
+	assertCodeContains(t, actualCode, "err = RunCtxOptsVal(context.Background(), *options)")
+}
+
 // New Test Function for formatHelpText
 func TestFormatHelpText(t *testing.T) {
 	tests := []struct {
