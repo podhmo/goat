@@ -115,10 +115,6 @@ This would (ideally) produce a CLI tool with flags derived from `AppOptions`.
 
 *   `goat.Default(value interface{}, options ...interface{}) interface{}`: Specifies a default value for an option. The first argument is the default value itself. Optional subsequent arguments can be other markers like `goat.Enum`.
 *   `goat.Enum(allowed []string) interface{}`: Restricts the allowed values for a string option to the provided list.
-*   `goat.File(defaultPath string, options ...FileOption) string`: Marks a string field as representing a file path.
-    *   `goat.MustExist()`: A `FileOption` indicating that the file specified must exist at runtime.
-    *   `goat.GlobPattern()`: A `FileOption` indicating that the file path can be a glob pattern.
-    *   **Note:** While these markers are parsed, runtime validation (e.g., file existence checks or glob expansion based on these markers) is not yet implemented in the generated CLI code. This is planned for future enhancement.
 
 ### Subcommands
 

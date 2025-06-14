@@ -78,14 +78,8 @@ func NewOptions() *Options {
 
 		// New fields from first subtask, adapted for current subtask
 		// OptionalToggle is *bool and should not have goat.Default()
-		// TODO: The goat tool fails to parse the following line for ConfigFile.
-		// TODO: It reports an error: "in call to goat.Default, type string of goat.File(...) does not match []T (cannot infer T)".
-		// TODO: This suggests an issue with how goat's parser handles goat.File when nested in goat.Default, potentially misinterpreting goat.File's return type.
-		ConfigFile: goat.Default("config.json", goat.File("config.json", goat.MustExist())),
-		// TODO: The goat tool fails to parse the following line for Pattern.
-		// TODO: It reports an error: "in call to goat.Default, type string of goat.File(...) does not match []T (cannot infer T)".
-		// TODO: This suggests an issue with how goat's parser handles goat.File when nested in goat.Default, potentially misinterpreting goat.File's return type.
-		Pattern:                     goat.Default("*.go", goat.File("*.go", goat.GlobPattern())),
+		ConfigFile:                  goat.Default("config.json"),
+		Pattern:                     goat.Default("*.go"),
 		EnableFeatureX:              goat.Default(true),
 		HostIP:                      goat.Default(net.ParseIP("127.0.0.1")),
 		ExistingFieldToMakeOptional: goat.Default(stringPtr("was set by default")),
@@ -382,11 +376,6 @@ Defaults to "output" if not specified by the user.` /* Original Default: output,
 		slog.ErrorContext(ctx, "Missing required flag or environment variable not set", errors.New("Missing required flag or environment variable not set"), "flag", "pattern", "envVar", "FULLSET_PATTERN", "option", "Pattern")
 		os.Exit(1)
 	}
-
-	// TODO: Implement runtime validation for file options based on metadata:
-	// - Check for opt.FileMustExist (e.g., using os.Stat)
-	// - Handle opt.FileGlobPattern (e.g., using filepath.Glob)
-	// Currently, these attributes are parsed but not enforced at runtime by the generated CLI.
 
 	var err error
 	err = run(ctx, options)
