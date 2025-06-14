@@ -91,19 +91,17 @@ func main() {
 	}
 
 	if cmdMeta.RunFunc.OptionsArgTypeNameStripped != "" {
-		sb.WriteString(fmt.Sprintf(`
-	var options *%s
-`, cmdMeta.RunFunc.OptionsArgTypeNameStripped))
+		// Initial declaration removed
 
 		if cmdMeta.RunFunc.InitializerFunc != "" {
 			sb.WriteString(fmt.Sprintf(`
 	// 1. Create Options using the initializer function.
-	options = %s()
+	options := %s()
 `, cmdMeta.RunFunc.InitializerFunc))
 		} else {
 			sb.WriteString(fmt.Sprintf(`
 	// 1. Create Options with default values (no initializer function provided).
-	options = new(%s) // options is now a valid pointer to a zeroed struct
+	options := new(%s) // options is now a valid pointer to a zeroed struct
 
 	// The following block populates the fields of the options struct.
 	// This logic is only executed if no InitializerFunc is provided.

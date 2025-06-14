@@ -170,10 +170,8 @@ Flags:
 `)
 	}
 
-	var options *Options
-
 	// 1. Create Options using the initializer function.
-	options = NewOptions()
+	options := NewOptions()
 
 	// 2. Override with environment variable values.
 	// This section assumes 'options' is already initialized.
