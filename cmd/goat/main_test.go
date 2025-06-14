@@ -13,7 +13,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/podhmo/goat/internal/help"
+	"github.com/podhmo/goat/internal/helpgen"
 	"github.com/podhmo/goat/internal/metadata"
 )
 
@@ -427,7 +427,7 @@ func TestHelpGenerateHelpOutput(t *testing.T) {
 		t.Fatalf("scanMain() error = %v", err)
 	}
 
-	got := help.GenerateHelp(cmdMetadata)
+	got := helpgen.GenerateHelp(cmdMetadata)
 	// Adjusted want to match the new testGoFileContent with `goat:"required"`
 	// and ensure it matches the exact output of help.GenerateHelp.
 	// The original test might have had slightly different spacing or details.

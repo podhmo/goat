@@ -15,7 +15,7 @@ import (
 
 	"github.com/podhmo/goat/internal/analyzer"
 	"github.com/podhmo/goat/internal/codegen"
-	"github.com/podhmo/goat/internal/help"
+	"github.com/podhmo/goat/internal/helpgen"
 	"github.com/podhmo/goat/internal/interpreter"
 	"github.com/podhmo/goat/internal/loader"
 	"github.com/podhmo/goat/internal/metadata"
@@ -109,7 +109,7 @@ func main() {
 			slog.ErrorContext(ctx, "Error scanning main for help-message", "error", err)
 			os.Exit(1)
 		}
-		helpMsg := help.GenerateHelp(cmdMetadata)
+		helpMsg := helpgen.GenerateHelp(cmdMetadata)
 		fmt.Print(helpMsg)
 	case "scan":
 		ctx := context.Background()
@@ -160,7 +160,7 @@ func runGoat(ctx context.Context, opts *Options) error {
 	if err != nil {
 		return fmt.Errorf("failed to scan main: %w", err)
 	}
-	helpMsg := help.GenerateHelp(cmdMetadata)
+	helpMsg := helpgen.GenerateHelp(cmdMetadata)
 	newMainContent, err := codegen.GenerateMain(cmdMetadata, helpMsg, false)
 	if err != nil {
 		return fmt.Errorf("failed to generate new main.go content: %w", err)
