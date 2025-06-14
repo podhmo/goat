@@ -115,8 +115,7 @@ func WriteMain(
 		return fmt.Errorf("processing (goimports) generated code for %s: %w\nOriginal newContent was:\n%s", filePath, err, string(newContent))
 	}
 
-	err = os.WriteFile(filePath, formattedContent, 0644) // Default permissions
-	if err != nil {
+	if err := os.WriteFile(filePath, formattedContent, 0644); err != nil { // Default permissions
 		return fmt.Errorf("writing modified content to %s: %w", filePath, err)
 	}
 
