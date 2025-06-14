@@ -631,3 +631,76 @@ func main() {
 	// This main is a placeholder, goat will replace it.
 }
 `
+
+const testGoFileContentWithEnums = `
+package main
+
+import "testcmdmodule/internal/goat"
+
+type MyCLIEnum string
+
+const ValA MyCLIEnum = "val-a"
+const ValB MyCLIEnum = "val-b"
+const ValC MyCLIEnum = "val-c"
+
+var MyCLIEnumValues = []string{string(ValA), string(ValB), string(ValC)}
+
+type Options struct {
+	MyEnumField MyCLIEnum ` + "`comment:\"My enum field.\"`" + `
+	MyOtherEnumField MyCLIEnum ` + "`comment:\"My other enum field with different default.\"`" + `
+}
+
+func NewOptions() *Options {
+	return &Options{
+		MyEnumField: goat.Default(ValB, MyCLIEnumValues),
+		MyOtherEnumField: goat.Default(ValA, MyCLIEnumValues), // Using ValA directly
+	}
+}
+
+func Run(o Options) error { return nil }
+
+func main() { /* Will be replaced */ }
+`
+
+func TestHelpMessageWithEnums(t *testing.T) {
+	tmpFile := setupTestAppWithGoMod(t, testGoFileContentWithEnums)
+
+	opts := &Options{
+		RunFuncName:            "Run",
+		OptionsInitializerName: "NewOptions",
+		TargetFile:             tmpFile,
+	}
+
+	ctx := context.Background()
+	fset := token.NewFileSet()
+	cmdMetadata, _, err := scanMain(ctx, fset, opts)
+	if err != nil {
+		t.Fatalf("scanMain() error = %v", err)
+	}
+
+	gotHelp := help.GenerateHelp(cmdMetadata)
+
+	processedGotHelp := strings.TrimSpace(strings.ReplaceAll(gotHelp, "\r\n", "\n"))
+	t.Logf("Generated Help Message For Enums Test:\n%s", processedGotHelp)
+
+	// Assertions for MyEnumField
+	// Expected: --my-enum-field   MyCLIEnum   My enum field. (default: "val-b") (allowed: "val-a", "val-b", "val-c")
+	if !strings.Contains(gotHelp, "--my-enum-field") {
+		t.Errorf("Help message does not contain --my-enum-field flag.\nGot:\n%s", gotHelp)
+	}
+
+	expectedMyEnumFieldLine := `My enum field. (default: "val-b") (allowed: "val-a", "val-b", "val-c")` // Corrected order
+	if !strings.Contains(gotHelp, expectedMyEnumFieldLine) {
+		t.Errorf("Help message for MyEnumField does not contain correct enum values and default.\nWant substring: %q\nGot:\n%s", expectedMyEnumFieldLine, gotHelp)
+	}
+
+	// Assertions for MyOtherEnumField
+	// Expected: --my-other-enum-field   MyCLIEnum   My other enum field with different default. (default: "val-a") (allowed: "val-a", "val-b", "val-c")
+	if !strings.Contains(gotHelp, "--my-other-enum-field") {
+		t.Errorf("Help message does not contain --my-other-enum-field flag.\nGot:\n%s", gotHelp)
+	}
+	expectedMyOtherEnumFieldLine := `My other enum field with different default. (default: "val-a") (allowed: "val-a", "val-b", "val-c")` // Corrected order
+	if !strings.Contains(gotHelp, expectedMyOtherEnumFieldLine) {
+		t.Errorf("Help message for MyOtherEnumField does not contain correct enum values and default.\nWant substring: %q\nGot:\n%s", expectedMyOtherEnumFieldLine, gotHelp)
+	}
+}
