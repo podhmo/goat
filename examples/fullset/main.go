@@ -2,13 +2,11 @@ package main
 
 import (
 	"context"
-	"errors"
 	"flag"
 	"fmt"
 	"log/slog"
 	"net"
 	"os"
-	"slices"
 	"strconv"
 	"strings"
 
@@ -139,6 +137,8 @@ func run(ctx context.Context, opts *Options) error {
 func main() {
 	ctx := context.Background()
 	isFlagExplicitlySet := make(map[string]bool)
+	var err error
+	_ = err
 
 	flag.Usage = func() {
 		fmt.Fprint(os.Stderr, `fullset - run is the core logic for this CLI tool.
@@ -170,233 +170,314 @@ Flags:
 `)
 	}
 
-	// 1. Create Options using the initializer function.
+	// --- 1. Initialize Options Struct ---
 	options := NewOptions()
 
-	// 2. Override with environment variable values.
-	// This section assumes 'options' is already initialized.
-
-	if val, ok := os.LookupEnv("SIMPLE_NAME"); ok {
-		options.Name = val
+	// --- 2. Process Environment Variables ---
+	if nameEnvVal, ok := os.LookupEnv("SIMPLE_NAME"); ok {
+		options.Name = nameEnvVal
 	}
+	if ageEnvVal, ok := os.LookupEnv("SIMPLE_AGE"); ok {
 
-	if val, ok := os.LookupEnv("SIMPLE_AGE"); ok {
-
-		if options.Age == nil {
-			options.Age = new(int)
-		}
-		if v, err := strconv.Atoi(val); err == nil {
-			*options.Age = v
+		if v, err := strconv.Atoi(ageEnvVal); err == nil {
+			valCopy := v
+			options.Age = &valCopy
 		} else {
-			slog.WarnContext(ctx, "Could not parse environment variable as *int for option", "envVar", "SIMPLE_AGE", "option", "Age", "value", val, "error", err)
+			slog.WarnContext(ctx, "Invalid integer value for environment variable", "variable", "SIMPLE_AGE", "value", ageEnvVal, "error", err)
 		}
 	}
-
-	if val, ok := os.LookupEnv("SIMPLE_LOG_LEVEL"); ok {
-		options.LogLevel = val
+	if loglevelEnvVal, ok := os.LookupEnv("SIMPLE_LOG_LEVEL"); ok {
+		options.LogLevel = loglevelEnvVal
 	}
-
-	if val, ok := os.LookupEnv("SIMPLE_FEATURES"); ok {
-		options.Features = strings.Split(val, ",")
+	if featuresEnvVal, ok := os.LookupEnv("SIMPLE_FEATURES"); ok {
+		if featuresEnvVal != "" {
+			options.Features = strings.Split(featuresEnvVal, ",")
+		}
 	}
-
-	if val, ok := os.LookupEnv("SIMPLE_MODE"); ok {
-		options.Mode = val
+	if modeEnvVal, ok := os.LookupEnv("SIMPLE_MODE"); ok {
+		options.Mode = modeEnvVal
 	}
+	if superverboseEnvVal, ok := os.LookupEnv("SIMPLE_SUPER_VERBOSE"); ok {
 
-	if val, ok := os.LookupEnv("SIMPLE_SUPER_VERBOSE"); ok {
-
-		if v, err := strconv.ParseBool(val); err == nil {
+		if v, err := strconv.ParseBool(superverboseEnvVal); err == nil {
 			options.SuperVerbose = v
 		} else {
-			slog.WarnContext(ctx, "Could not parse environment variable as bool for option", "envVar", "SIMPLE_SUPER_VERBOSE", "option", "SuperVerbose", "value", val, "error", err)
+			slog.WarnContext(ctx, "Invalid boolean value for environment variable", "variable", "SIMPLE_SUPER_VERBOSE", "value", superverboseEnvVal, "error", err)
 		}
 	}
-
-	if val, ok := os.LookupEnv("FULLSET_CONFIG_FILE"); ok {
-		options.ConfigFile = val
+	if configfileEnvVal, ok := os.LookupEnv("FULLSET_CONFIG_FILE"); ok {
+		options.ConfigFile = configfileEnvVal
 	}
-
-	if val, ok := os.LookupEnv("FULLSET_PATTERN"); ok {
-		options.Pattern = val
+	if patternEnvVal, ok := os.LookupEnv("FULLSET_PATTERN"); ok {
+		options.Pattern = patternEnvVal
 	}
+	if enablefeaturexEnvVal, ok := os.LookupEnv("FULLSET_FEATURE_X"); ok {
 
-	if val, ok := os.LookupEnv("FULLSET_FEATURE_X"); ok {
-
-		if v, err := strconv.ParseBool(val); err == nil {
+		if v, err := strconv.ParseBool(enablefeaturexEnvVal); err == nil {
 			options.EnableFeatureX = v
 		} else {
-			slog.WarnContext(ctx, "Could not parse environment variable as bool for option", "envVar", "FULLSET_FEATURE_X", "option", "EnableFeatureX", "value", val, "error", err)
+			slog.WarnContext(ctx, "Invalid boolean value for environment variable", "variable", "FULLSET_FEATURE_X", "value", enablefeaturexEnvVal, "error", err)
+		}
+	}
+	if hostipEnvVal, ok := os.LookupEnv("FULLSET_HOST_IP"); ok {
+
+		if err := options.HostIP.UnmarshalText([]byte(hostipEnvVal)); err != nil {
+			slog.WarnContext(ctx, "Failed to unmarshal environment variable for TextUnmarshaler option", "variable", "FULLSET_HOST_IP", "value", hostipEnvVal, "error", err)
+		}
+	}
+	if existingfieldtomakeoptionalEnvVal, ok := os.LookupEnv("FULLSET_OPTIONAL_EXISTING"); ok {
+		{
+			valCopy := existingfieldtomakeoptionalEnvVal
+			options.ExistingFieldToMakeOptional = &valCopy
 		}
 	}
 
-	if val, ok := os.LookupEnv("FULLSET_HOST_IP"); ok {
-
-		err := (&options.HostIP).UnmarshalText([]byte(val))
-		if err != nil {
-			slog.WarnContext(ctx, "Could not parse environment variable for TextUnmarshaler option; using default or previously set value.", "envVar", "FULLSET_HOST_IP", "option", "host-ip", "value", val, "error", err)
-		}
-	}
-
-	if val, ok := os.LookupEnv("FULLSET_OPTIONAL_EXISTING"); ok {
-
-		if options.ExistingFieldToMakeOptional == nil {
-			options.ExistingFieldToMakeOptional = new(string)
-		}
-		*options.ExistingFieldToMakeOptional = val
-	}
-
-	// 3. Set flags.
-	flag.StringVar(&options.Name, "name", options.Name, "Name of the person to greet. This is a mandatory field." /* Original Default: World, Env: SIMPLE_NAME */)
+	// --- 3. Register Flags ---
 	isAgeNilInitially := options.Age == nil
 	var tempAgeVal int
 	var defaultAgeValForFlag int
-	if options.Age != nil {
+	if !isAgeNilInitially {
 		defaultAgeValForFlag = *options.Age
 	}
+	isOptionaltoggleNilInitially := options.OptionalToggle == nil
+	var tempOptionaltoggleVal bool
+	var defaultOptionaltoggleValForFlag bool
+	if !isOptionaltoggleNilInitially {
+		defaultOptionaltoggleValForFlag = *options.OptionalToggle
+	}
+	var tempEnablefeaturexNoFlagPresent bool
+	isExistingfieldtomakeoptionalNilInitially := options.ExistingFieldToMakeOptional == nil
+	var tempExistingfieldtomakeoptionalVal string
+	var defaultExistingfieldtomakeoptionalValForFlag string
+	if !isExistingfieldtomakeoptionalNilInitially {
+		defaultExistingfieldtomakeoptionalValForFlag = *options.ExistingFieldToMakeOptional
+	}
+	flag.StringVar(&options.Name, "name", "World", "Name of the person to greet. This is a mandatory field. (default: World) (env: SIMPLE_NAME)")
 	if isAgeNilInitially {
-		flag.IntVar(&tempAgeVal, "age", 0, "Age of the person. This is an optional field." /* Env: SIMPLE_AGE */)
+		flag.IntVar(&tempAgeVal, "age", 0, "Age of the person. This is an optional field. (env: SIMPLE_AGE)")
 	} else {
-		flag.IntVar(options.Age, "age", defaultAgeValForFlag, "Age of the person. This is an optional field." /* Env: SIMPLE_AGE */)
+		flag.IntVar(options.Age, "age", defaultAgeValForFlag, "Age of the person. This is an optional field. (env: SIMPLE_AGE)")
 	}
-	flag.StringVar(&options.LogLevel, "log-level", options.LogLevel, `LogLevel for the application output.
-It can be one of: debug, info, warning, error.` /* Original Default: info, Env: SIMPLE_LOG_LEVEL */)
-	flag.StringVar(&options.OutputDir, "output-dir", options.OutputDir, `OutputDir for any generated files or reports.
-Defaults to "output" if not specified by the user.` /* Original Default: output, Env:  */)
-	flag.StringVar(&options.Mode, "mode", options.Mode, "Mode of operation for the tool, affecting its behavior." /* Original Default: standard, Env: SIMPLE_MODE */)
-	flag.BoolVar(&options.SuperVerbose, "super-verbose", options.SuperVerbose, "Enable extra verbose output." /* Env: SIMPLE_SUPER_VERBOSE */)
-	isOptionalToggleNilInitially := options.OptionalToggle == nil
-	var tempOptionalToggleVal bool
-	var defaultOptionalToggleValForFlag bool
-	if options.OptionalToggle != nil {
-		defaultOptionalToggleValForFlag = *options.OptionalToggle
-	}
-	if isOptionalToggleNilInitially {
-		flag.BoolVar(&tempOptionalToggleVal, "optional-toggle", false, "An optional boolean flag with no default, should be nil if not set.")
+	flag.StringVar(&options.LogLevel, "log-level", "info", `LogLevel for the application output.
+It can be one of: debug, info, warning, error. (default: info) (allowed: debug, info, warning, error) (env: SIMPLE_LOG_LEVEL)`)
+	flag.Func("features", `Features to enable, provided as a comma-separated list.
+Example: --features feat1,feat2 (env: SIMPLE_FEATURES)`, func(s string) error {
+		isFlagExplicitlySet["features"] = true
+		options.Features = strings.Split(s, ",")
+		return nil
+	})
+	flag.StringVar(&options.OutputDir, "output-dir", "output", `OutputDir for any generated files or reports.
+Defaults to "output" if not specified by the user. (default: output)`)
+	flag.StringVar(&options.Mode, "mode", "standard", "Mode of operation for the tool, affecting its behavior. (default: standard) (allowed: standard, turbo, eco) (env: SIMPLE_MODE)")
+	flag.BoolVar(&options.SuperVerbose, "super-verbose", false, "Enable extra verbose output. (default: false) (env: SIMPLE_SUPER_VERBOSE)")
+	if isOptionaltoggleNilInitially {
+		flag.BoolVar(&tempOptionaltoggleVal, "optional-toggle", false, "An optional boolean flag with no default, should be nil if not set. (default: false)")
 	} else {
-		flag.BoolVar(options.OptionalToggle, "optional-toggle", defaultOptionalToggleValForFlag, "An optional boolean flag with no default, should be nil if not set.")
+		flag.BoolVar(options.OptionalToggle, "optional-toggle", defaultOptionaltoggleValForFlag, "An optional boolean flag with no default, should be nil if not set. (default: false)")
 	}
-	flag.StringVar(&options.ConfigFile, "config-file", options.ConfigFile, "Path to a configuration file. Must exist. (env:\"FULLSET_CONFIG_FILE\")" /* Original Default: config.json, Env: FULLSET_CONFIG_FILE */)
-	flag.StringVar(&options.Pattern, "pattern", options.Pattern, "A glob pattern for input files. (env:\"FULLSET_PATTERN\")" /* Original Default: *.go, Env: FULLSET_PATTERN */)
-	var EnableFeatureX_NoFlagIsPresent bool
-	flag.BoolVar(&EnableFeatureX_NoFlagIsPresent, "no-enable-feature-x", false, "Set enable-feature-x to false")
-	flag.TextVar(&options.HostIP, "host-ip", options.HostIP, "The host IP address for the service. (env:\"FULLSET_HOST_IP\")" /* Env: FULLSET_HOST_IP */)
-	isExistingFieldToMakeOptionalNilInitially := options.ExistingFieldToMakeOptional == nil
-	var tempExistingFieldToMakeOptionalVal string
-	var defaultExistingFieldToMakeOptionalValForFlag string
-	if options.ExistingFieldToMakeOptional != nil {
-		defaultExistingFieldToMakeOptionalValForFlag = *options.ExistingFieldToMakeOptional
-	}
-	if isExistingFieldToMakeOptionalNilInitially {
-		flag.StringVar(&tempExistingFieldToMakeOptionalVal, "existing-field-to-make-optional", "", "Example of an existing field made optional. (env:\"FULLSET_OPTIONAL_EXISTING\")" /* Env: FULLSET_OPTIONAL_EXISTING */)
+	flag.StringVar(&options.ConfigFile, "config-file", "config.json", "Path to a configuration file. Must exist. (env:\"FULLSET_CONFIG_FILE\") (default: config.json) (env: FULLSET_CONFIG_FILE)")
+	flag.StringVar(&options.Pattern, "pattern", "*.go", "A glob pattern for input files. (env:\"FULLSET_PATTERN\") (default: *.go) (env: FULLSET_PATTERN)")
+	flag.BoolVar(&tempEnablefeaturexNoFlagPresent, "no-enable-feature-x", false, "Set enable-feature-x to false, overriding default true")
+	flag.BoolVar(&options.EnableFeatureX, "enable-feature-x", true, "Enable Feature X by default. Use --no-enable-feature-x to disable. (env:\"FULLSET_FEATURE_X\") (default: true) (env: FULLSET_FEATURE_X)")
+
+	flag.Func("host-ip", "The host IP address for the service. (env:\"FULLSET_HOST_IP\") (env: FULLSET_HOST_IP)", func(s string) error {
+		isFlagExplicitlySet["host-ip"] = true
+		return options.HostIP.UnmarshalText([]byte(s))
+	})
+	if isExistingfieldtomakeoptionalNilInitially {
+		flag.StringVar(&tempExistingfieldtomakeoptionalVal, "existing-field-to-make-optional", "", "Example of an existing field made optional. (env:\"FULLSET_OPTIONAL_EXISTING\") (env: FULLSET_OPTIONAL_EXISTING)")
 	} else {
-		flag.StringVar(options.ExistingFieldToMakeOptional, "existing-field-to-make-optional", defaultExistingFieldToMakeOptionalValForFlag, "Example of an existing field made optional. (env:\"FULLSET_OPTIONAL_EXISTING\")" /* Env: FULLSET_OPTIONAL_EXISTING */)
+		flag.StringVar(options.ExistingFieldToMakeOptional, "existing-field-to-make-optional", defaultExistingfieldtomakeoptionalValForFlag, "Example of an existing field made optional. (env:\"FULLSET_OPTIONAL_EXISTING\") (env: FULLSET_OPTIONAL_EXISTING)")
 	}
 
-	// 4. Parse.
+	// --- 4. Parse Flags ---
 	flag.Parse()
 	flag.Visit(func(f *flag.Flag) { isFlagExplicitlySet[f.Name] = true })
 
-	if EnableFeatureX_NoFlagIsPresent {
-		options.EnableFeatureX = false
-	}
-
-	// 6. Assign values for initially nil pointers if flags were explicitly set
+	// --- 5. Post-Parse Flag Assignments (for pointers, etc.) ---
 	if isAgeNilInitially && isFlagExplicitlySet["age"] {
 		options.Age = &tempAgeVal
 	}
-	if isOptionalToggleNilInitially && isFlagExplicitlySet["optional-toggle"] {
-		options.OptionalToggle = &tempOptionalToggleVal
+	if isOptionaltoggleNilInitially && isFlagExplicitlySet["optional-toggle"] {
+		options.OptionalToggle = &tempOptionaltoggleVal
 	}
-	if isExistingFieldToMakeOptionalNilInitially && isFlagExplicitlySet["existing-field-to-make-optional"] {
-		options.ExistingFieldToMakeOptional = &tempExistingFieldToMakeOptionalVal
+	if isFlagExplicitlySet["no-enable-feature-x"] {
+		options.EnableFeatureX = false
+	}
+	if isExistingfieldtomakeoptionalNilInitially && isFlagExplicitlySet["existing-field-to-make-optional"] {
+		options.ExistingFieldToMakeOptional = &tempExistingfieldtomakeoptionalVal
 	}
 
-	// 5. Perform required checks (excluding booleans).
-
-	initialDefaultName := "World"
-	envNameWasSet := false
-	if _, ok := os.LookupEnv("SIMPLE_NAME"); ok {
-		envNameWasSet = true
+	// --- 6. Perform Required Option Checks ---
+	initialDefault_Name := "World"
+	_, env_Name_WasSet := os.LookupEnv("SIMPLE_NAME")
+	initialDefault_Loglevel := "info"
+	_, env_Loglevel_WasSet := os.LookupEnv("SIMPLE_LOG_LEVEL")
+	initialDefault_Features := ""
+	_, env_Features_WasSet := os.LookupEnv("SIMPLE_FEATURES")
+	initialDefault_Outputdir := "output"
+	env_Outputdir_WasSet := false
+	initialDefault_Mode := "standard"
+	_, env_Mode_WasSet := os.LookupEnv("SIMPLE_MODE")
+	initialDefault_Superverbose := false
+	_, env_Superverbose_WasSet := os.LookupEnv("SIMPLE_SUPER_VERBOSE")
+	initialDefault_Configfile := "config.json"
+	_, env_Configfile_WasSet := os.LookupEnv("FULLSET_CONFIG_FILE")
+	initialDefault_Pattern := "*.go"
+	_, env_Pattern_WasSet := os.LookupEnv("FULLSET_PATTERN")
+	initialDefault_Enablefeaturex := true
+	_, env_Enablefeaturex_WasSet := os.LookupEnv("FULLSET_FEATURE_X")
+	initialDefault_Hostip := ""
+	_, env_Hostip_WasSet := os.LookupEnv("FULLSET_HOST_IP")
+	if err = func() error {
+		if options.Name == initialDefault_Name && !isFlagExplicitlySet["name"] && !env_Name_WasSet {
+			slog.ErrorContext(ctx, "Missing required option", "flag", "name", "envVar", "SIMPLE_NAME", "option", "Name")
+			return fmt.Errorf("missing required option: --name / SIMPLE_NAME")
+		}
+		return nil
+	}(); err != nil {
+		slog.ErrorContext(ctx, "Error processing required option", "option", "name", "error", err)
+		os.Exit(1)
 	}
-	if options.Name == initialDefaultName && !isFlagExplicitlySet["name"] && !envNameWasSet {
-		slog.ErrorContext(ctx, "Missing required flag or environment variable not set", errors.New("Missing required flag or environment variable not set"), "flag", "name", "envVar", "SIMPLE_NAME", "option", "Name")
+	if err = func() error {
+		if options.LogLevel == initialDefault_Loglevel && !isFlagExplicitlySet["log-level"] && !env_Loglevel_WasSet {
+			slog.ErrorContext(ctx, "Missing required option", "flag", "log-level", "envVar", "SIMPLE_LOG_LEVEL", "option", "LogLevel")
+			return fmt.Errorf("missing required option: --log-level / SIMPLE_LOG_LEVEL")
+		}
+		return nil
+	}(); err != nil {
+		slog.ErrorContext(ctx, "Error processing required option", "option", "log-level", "error", err)
+		os.Exit(1)
+	}
+	if err = func() error {
+		if len(options.Features) == 0 && !isFlagExplicitlySet["features"] && !env_Features_WasSet {
+			slog.ErrorContext(ctx, "Missing required option", "flag", "features", "envVar", "SIMPLE_FEATURES", "option", "Features")
+			return fmt.Errorf("missing required option: --features / SIMPLE_FEATURES")
+		}
+	}(); err != nil {
+		slog.ErrorContext(ctx, "Error processing required option", "option", "features", "error", err)
+		os.Exit(1)
+	}
+	if err = func() error {
+		if options.OutputDir == initialDefault_Outputdir && !isFlagExplicitlySet["output-dir"] && !env_Outputdir_WasSet {
+			slog.ErrorContext(ctx, "Missing required option", "flag", "output-dir", "option", "OutputDir")
+			return fmt.Errorf("missing required option: --output-dir / ")
+		}
+		return nil
+	}(); err != nil {
+		slog.ErrorContext(ctx, "Error processing required option", "option", "output-dir", "error", err)
+		os.Exit(1)
+	}
+	if err = func() error {
+		if options.Mode == initialDefault_Mode && !isFlagExplicitlySet["mode"] && !env_Mode_WasSet {
+			slog.ErrorContext(ctx, "Missing required option", "flag", "mode", "envVar", "SIMPLE_MODE", "option", "Mode")
+			return fmt.Errorf("missing required option: --mode / SIMPLE_MODE")
+		}
+		return nil
+	}(); err != nil {
+		slog.ErrorContext(ctx, "Error processing required option", "option", "mode", "error", err)
+		os.Exit(1)
+	}
+	if err = func() error {
+		if options.SuperVerbose == initialDefault_Superverbose && !isFlagExplicitlySet["super-verbose"] && !env_Superverbose_WasSet {
+			slog.ErrorContext(ctx, "Missing required boolean option (must be explicitly set)", "flag", "super-verbose", "envVar", "SIMPLE_SUPER_VERBOSE", "option", "SuperVerbose")
+			return fmt.Errorf("missing or not explicitly set required option: --super-verbose / SIMPLE_SUPER_VERBOSE")
+		}
+		return nil
+	}(); err != nil {
+		slog.ErrorContext(ctx, "Error processing required option", "option", "super-verbose", "error", err)
+		os.Exit(1)
+	}
+	if err = func() error {
+		if options.ConfigFile == initialDefault_Configfile && !isFlagExplicitlySet["config-file"] && !env_Configfile_WasSet {
+			slog.ErrorContext(ctx, "Missing required option", "flag", "config-file", "envVar", "FULLSET_CONFIG_FILE", "option", "ConfigFile")
+			return fmt.Errorf("missing required option: --config-file / FULLSET_CONFIG_FILE")
+		}
+		return nil
+	}(); err != nil {
+		slog.ErrorContext(ctx, "Error processing required option", "option", "config-file", "error", err)
+		os.Exit(1)
+	}
+	if err = func() error {
+		if options.Pattern == initialDefault_Pattern && !isFlagExplicitlySet["pattern"] && !env_Pattern_WasSet {
+			slog.ErrorContext(ctx, "Missing required option", "flag", "pattern", "envVar", "FULLSET_PATTERN", "option", "Pattern")
+			return fmt.Errorf("missing required option: --pattern / FULLSET_PATTERN")
+		}
+		return nil
+	}(); err != nil {
+		slog.ErrorContext(ctx, "Error processing required option", "option", "pattern", "error", err)
+		os.Exit(1)
+	}
+	if err = func() error {
+		if options.EnableFeatureX == initialDefault_Enablefeaturex && !isFlagExplicitlySet["enable-feature-x"] && !env_Enablefeaturex_WasSet {
+			slog.ErrorContext(ctx, "Missing required boolean option (must be explicitly set)", "flag", "enable-feature-x", "envVar", "FULLSET_FEATURE_X", "option", "EnableFeatureX")
+			return fmt.Errorf("missing or not explicitly set required option: --enable-feature-x / FULLSET_FEATURE_X")
+		}
+		return nil
+	}(); err != nil {
+		slog.ErrorContext(ctx, "Error processing required option", "option", "enable-feature-x", "error", err)
+		os.Exit(1)
+	}
+	var hostipCurrentTextVal []byte
+	if err = func() error {
+		hostipCurrentTextVal, err := options.HostIP.MarshalText()
+		if err != nil {
+			slog.WarnContext(ctx, "Failed to marshal current value for TextUnmarshaler option for required check", "option", "host-ip", "error", err)
+			return fmt.Errorf("failed to marshal current value for option host-ip for required check: %w", err)
+		}
+
+		if string(hostipCurrentTextVal) == initialDefault_Hostip && !isFlagExplicitlySet["host-ip"] && !env_Hostip_WasSet {
+			slog.ErrorContext(ctx, "Missing required option", "flag", "host-ip", "envVar", "FULLSET_HOST_IP", "option", "HostIP")
+			return fmt.Errorf("missing required option: --host-ip / FULLSET_HOST_IP")
+		}
+		return nil // Added this line
+	}(); err != nil {
+		slog.ErrorContext(ctx, "Error processing required option", "option", "host-ip", "error", err)
 		os.Exit(1)
 	}
 
-	initialDefaultLogLevel := "info"
-	envLogLevelWasSet := false
-	if _, ok := os.LookupEnv("SIMPLE_LOG_LEVEL"); ok {
-		envLogLevelWasSet = true
+	// --- 7. Perform Enum Validations ---
+	var loglevelEnumValues = []string{"debug", "info", "warning", "error"}
+	if err = func() error {
+		found := false
+		for _, validVal := range loglevelEnumValues {
+			if options.LogLevel == validVal {
+				found = true
+				break
+			}
+		}
+		if !found {
+			slog.ErrorContext(ctx, "Invalid value for option", "option", "log-level", "value", options.LogLevel, "allowed", loglevelEnumValues)
+			return fmt.Errorf("invalid value for --log-level: got %q, expected one of %v", options.LogLevel, loglevelEnumValues)
+		}
+		return nil // Added this line
+	}(); err != nil {
+		slog.ErrorContext(ctx, "Error validating enum for option", "option", "log-level", "error", err)
+		os.Exit(1)
 	}
-	if options.LogLevel == initialDefaultLogLevel && !isFlagExplicitlySet["log-level"] && !envLogLevelWasSet {
-		slog.ErrorContext(ctx, "Missing required flag or environment variable not set", errors.New("Missing required flag or environment variable not set"), "flag", "log-level", "envVar", "SIMPLE_LOG_LEVEL", "option", "LogLevel")
+	var modeEnumValues = []string{"standard", "turbo", "eco"}
+	if err = func() error {
+		found := false
+		for _, validVal := range modeEnumValues {
+			if options.Mode == validVal {
+				found = true
+				break
+			}
+		}
+		if !found {
+			slog.ErrorContext(ctx, "Invalid value for option", "option", "mode", "value", options.Mode, "allowed", modeEnumValues)
+			return fmt.Errorf("invalid value for --mode: got %q, expected one of %v", options.Mode, modeEnumValues)
+		}
+		return nil // Added this line
+	}(); err != nil {
+		slog.ErrorContext(ctx, "Error validating enum for option", "option", "mode", "error", err)
 		os.Exit(1)
 	}
 
-	isValidChoice_LogLevel := false
-	allowedChoices_LogLevel := []string{"debug", "info", "warning", "error"}
-
-	currentValue_LogLevelStr := fmt.Sprintf("%v", options.LogLevel)
-	isValidChoice_LogLevel = slices.Contains(allowedChoices_LogLevel, currentValue_LogLevelStr)
-
-	if !isValidChoice_LogLevel {
-		var currentValueForMsg interface{} = options.LogLevel // options.OptName
-		slog.ErrorContext(ctx, "Invalid value for flag", errors.New("Invalid value for flag"), "flag", "log-level", "value", currentValueForMsg, "allowedChoices", strings.Join(allowedChoices_LogLevel, ", "))
-		os.Exit(1)
-	}
-
-	initialDefaultOutputDir := "output"
-	envOutputDirWasSet := false
-	if options.OutputDir == initialDefaultOutputDir && !isFlagExplicitlySet["output-dir"] && !envOutputDirWasSet {
-		slog.ErrorContext(ctx, "Missing required flag or environment variable not set", errors.New("Missing required flag or environment variable not set"), "flag", "output-dir", "option", "OutputDir")
-		os.Exit(1)
-	}
-
-	initialDefaultMode := "standard"
-	envModeWasSet := false
-	if _, ok := os.LookupEnv("SIMPLE_MODE"); ok {
-		envModeWasSet = true
-	}
-	if options.Mode == initialDefaultMode && !isFlagExplicitlySet["mode"] && !envModeWasSet {
-		slog.ErrorContext(ctx, "Missing required flag or environment variable not set", errors.New("Missing required flag or environment variable not set"), "flag", "mode", "envVar", "SIMPLE_MODE", "option", "Mode")
-		os.Exit(1)
-	}
-
-	isValidChoice_Mode := false
-	allowedChoices_Mode := []string{"standard", "turbo", "eco"}
-
-	currentValue_ModeStr := fmt.Sprintf("%v", options.Mode)
-	isValidChoice_Mode = slices.Contains(allowedChoices_Mode, currentValue_ModeStr)
-
-	if !isValidChoice_Mode {
-		var currentValueForMsg interface{} = options.Mode // options.OptName
-		slog.ErrorContext(ctx, "Invalid value for flag", errors.New("Invalid value for flag"), "flag", "mode", "value", currentValueForMsg, "allowedChoices", strings.Join(allowedChoices_Mode, ", "))
-		os.Exit(1)
-	}
-
-	initialDefaultConfigFile := "config.json"
-	envConfigFileWasSet := false
-	if _, ok := os.LookupEnv("FULLSET_CONFIG_FILE"); ok {
-		envConfigFileWasSet = true
-	}
-	if options.ConfigFile == initialDefaultConfigFile && !isFlagExplicitlySet["config-file"] && !envConfigFileWasSet {
-		slog.ErrorContext(ctx, "Missing required flag or environment variable not set", errors.New("Missing required flag or environment variable not set"), "flag", "config-file", "envVar", "FULLSET_CONFIG_FILE", "option", "ConfigFile")
-		os.Exit(1)
-	}
-
-	initialDefaultPattern := "*.go"
-	envPatternWasSet := false
-	if _, ok := os.LookupEnv("FULLSET_PATTERN"); ok {
-		envPatternWasSet = true
-	}
-	if options.Pattern == initialDefaultPattern && !isFlagExplicitlySet["pattern"] && !envPatternWasSet {
-		slog.ErrorContext(ctx, "Missing required flag or environment variable not set", errors.New("Missing required flag or environment variable not set"), "flag", "pattern", "envVar", "FULLSET_PATTERN", "option", "Pattern")
-		os.Exit(1)
-	}
-	if err := run(ctx, options); err != nil {
-
-		slog.ErrorContext(ctx, "Runtime error", "error", err)
+	// --- 8. Execute Run Function ---
+	err = run(ctx, options)
+	if err != nil {
+		slog.ErrorContext(ctx, "Runtime error from command function", "error", err)
 		os.Exit(1)
 	}
 }
