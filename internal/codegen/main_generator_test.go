@@ -179,10 +179,10 @@ func TestGenerateMain_BasicCase(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GenerateMain failed: %v", err)
 	}
-	assertCodeContains(t, actualCode, "err = Run(options)")
+	assertCodeNotContains(t, actualCode, "var err error")
+	assertCodeContains(t, actualCode, "if err := Run(options); err != nil {")
 	assertCodeContains(t, actualCode, "func main() {")
 	assertCodeContains(t, actualCode, "ctx := context.Background()")
-	assertCodeContains(t, actualCode, "if err != nil {")
 	assertCodeContains(t, actualCode, `slog.ErrorContext(ctx, "Runtime error", "error", err)`)
 	assertCodeContains(t, actualCode, `os.Exit(1)`)
 	assertCodeNotContains(t, actualCode, "var options =")
@@ -220,7 +220,8 @@ func TestGenerateMain_WithOptions(t *testing.T) {
 	flag.Parse()
 `
 	assertCodeContains(t, actualCode, expectedFlagParsing)
-	assertCodeContains(t, actualCode, "err = RunWithOptions(options)")
+	assertCodeNotContains(t, actualCode, "var err error")
+	assertCodeContains(t, actualCode, "if err := RunWithOptions(options); err != nil {")
 	assertCodeNotContains(t, actualCode, "import . \"anothercmd\"")
 	assertCodeNotContains(t, actualCode, "import \"anothercmd\"")
 }
@@ -243,7 +244,8 @@ func TestGenerateMain_NoPackagePrefixWhenMain(t *testing.T) {
 	}
 	assertCodeContains(t, actualCode, `options.Name = "guest"`)
 	assertCodeContains(t, actualCode, `flag.StringVar(&options.Name, "name", options.Name, "Name of the user" /* Original Default: guest, Env: */)`)
-	assertCodeContains(t, actualCode, "err = run(options)")
+	assertCodeNotContains(t, actualCode, "var err error")
+	assertCodeContains(t, actualCode, "if err := run(options); err != nil {")
 	assertCodeNotContains(t, actualCode, "main.run(")
 	assertCodeNotContains(t, actualCode, "main.Run(")
 }
@@ -278,7 +280,8 @@ func TestGenerateMain_KebabCaseFlagNames(t *testing.T) {
 	flag.Parse()
 `
 	assertCodeContains(t, actualCode, expectedFlagParsing)
-	assertCodeContains(t, actualCode, "err = ProcessData(options)")
+	assertCodeNotContains(t, actualCode, "var err error")
+	assertCodeContains(t, actualCode, "if err := ProcessData(options); err != nil {")
 }
 
 func TestGenerateMain_RequiredFlags(t *testing.T) {
@@ -314,7 +317,8 @@ func TestGenerateMain_RequiredFlags(t *testing.T) {
 	assertCodeContains(t, actualCode, `envRetriesWasSet := false`)
 	assertCodeContains(t, actualCode, `if options.Retries == initialDefaultRetries && !isFlagExplicitlySet["retries"] && !envRetriesWasSet {`)
 	assertCodeContains(t, actualCode, `slog.ErrorContext(ctx, "Missing required flag or environment variable not set", errors.New("Missing required flag or environment variable not set"), "flag", "retries", "option", "Retries")`)
-	assertCodeContains(t, actualCode, "err = DoSomething(*options)")
+	assertCodeNotContains(t, actualCode, "var err error")
+	assertCodeContains(t, actualCode, "if err := DoSomething(*options); err != nil {")
 }
 
 func TestGenerateMain_EnumValidation(t *testing.T) {
@@ -351,7 +355,8 @@ func TestGenerateMain_EnumValidation(t *testing.T) {
 	}
 `
 	assertCodeContains(t, actualCode, expectedEnumValidation)
-	assertCodeContains(t, actualCode, "err = SetMode(options)")
+	assertCodeNotContains(t, actualCode, "var err error")
+	assertCodeContains(t, actualCode, "if err := SetMode(options); err != nil {")
 }
 
 func TestGenerateMain_EnvironmentVariables(t *testing.T) {
@@ -406,7 +411,8 @@ func TestGenerateMain_EnvironmentVariables(t *testing.T) {
 	assertCodeContains(t, actualCode, `flag.StringVar(&options.APIKey, "api-key", options.APIKey, "API Key" /* Env: API_KEY */)`)
 	assertCodeContains(t, actualCode, `flag.IntVar(&options.Timeout, "timeout", options.Timeout, "Timeout in seconds" /* Original Default: 60, Env: TIMEOUT_SECONDS */)`)
 	assertCodeContains(t, actualCode, `flag.BoolVar(&options.EnableFeature, "enable-feature", options.EnableFeature, "Enable new feature" /* Original Default: false, Env: ENABLE_MY_FEATURE */)`)
-	assertCodeContains(t, actualCode, "err = Configure(options)")
+	assertCodeNotContains(t, actualCode, "var err error")
+	assertCodeContains(t, actualCode, "if err := Configure(options); err != nil {")
 }
 
 func TestGenerateMain_EnvVarForBoolWithTrueDefault(t *testing.T) {
@@ -439,7 +445,8 @@ func TestGenerateMain_EnvVarForBoolWithTrueDefault(t *testing.T) {
 `
 	assertCodeContains(t, actualCode, expectedEnvLogic)
 	assertCodeContains(t, actualCode, `flag.BoolVar(&options.SmartParsing, "smart-parsing", options.SmartParsing, "Enable smart parsing" /* Original Default: true, Env: SMART_PARSING_ENABLED */)`)
-	assertCodeContains(t, actualCode, "err = ProcessWithFeature(options)")
+	assertCodeNotContains(t, actualCode, "var err error")
+	assertCodeContains(t, actualCode, "if err := ProcessWithFeature(options); err != nil {")
 }
 
 func TestGenerateMain_RequiredBool_DefaultFalse(t *testing.T) {
@@ -519,13 +526,13 @@ func TestGenerateMain_ErrorHandling(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GenerateMain failed: %v", err)
 	}
-	expectedErrorHandling := `
-	if err != nil {
-		slog.ErrorContext(ctx, "Runtime error", "error", err)
-		os.Exit(1)
-	}
-`
-	assertCodeContains(t, actualCode, expectedErrorHandling)
+	assertCodeNotContains(t, actualCode, "var err error")
+	// For this test, we are checking the specific error handling block structure
+	// which is now part of the if err := ... block.
+	// The previous assertCodeContains for "err = DefaultRun(options)" is implicitly covered by the new format.
+	assertCodeContains(t, actualCode, "if err := DefaultRun(options); err != nil {")
+	assertCodeContains(t, actualCode, `slog.ErrorContext(ctx, "Runtime error", "error", err)`)
+	assertCodeContains(t, actualCode, `os.Exit(1)`)
 }
 
 func TestGenerateMain_Imports(t *testing.T) {
@@ -598,7 +605,8 @@ func TestGenerateMain_RequiredIntWithEnvVar(t *testing.T) {
 	}
 `
 	assertCodeContains(t, actualCode, expectedRequiredCheck)
-	assertCodeContains(t, actualCode, "err = SubmitData(options)")
+	assertCodeNotContains(t, actualCode, "var err error")
+	assertCodeContains(t, actualCode, "if err := SubmitData(options); err != nil {")
 }
 
 func TestGenerateMain_EnvVarPrecendenceStrategy(t *testing.T) {
@@ -739,6 +747,8 @@ func TestGenerateMain_StringFlagWithQuotesInDefault(t *testing.T) {
 	assertCodeContains(t, actualCode, `options.Greeting = "hello \"world\""`)
 	expectedFlagParsing := `flag.StringVar(&options.Greeting, "greeting", options.Greeting, "A greeting message" /* Original Default: hello "world", Env: */)`
 	assertCodeContains(t, actualCode, expectedFlagParsing)
+	assertCodeNotContains(t, actualCode, "var err error") // Added this line
+	assertCodeContains(t, actualCode, "if err := PrintString(options); err != nil {")
 }
 
 func TestGenerateMain_WithHelpText(t *testing.T) {
@@ -769,7 +779,8 @@ func TestGenerateMain_WithHelpText(t *testing.T) {
 	oldManualHelpLogic := `for _, arg := range os.Args[1:] { if arg == "-h" || arg == "--help" {`
 	assertCodeNotContains(t, actualCode, oldManualHelpLogic)
 	assertCodeContains(t, actualCode, `flag.StringVar(&options.Input, "input", options.Input, "Input file")`)
-	assertCodeContains(t, actualCode, "err = RunMyTool(options)")
+	assertCodeNotContains(t, actualCode, "var err error")
+	assertCodeContains(t, actualCode, "if err := RunMyTool(options); err != nil {")
 }
 
 func TestGenerateMain_WithEmptyHelpText(t *testing.T) {
@@ -795,7 +806,8 @@ func TestGenerateMain_WithEmptyHelpText(t *testing.T) {
 	unexpectedFlagUsageAssignment := `flag.Usage = func()`
 	assertCodeNotContains(t, actualCode, unexpectedFlagUsageAssignment)
 	assertCodeContains(t, actualCode, "func main() {")
-	assertCodeContains(t, actualCode, "err = AnotherTool()")
+	assertCodeNotContains(t, actualCode, "var err error")
+	assertCodeContains(t, actualCode, "if err := AnotherTool(); err != nil {")
 }
 
 func TestGenerateMain_HelpTextNewlineFormatting(t *testing.T) {
@@ -867,7 +879,8 @@ func TestGenerateMain_WithInitializer(t *testing.T) {
 	assertCodeNotContains(t, actualCode, "options = NewMyOptions()") // Ensure old form is not present
 	assertCodeNotContains(t, actualCode, "options = new(MyOptions)")
 	assertCodeNotContains(t, actualCode, "var options = &MyOptions{}")
-	assertCodeContains(t, actualCode, "err = Run(options)")
+	assertCodeNotContains(t, actualCode, "var err error")
+	assertCodeContains(t, actualCode, "if err := Run(options); err != nil {")
 }
 
 func TestGenerateMain_WithoutInitializer_Fallback(t *testing.T) {
@@ -901,7 +914,8 @@ func TestGenerateMain_WithoutInitializer_Fallback(t *testing.T) {
 	assertCodeContains(t, actualCode, `options.Count = 42`)
 	assertCodeContains(t, actualCode, `flag.StringVar(&options.Mode, "mode", options.Mode, "Operation mode" /* Original Default: test, Env: */)`)
 	assertCodeContains(t, actualCode, `flag.IntVar(&options.Count, "count", options.Count, "A number" /* Original Default: 42, Env: */)`)
-	assertCodeContains(t, actualCode, "err = Run(options)")
+	assertCodeNotContains(t, actualCode, "var err error")
+	assertCodeContains(t, actualCode, "if err := Run(options); err != nil {")
 }
 
 func TestGenerateMain_InitializerInMainPackage(t *testing.T) {
@@ -927,7 +941,8 @@ func TestGenerateMain_InitializerInMainPackage(t *testing.T) {
 	assertCodeNotContains(t, actualCode, "options = NewMyOptions()") // Ensure old form is not present
 	assertCodeNotContains(t, actualCode, "options = new(MyOptions)")
 	assertCodeNotContains(t, actualCode, "var options = &MyOptions{}")
-	assertCodeContains(t, actualCode, "err = Run(options)")
+	assertCodeNotContains(t, actualCode, "var err error")
+	assertCodeContains(t, actualCode, "if err := Run(options); err != nil {")
 }
 
 func TestGenerateMain_WithContextOnly(t *testing.T) {
@@ -946,7 +961,8 @@ func TestGenerateMain_WithContextOnly(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GenerateMain for context only failed: %v", err)
 	}
-	assertCodeContains(t, actualCode, "err = RunCtxOnly(ctx)")
+	assertCodeNotContains(t, actualCode, "var err error")
+	assertCodeContains(t, actualCode, "if err := RunCtxOnly(ctx); err != nil {")
 	assertCodeNotContains(t, actualCode, "var options") // Ensure no options struct is declared
 }
 
@@ -971,7 +987,8 @@ func TestGenerateMain_WithContextAndOptionsPointer(t *testing.T) {
 	}
 	assertCodeContains(t, actualCode, "options := new(MyOptions)")
 	assertCodeContains(t, actualCode, `options.TestOption = "hello"`)
-	assertCodeContains(t, actualCode, "err = RunCtxOptsPtr(ctx, options)")
+	assertCodeNotContains(t, actualCode, "var err error")
+	assertCodeContains(t, actualCode, "if err := RunCtxOptsPtr(ctx, options); err != nil {")
 }
 
 func TestGenerateMain_WithContextAndOptionsValue(t *testing.T) {
@@ -995,7 +1012,8 @@ func TestGenerateMain_WithContextAndOptionsValue(t *testing.T) {
 	}
 	assertCodeContains(t, actualCode, "options := new(MyOptions)") // Still a pointer internally for setup
 	assertCodeContains(t, actualCode, "options.AnotherOption = 123")
-	assertCodeContains(t, actualCode, "err = RunCtxOptsVal(ctx, *options)")
+	assertCodeNotContains(t, actualCode, "var err error")
+	assertCodeContains(t, actualCode, "if err := RunCtxOptsVal(ctx, *options); err != nil {")
 }
 
 // New Test Function for formatHelpText
