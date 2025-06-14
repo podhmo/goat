@@ -50,58 +50,37 @@ Flags:
 
 	// The following block populates the fields of the options struct.
 	// This logic is only executed if no InitializerFunc is provided.
-
 	options.Version = false
-
 	options.Help = false
-
 	options.ConfigFile = ""
-
-	// End of range .Options (for non-initializer case)
-	// End of if/else .RunFunc.InitializerFunc for options assignment
 
 	// 2. Override with environment variable values.
 	// This section assumes 'options' is already initialized.
 
-	// End of range .Options for env vars
-
 	// 3. Set flags.
-
 	flag.BoolVar(&options.Version, "version", options.Version, "Print version information")
-
 	flag.BoolVar(&options.Help, "help", options.Help, "Show help message")
-
 	flag.StringVar(&options.ConfigFile, "config-file", options.ConfigFile, "Path to the configuration file")
-
-	// End of range .Options for flags
 
 	// 4. Parse.
 	flag.Parse()
 	flag.Visit(func(f *flag.Flag) { isFlagExplicitlySet[f.Name] = true })
 
-	// Handle special case for required bools defaulting to true with 'no-<flag>'
-
 	// 5. Perform required checks (excluding booleans).
 
 	initialDefaultConfigFile := ""
 	envConfigFileWasSet := false
-
 	if options.ConfigFile == initialDefaultConfigFile && !isFlagExplicitlySet["config-file"] && !envConfigFileWasSet {
 		slog.ErrorContext(ctx, "Missing required flag or environment variable not set", errors.New("Missing required flag or environment variable not set"), "flag", "config-file", "option", "ConfigFile")
 		os.Exit(1)
 	}
 
-	// End of range .Options for required checks
-
 	// TODO: Implement runtime validation for file options based on metadata:
 	// - Check for opt.FileMustExist (e.g., using os.Stat)
 	// - Handle opt.FileGlobPattern (e.g., using filepath.Glob)
 	// Currently, these attributes are parsed but not enforced at runtime by the generated CLI.
-	// End of if .RunFunc.OptionsArgTypeNameStripped (options handling block)
 
 	var err error
-
-	// Run function expects an options argument
 	err = run(*options)
 
 	if err != nil {
