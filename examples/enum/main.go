@@ -182,11 +182,6 @@ imported from another package.`)
 		os.Exit(1)
 	}
 
-	// TODO: Implement runtime validation for file options based on metadata:
-	// - Check for opt.FileMustExist (e.g., using os.Stat)
-	// - Handle opt.FileGlobPattern (e.g., using filepath.Glob)
-	// Currently, these attributes are parsed but not enforced at runtime by the generated CLI.
-
 	var err error
 	err = run(*options)
 
