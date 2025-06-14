@@ -43,10 +43,8 @@ Flags:
 `)
 	}
 
-	var options *Options
-
 	// 1. Create Options with default values (no initializer function provided).
-	options = new(Options) // options is now a valid pointer to a zeroed struct
+	options := new(Options) // options is now a valid pointer to a zeroed struct
 
 	// The following block populates the fields of the options struct.
 	// This logic is only executed if no InitializerFunc is provided.
