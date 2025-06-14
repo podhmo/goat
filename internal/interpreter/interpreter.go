@@ -678,4 +678,14 @@ func extractEnumValuesFromEvalResult(
 
 	// Neither Value nor IdentifierName is set in the initial evalResult for the enum variable itself
 	slog.WarnContext(ctx, "Enum argument could not be evaluated to a literal slice or a resolvable identifier.", "field", optMeta.Name, "markerType", markerType, "evalResult", fmt.Sprintf("%+v", evalResult))
+
+	// After all attempts to populate EnumValues, set IsEnum based on whether values were actually found.
+	// Default for bool is false, so it will remain false if EnumValues is empty or nil.
+	if len(optMeta.EnumValues) > 0 {
+		optMeta.IsEnum = true
+		slog.DebugContext(ctx, fmt.Sprintf("Finalizing IsEnum for field %s: true (EnumValues: %v)", optMeta.Name, optMeta.EnumValues))
+	} else {
+		optMeta.IsEnum = false // Explicitly set to false if EnumValues is empty/nil after processing
+		slog.DebugContext(ctx, fmt.Sprintf("Finalizing IsEnum for field %s: false (EnumValues empty or nil)", optMeta.Name))
+	}
 }

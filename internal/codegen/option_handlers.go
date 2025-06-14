@@ -762,6 +762,290 @@ func (h *StringSliceHandler) GenerateEnumValidationCode(opt *metadata.OptionMeta
 	return OptionCodeSnippets{}
 }
 
+// EnumHandler handles code generation for enum options.
+type EnumHandler struct{}
+
+func (h *EnumHandler) getActualTypeName(opt *metadata.OptionMetadata) string {
+	if opt.TypePackage != "" {
+		return fmt.Sprintf("%s.%s", opt.TypePackage, opt.TypeName)
+	}
+	return opt.TypeName
+}
+
+func (h *EnumHandler) GenerateDefaultValueInitializationCode(opt *metadata.OptionMetadata, optionsVarName string) OptionCodeSnippets {
+	if opt.DefaultValue == nil {
+		return OptionCodeSnippets{}
+	}
+
+	actualTypeName := h.getActualTypeName(opt)
+	defaultValueStr := fmt.Sprintf("%v", opt.DefaultValue) // Works for int, string enums
+
+	// For string-based enums, the value needs to be quoted in the generated code.
+	// We assume other enum base types (like int) don't need special formatting here beyond %v.
+	// The metadata.OptionMetadata.Type field could be enhanced to specify "string" vs "int" base for enums.
+	// For now, we check if DefaultValue is a string.
+	if _, ok := opt.DefaultValue.(string); ok {
+		defaultValueStr = formatHelpText(defaultValueStr) // formatHelpText also quotes strings
+	}
+
+	return OptionCodeSnippets{Logic: fmt.Sprintf("%s.%s = %s(%s)\n", optionsVarName, opt.Name, actualTypeName, defaultValueStr)}
+}
+
+func (h *EnumHandler) GenerateEnvVarProcessingCode(opt *metadata.OptionMetadata, optionsVarName string, envValVarName string, ctxVarName string) OptionCodeSnippets {
+	actualTypeName := h.getActualTypeName(opt)
+	// Assuming env var is a string, which is typical. The enum type constructor should handle it.
+	return OptionCodeSnippets{Logic: fmt.Sprintf("%s.%s = %s(%s)\n", optionsVarName, opt.Name, actualTypeName, envValVarName)}
+}
+
+func (h *EnumHandler) GenerateFlagRegistrationCode(opt *metadata.OptionMetadata, optionsVarName string, isFlagExplicitlySetMapName string, globalTempVarPrefix string) OptionCodeSnippets {
+	actualTypeName := h.getActualTypeName(opt)
+	cliNameForFlag := opt.CliName
+	if cliNameForFlag == "" {
+		cliNameForFlag = stringutils.ToKebabCase(opt.Name)
+	}
+
+	// Construct help text including allowed values
+	allowedValues := GetEffectiveEnumValues(opt)
+	helpDetail := constructFlagHelpDetail(opt.HelpText, opt.DefaultValue, allowedValues, opt.EnvVar, false)
+	formattedHelpText := formatHelpText(helpDetail)
+
+	logic := fmt.Sprintf(`flag.Func(%q, %s, func(s string) error {
+	%s[%q] = true
+	%s.%s = %s(s)
+	return nil
+})
+`, cliNameForFlag, formattedHelpText, isFlagExplicitlySetMapName, cliNameForFlag, optionsVarName, opt.Name, actualTypeName)
+	return OptionCodeSnippets{Logic: logic}
+}
+
+func (h *EnumHandler) GenerateFlagPostParseAssignmentCode(opt *metadata.OptionMetadata, optionsVarName string, isFlagExplicitlySetMapName string, globalTempVarPrefix string) OptionCodeSnippets {
+	return OptionCodeSnippets{} // Non-pointer enums are directly assigned by flag.Func
+}
+
+func (h *EnumHandler) GenerateRequiredCheckCode(opt *metadata.OptionMetadata, optionsVarName string, isFlagExplicitlySetMapName string, initialDefaultVarName string, envWasSetVarName string, ctxVarName string) OptionCodeSnippets {
+	kebabCaseName := stringutils.ToKebabCase(opt.Name)
+	envVarLogIfPresent := ""
+	if opt.EnvVar != "" {
+		envVarLogIfPresent = fmt.Sprintf(`, "envVar", %q`, opt.EnvVar)
+	}
+
+	// Compare the current value (as string) to the initial default value (as string)
+	// This handles enums that might be int-based or string-based.
+	condition := fmt.Sprintf("fmt.Sprintf(\"%%v\", %s.%s) == %s && !%s[%q] && !%s",
+		optionsVarName, opt.Name, initialDefaultVarName, isFlagExplicitlySetMapName, kebabCaseName, envWasSetVarName)
+
+	logic := fmt.Sprintf(`if %s {
+	slog.ErrorContext(%s, "Missing required option", "flag", %q%s, "option", %q)
+	return fmt.Errorf("missing required option: --%s / %s")
+}
+return nil
+`, condition, ctxVarName, kebabCaseName, envVarLogIfPresent, opt.Name, kebabCaseName, opt.EnvVar)
+	return OptionCodeSnippets{Logic: logic}
+}
+
+func (h *EnumHandler) GenerateEnumValidationCode(opt *metadata.OptionMetadata, optionsVarName string, ctxVarName string) OptionCodeSnippets {
+	effectiveEnums := GetEffectiveEnumValues(opt)
+	if len(effectiveEnums) == 0 {
+		return OptionCodeSnippets{} // No validation if no enum values defined
+	}
+
+	actualTypeName := h.getActualTypeName(opt)
+	enumValuesVar := stringutils.ToCamelCase(opt.Name) + "EnumValues"
+
+	var enumValuesFormatted []string
+	// We need to format them as strings for the "allowed" list in the error message.
+	// And for comparison, we cast the field to string.
+	for _, ev := range effectiveEnums {
+		// If the enum values themselves are strings, they need to be quoted when constructing the slice of valid string representations
+		// For example, if MyEnum can be "foo" or "bar", the generated code for enumValuesVar might be:
+		// var myEnumEnumValues = []string{"\"foo\"", "\"bar\""} if we directly use formatHelpText(ev)
+		// However, for comparison like string(options.MyEnumField) == validVal, validVal should be "foo", not "\"foo\""
+		// So, we store the raw string values for comparison, and a separately formatted list for the error message.
+		enumValuesFormatted = append(enumValuesFormatted, fmt.Sprintf("%q", ev)) // For error message display
+	}
+
+	cliNameForLog := opt.CliName
+	if cliNameForLog == "" {
+		cliNameForLog = stringutils.ToKebabCase(opt.Name)
+	}
+
+	// This list is for the error message, so values should be quoted if they are strings
+	errorEnumListVar := stringutils.ToCamelCase(opt.Name) + "ErrorEnumList"
+	declarations := fmt.Sprintf("var %s = []string{%s}\n", errorEnumListVar, strings.Join(enumValuesFormatted, ", "))
+
+	// For the actual comparison, we'll iterate over the raw effectiveEnums
+	// and cast the current option value to a string for comparison.
+
+	validationLogic := fmt.Sprintf(`
+found := false
+currentValueStr := fmt.Sprintf("%%v", %s.%s)
+for _, validValStr := range %#v { // Use raw enum values for comparison logic
+	if currentValueStr == validValStr {
+		found = true
+		break
+	}
+}
+if !found {
+	slog.ErrorContext(%s, "Invalid value for enum option", "option", %q, "value", %s.%s, "allowed", %s)
+	return fmt.Errorf("invalid value for --%s: got %%v, expected one of %%v", %s.%s, %s)
+}
+return nil
+`, optionsVarName, opt.Name, effectiveEnums, ctxVarName, cliNameForLog, optionsVarName, opt.Name, errorEnumListVar, cliNameForLog, optionsVarName, opt.Name, errorEnumListVar)
+
+	return OptionCodeSnippets{Declarations: declarations, Logic: validationLogic}
+}
+
+// EnumPtrHandler handles code generation for pointer to enum options.
+type EnumPtrHandler struct{}
+
+func (h *EnumPtrHandler) getActualTypeName(opt *metadata.OptionMetadata) string {
+	// For a pointer type like *customtypes.MyEnum, TypeName is *customtypes.MyEnum.
+	// We need the base type for casting: customtypes.MyEnum.
+	baseTypeName := strings.TrimPrefix(opt.TypeName, "*")
+	if opt.TypePackage != "" {
+		// If TypePackage is present, it means TypeName might be just "MyEnum"
+		// and TypePackage is "customtypes". Or TypeName could be "customtypes.MyEnum"
+		// and TypePackage is "customtypes" (a bit redundant but possible).
+		// A robust way is to ensure the package prefix isn't duplicated if already in baseTypeName.
+		if strings.HasPrefix(baseTypeName, opt.TypePackage+".") {
+			return baseTypeName // e.g. baseTypeName = "customtypes.MyEnum", opt.TypePackage = "customtypes"
+		}
+		return fmt.Sprintf("%s.%s", opt.TypePackage, baseTypeName)
+	}
+	return baseTypeName
+}
+
+func (h *EnumPtrHandler) GenerateDefaultValueInitializationCode(opt *metadata.OptionMetadata, optionsVarName string) OptionCodeSnippets {
+	if opt.DefaultValue == nil {
+		return OptionCodeSnippets{}
+	}
+
+	actualBaseTypeName := h.getActualTypeName(opt) // This gets "MyEnum" or "pkg.MyEnum"
+	defaultValueStr := fmt.Sprintf("%v", opt.DefaultValue)
+
+	if _, ok := opt.DefaultValue.(string); ok {
+		defaultValueStr = formatHelpText(defaultValueStr) // Quote if string
+	}
+
+	tempVar := stringutils.ToCamelCase(opt.Name) + "DefaultVal"
+	declarations := fmt.Sprintf("%s := %s(%s)\n", tempVar, actualBaseTypeName, defaultValueStr)
+	logic := fmt.Sprintf("%s.%s = &%s\n", optionsVarName, opt.Name, tempVar)
+	return OptionCodeSnippets{Declarations: declarations, Logic: logic}
+}
+
+func (h *EnumPtrHandler) GenerateEnvVarProcessingCode(opt *metadata.OptionMetadata, optionsVarName string, envValVarName string, ctxVarName string) OptionCodeSnippets {
+	actualBaseTypeName := h.getActualTypeName(opt)
+	logic := fmt.Sprintf("{\n valCopy := %s(%s)\n %s.%s = &valCopy\n}\n", actualBaseTypeName, envValVarName, optionsVarName, opt.Name)
+	return OptionCodeSnippets{Logic: logic}
+}
+
+func (h *EnumPtrHandler) GenerateFlagRegistrationCode(opt *metadata.OptionMetadata, optionsVarName string, isFlagExplicitlySetMapName string, globalTempVarPrefix string) OptionCodeSnippets {
+	actualBaseTypeName := h.getActualTypeName(opt) // e.g. MyEnum or pkg.MyEnum
+	cliNameForFlag := opt.CliName
+	if cliNameForFlag == "" {
+		cliNameForFlag = stringutils.ToKebabCase(opt.Name)
+	}
+
+	// Temporary variable to hold the string from the flag
+	tempFlagStrVar := globalTempVarPrefix + stringutils.ToTitle(opt.Name) + "FlagStr"
+	declarations := fmt.Sprintf("var %s string\n", tempFlagStrVar)
+
+	// Default value for the flag itself (always string for flag.StringVar)
+	defaultFlagValueStr := ""
+	if opt.DefaultValue != nil {
+		// opt.DefaultValue is the actual enum value, convert to string for the flag's default display
+		defaultFlagValueStr = fmt.Sprintf("%v", opt.DefaultValue)
+	}
+
+	allowedValues := GetEffectiveEnumValues(opt)
+	helpDetail := constructFlagHelpDetail(opt.HelpText, defaultFlagValueStr, allowedValues, opt.EnvVar, false)
+	formattedHelpText := formatHelpText(helpDetail)
+
+	// We use flag.StringVar to capture the input. Post-processing will convert and assign the pointer.
+	logic := fmt.Sprintf("flag.StringVar(&%s, %q, %s, %s)\n",
+		tempFlagStrVar, cliNameForFlag, formatHelpText(defaultFlagValueStr), formattedHelpText)
+
+	return OptionCodeSnippets{Declarations: declarations, Logic: logic}
+}
+
+func (h *EnumPtrHandler) GenerateFlagPostParseAssignmentCode(opt *metadata.OptionMetadata, optionsVarName string, isFlagExplicitlySetMapName string, globalTempVarPrefix string) OptionCodeSnippets {
+	actualBaseTypeName := h.getActualTypeName(opt)
+	cliNameForFlag := opt.CliName
+	if cliNameForFlag == "" {
+		cliNameForFlag = stringutils.ToKebabCase(opt.Name)
+	}
+	tempFlagStrVar := globalTempVarPrefix + stringutils.ToTitle(opt.Name) + "FlagStr"
+
+	logic := fmt.Sprintf(`
+if %s[%q] { // If flag was explicitly set
+	valCopy := %s(%s)
+	%s.%s = &valCopy
+}
+`, isFlagExplicitlySetMapName, cliNameForFlag, actualBaseTypeName, tempFlagStrVar, optionsVarName, opt.Name)
+	return OptionCodeSnippets{Logic: logic}
+}
+
+func (h *EnumPtrHandler) GenerateRequiredCheckCode(opt *metadata.OptionMetadata, optionsVarName string, isFlagExplicitlySetMapName string, initialDefaultVarName string, envWasSetVarName string, ctxVarName string) OptionCodeSnippets {
+	kebabCaseName := stringutils.ToKebabCase(opt.Name)
+	envVarLogIfPresent := ""
+	if opt.EnvVar != "" {
+		envVarLogIfPresent = fmt.Sprintf(`, "envVar", %q`, opt.EnvVar)
+	}
+	// For pointers, required means it must not be nil.
+	// The initialDefaultVarName is not directly comparable if it's a pointer type in the generated code.
+	// We check if the flag was set, or env var was set, or if it's non-nil.
+	condition := fmt.Sprintf("%s.%s == nil && !%s[%q] && !%s",
+		optionsVarName, opt.Name, isFlagExplicitlySetMapName, kebabCaseName, envWasSetVarName)
+
+	logic := fmt.Sprintf(`if %s {
+	slog.ErrorContext(%s, "Missing required option", "flag", %q%s, "option", %q)
+	return fmt.Errorf("missing required option (must be non-nil): --%s / %s")
+}
+return nil
+`, condition, ctxVarName, kebabCaseName, envVarLogIfPresent, opt.Name, kebabCaseName, opt.EnvVar)
+	return OptionCodeSnippets{Logic: logic}
+}
+
+func (h *EnumPtrHandler) GenerateEnumValidationCode(opt *metadata.OptionMetadata, optionsVarName string, ctxVarName string) OptionCodeSnippets {
+	effectiveEnums := GetEffectiveEnumValues(opt)
+	if len(effectiveEnums) == 0 {
+		return OptionCodeSnippets{}
+	}
+
+	// actualBaseTypeName := h.getActualTypeName(opt)
+	var enumValuesFormatted []string
+	for _, ev := range effectiveEnums {
+		enumValuesFormatted = append(enumValuesFormatted, fmt.Sprintf("%q", ev))
+	}
+
+	cliNameForLog := opt.CliName
+	if cliNameForLog == "" {
+		cliNameForLog = stringutils.ToKebabCase(opt.Name)
+	}
+
+	errorEnumListVar := stringutils.ToCamelCase(opt.Name) + "ErrorEnumList"
+	declarations := fmt.Sprintf("var %s = []string{%s}\n", errorEnumListVar, strings.Join(enumValuesFormatted, ", "))
+
+	validationLogic := fmt.Sprintf(`
+if %s.%s != nil {
+	found := false
+	currentValueStr := fmt.Sprintf("%%v", *%s.%s)
+	for _, validValStr := range %#v { // Use raw enum values
+		if currentValueStr == validValStr {
+			found = true
+			break
+		}
+	}
+	if !found {
+		slog.ErrorContext(%s, "Invalid value for enum option", "option", %q, "value", *%s.%s, "allowed", %s)
+		return fmt.Errorf("invalid value for --%s: got %%v, expected one of %%v", *%s.%s, %s)
+	}
+}
+return nil
+`, optionsVarName, opt.Name, optionsVarName, opt.Name, effectiveEnums, ctxVarName, cliNameForLog, optionsVarName, opt.Name, errorEnumListVar, cliNameForLog, optionsVarName, opt.Name, errorEnumListVar)
+	return OptionCodeSnippets{Declarations: declarations, Logic: validationLogic}
+}
+
 // TextUnmarshalerHandler handles code generation for types implementing encoding.TextUnmarshaler.
 type TextUnmarshalerHandler struct{}
 

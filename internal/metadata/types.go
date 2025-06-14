@@ -43,6 +43,8 @@ type OptionMetadata struct {
 	// File-specific options
 	FileMustExist   bool `json:"fileMustExist,omitempty"`
 	FileGlobPattern bool `json:"fileGlobPattern,omitempty"`
+
+	IsEnum bool `json:"isEnum,omitempty"` // True if this option is an enum (derived from EnumValues)
 }
 
 // DefaultValueAsBool checks if the DefaultValue is a boolean and true.
