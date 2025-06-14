@@ -15,7 +15,7 @@ import (
 
 	"github.com/podhmo/goat/internal/analyzer"
 	"github.com/podhmo/goat/internal/codegen"
-	"github.com/podhmo/goat/internal/help"
+	help "github.com/podhmo/goat/internal/helpgen"
 	"github.com/podhmo/goat/internal/interpreter"
 	"github.com/podhmo/goat/internal/loader"
 	"github.com/podhmo/goat/internal/metadata"

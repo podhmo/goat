@@ -300,7 +300,6 @@ func TestResolveEvalResultToEnumString(t *testing.T) {
 		t.Logf("Successfully pre-loaded and parsed package: %s for TestResolveEvalResultToEnumString", p.ImportPath)
 	}
 
-
 	// Test cases
 	tests := []struct {
 		name              string
@@ -766,8 +765,8 @@ func TestInterpretInitializer_EnumResolution(t *testing.T) {
 	// The paths used by the loader (e.g., for currentPkgPath and resolving imports)
 	// need to be relative to this module root or be absolute/canonical import paths.
 
-	const testMarkerPkgImportPath = "testcmdmodule/internal/goat" // This must match what's used in mainpkg.go's import
-	const mainPkgPath = "testdata/enumtests_module/src/mainpkg"            // Corrected canonical path
+	const testMarkerPkgImportPath = "testcmdmodule/internal/goat"              // This must match what's used in mainpkg.go's import
+	const mainPkgPath = "testdata/enumtests_module/src/mainpkg"                // Corrected canonical path
 	const externalPkgPathForTest = "testdata/enumtests_module/src/externalpkg" // Used in TestInterpretInitializer_EnumResolution
 
 	// Parse the main.go file from our test module
@@ -800,7 +799,6 @@ func TestInterpretInitializer_EnumResolution(t *testing.T) {
 		}
 		t.Logf("Successfully pre-loaded and parsed package: %s for EnumResolution test", p.ImportPath)
 	}
-
 
 	optionsMeta := []*metadata.OptionMetadata{
 		{Name: "FieldSamePkg", TypeName: "string"},
