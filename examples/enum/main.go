@@ -2,10 +2,13 @@ package main
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"log/slog"
 	"os"
+	"slices"
+	"strings"
 
 	"github.com/podhmo/goat"
 	"github.com/podhmo/goat/examples/enum/customtypes"
@@ -88,10 +91,10 @@ Usage:
   enum [flags]
 
 Flags:
-  --local-enum-field             mylocalenum LocalEnumField demonstrates a locally defined enum. (required) (env: ENUM_LOCAL_ENUM)
-  --imported-enum-field          mycustomenum ImportedEnumField demonstrates an enum imported from another package. (required) (env: ENUM_IMPORTED_ENUM)
+  --local-enum-field             mylocalenum LocalEnumField demonstrates a locally defined enum. (default: "local-a") (env: ENUM_LOCAL_ENUM) (allowed: "local-a", "local-b")
+  --imported-enum-field          mycustomenum ImportedEnumField demonstrates an enum imported from another package. (default: "option-x") (env: ENUM_IMPORTED_ENUM) (allowed: "option-x", "option-y", "option-z")
   --optional-imported-enum-field mycustomenum OptionalImportedEnumField demonstrates an optional enum (pointer type)
-                                        imported from another package. (env: ENUM_OPTIONAL_IMPORTED_ENUM)
+                                        imported from another package. (env: ENUM_OPTIONAL_IMPORTED_ENUM) (allowed: "option-x", "option-y")
 
   -h, --help                             Show this help message and exit
 `)
@@ -123,11 +126,61 @@ Flags:
 
 	// 3. Set flags.
 
+	if options.OptionalImportedEnumField == nil {
+		options.OptionalImportedEnumField = new(customtypes.MyCustomEnum)
+	}
+	flag.Var(options.OptionalImportedEnumField, "optional-imported-enum-field", `OptionalImportedEnumField demonstrates an optional enum (pointer type)
+imported from another package.`)
+
 	// 4. Parse.
 	flag.Parse()
 	flag.Visit(func(f *flag.Flag) { isFlagExplicitlySet[f.Name] = true })
 
 	// 5. Perform required checks (excluding booleans).
+
+	isValidChoice_LocalEnumField := false
+	allowedChoices_LocalEnumField := []string{"local-a", "local-b"}
+
+	currentValue_LocalEnumFieldStr := fmt.Sprintf("%v", options.LocalEnumField)
+	isValidChoice_LocalEnumField = slices.Contains(allowedChoices_LocalEnumField, currentValue_LocalEnumFieldStr)
+
+	if !isValidChoice_LocalEnumField {
+		var currentValueForMsg interface{} = options.LocalEnumField // options.OptName
+		slog.ErrorContext(ctx, "Invalid value for flag", errors.New("Invalid value for flag"), "flag", "local-enum-field", "value", currentValueForMsg, "allowedChoices", strings.Join(allowedChoices_LocalEnumField, ", "))
+		os.Exit(1)
+	}
+
+	isValidChoice_ImportedEnumField := false
+	allowedChoices_ImportedEnumField := []string{"option-x", "option-y", "option-z"}
+
+	currentValue_ImportedEnumFieldStr := fmt.Sprintf("%v", options.ImportedEnumField)
+	isValidChoice_ImportedEnumField = slices.Contains(allowedChoices_ImportedEnumField, currentValue_ImportedEnumFieldStr)
+
+	if !isValidChoice_ImportedEnumField {
+		var currentValueForMsg interface{} = options.ImportedEnumField // options.OptName
+		slog.ErrorContext(ctx, "Invalid value for flag", errors.New("Invalid value for flag"), "flag", "imported-enum-field", "value", currentValueForMsg, "allowedChoices", strings.Join(allowedChoices_ImportedEnumField, ", "))
+		os.Exit(1)
+	}
+
+	isValidChoice_OptionalImportedEnumField := false
+	allowedChoices_OptionalImportedEnumField := []string{"option-x", "option-y"}
+
+	if options.OptionalImportedEnumField != nil {
+		currentValue_OptionalImportedEnumFieldStr := fmt.Sprintf("%%v", *options.OptionalImportedEnumField)
+		isValidChoice_OptionalImportedEnumField = slices.Contains(allowedChoices_OptionalImportedEnumField, currentValue_OptionalImportedEnumFieldStr)
+	} else { // Field is nil
+
+		isValidChoice_OptionalImportedEnumField = true
+	}
+
+	if !isValidChoice_OptionalImportedEnumField {
+		var currentValueForMsg interface{} = options.OptionalImportedEnumField
+		if options.OptionalImportedEnumField != nil {
+			currentValueForMsg = *options.OptionalImportedEnumField
+		}
+		slog.ErrorContext(ctx, "Invalid value for flag", errors.New("Invalid value for flag"), "flag", "optional-imported-enum-field", "value", currentValueForMsg, "allowedChoices", strings.Join(allowedChoices_OptionalImportedEnumField, ", "))
+		os.Exit(1)
+	}
 
 	// TODO: Implement runtime validation for file options based on metadata:
 	// - Check for opt.FileMustExist (e.g., using os.Stat)
