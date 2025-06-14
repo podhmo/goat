@@ -48,9 +48,6 @@ Flags:
 
 	// The following block populates the fields of the options struct.
 	// This logic is only executed if no InitializerFunc is provided.
-	options.Version = false
-	options.Help = false
-	options.ConfigFile = ""
 
 	// 2. Override with environment variable values.
 	// This section assumes 'options' is already initialized.
