@@ -204,10 +204,11 @@ func extractMarkerInfo(
 							slog.InfoContext(ctx, fmt.Sprintf("  Enum values for Default for field %s from direct evaluation was not []any, but %T", optMeta.Name, enumEvalResult.Value))
 						}
 					} else if enumEvalResult.IdentifierName != "" {
-						slog.InfoContext(ctx, fmt.Sprintf("  Enum constraint for Default for field %s is an identifier '%s' (pkg '%s'). Loader resolution for this case is not yet fully implemented in Default.", optMeta.Name, enumEvalResult.IdentifierName, enumEvalResult.PkgName))
-						// Per subtask, log that loader resolution for Default's direct identifier enum is not yet fully implemented.
-						// If we wanted to implement it, we would call:
-						// extractEnumValuesFromEvalResult(ctx, enumEvalResult, optMeta, fileAst, loader, currentPkgPath, "Default (direct ident)")
+						slog.InfoContext(ctx, fmt.Sprintf("  Enum constraint for Default for field %s is an identifier '%s' (pkg '%s'). Attempting resolution.", optMeta.Name, enumEvalResult.IdentifierName, enumEvalResult.PkgName))
+						// Resolve the identifier for enum values.
+						// fileAst is the AST of the file where goat.Default is called.
+						// currentPkgPath is the import path of this file.
+						extractEnumValuesFromEvalResult(ctx, enumEvalResult, optMeta, fileAst, loader, currentPkgPath, "Default (direct ident)")
 					} else {
 						// This case handles where enumEvalResult.Value is nil AND enumEvalResult.IdentifierName is empty.
 						slog.InfoContext(ctx, fmt.Sprintf("  Enum argument for Default for field %s (type %T) could not be evaluated to a literal slice or a resolvable identifier. EvalResult: %+v", optMeta.Name, enumArg, enumEvalResult))
@@ -372,21 +373,42 @@ func resolveEvalResultToEnumString(
 
 	symInfo, found := loader.LookupSymbol(fullSymbolName)
 	if !found {
-		slog.WarnContext(ctx, "[resolveEvalResultToEnumString] Symbol not found in cache.", "fullSymbolName", fullSymbolName)
+		slog.WarnContext(ctx, "[resolveEvalResultToEnumString] Symbol not found in loader cache.", "fullSymbolName", fullSymbolName)
 		return "", false
 	}
 
-	slog.DebugContext(ctx, fmt.Sprintf("[resolveEvalResultToEnumString] Found symbol '%s'. FilePath: '%s', Node Type: %T", fullSymbolName, symInfo.FilePath, symInfo.Node))
+	slog.DebugContext(ctx, "[resolveEvalResultToEnumString] Found symbol in loader.", "fullSymbolName", fullSymbolName, "filePath", symInfo.FilePath, "nodeType", fmt.Sprintf("%T", symInfo.Node))
 
 	valSpec, ok := symInfo.Node.(*ast.ValueSpec)
 	if !ok {
-		slog.WarnContext(ctx, "[resolveEvalResultToEnumString] Symbol is not a ValueSpec (expected for const/var).", "fullSymbolName", fullSymbolName, "nodeType", fmt.Sprintf("%T", symInfo.Node))
+		slog.WarnContext(ctx, "[resolveEvalResultToEnumString] Symbol is not an ast.ValueSpec.", "fullSymbolName", fullSymbolName, "actualNodeType", fmt.Sprintf("%T", symInfo.Node))
 		return "", false
 	}
+
+	// Enhanced Debugging for ValueSpec content
+	var specNames []string
+	for _, name := range valSpec.Names {
+		specNames = append(specNames, name.Name)
+	}
+	var specValuesStr []string
+	if valSpec.Values != nil {
+		for _, val := range valSpec.Values {
+			specValuesStr = append(specValuesStr, astutils.ExprToTypeName(val)) // Using ExprToTypeName for a compact representation
+		}
+	}
+	slog.DebugContext(ctx, "[resolveEvalResultToEnumString] ValueSpec details:",
+		"fullSymbolName", fullSymbolName,
+		"identToFind", identName,
+		"specNames", specNames,
+		"specValues", specValuesStr,
+		"specFilePath", symInfo.FilePath,
+		"numNamesInSpec", len(valSpec.Names),
+		"numValuesInSpec", len(valSpec.Values))
 
 	// Find the specific name in the ValueSpec (e.g., const ( A = "a", B = "b" ), we need B )
 	for i, nameIdent := range valSpec.Names {
 		if nameIdent.Name == identName {
+			slog.DebugContext(ctx, "[resolveEvalResultToEnumString] Matched identName in ValueSpec.", "identName", identName, "index", i)
 			if len(valSpec.Values) > i {
 				valueNode := valSpec.Values[i]
 				if basicLit, ok := valueNode.(*ast.BasicLit); ok && basicLit.Kind == token.STRING {
@@ -397,8 +419,36 @@ func resolveEvalResultToEnumString(
 					}
 					slog.DebugContext(ctx, fmt.Sprintf("[resolveEvalResultToEnumString] Successfully resolved identifier '%s' to string value: \"%s\"", fullSymbolName, unquotedVal))
 					return unquotedVal, true
+				} else if callExpr, ok := valueNode.(*ast.CallExpr); ok {
+					// Handle string conversions like string(MyConstString)
+					// Expects callExpr.Fun to be "string" and callExpr.Args[0] to be the const identifier
+					if identFun, ok := callExpr.Fun.(*ast.Ident); ok && identFun.Name == "string" && len(callExpr.Args) == 1 {
+						slog.DebugContext(ctx, fmt.Sprintf("[resolveEvalResultToEnumString] Value for '%s' is a string cast. Attempting to resolve argument: %s", fullSymbolName, astutils.ExprToTypeName(callExpr.Args[0])))
+						// The argument to string() might be another identifier (e.g. string(AnotherConst))
+						// We need to evaluate this argument in the context of the *defining* file of the original const/var.
+						// symInfo.FilePath gives us the file where `fullSymbolName` is defined.
+						// symInfo.PackagePath is the package path for that file.
+						// loader.GetAST(symInfo.FilePath) will give the AST for that file.
+						argFileAst, argFileAstFound := loader.GetAST(symInfo.FilePath)
+						if !argFileAstFound {
+							slog.WarnContext(ctx, "[resolveEvalResultToEnumString] Could not get AST for file where original const/var is defined. Cannot resolve string cast argument.", "filePath", symInfo.FilePath, "constVar", fullSymbolName)
+							return "", false
+						}
+
+						argEvalResult := astutils.EvaluateArg(ctx, callExpr.Args[0])
+						// Recursively call resolveEvalResultToEnumString for the argument of string()
+						// The context for this recursive call:
+						// - elementEvalResult: the result of evaluating the argument (e.g., `AnotherConst`)
+						// - loader: same loader
+						// - currentPkgPath: package path of the file where `fullSymbolName` (and thus the string cast) is defined (`symInfo.PackagePath`)
+						// - fileAstForContext: AST of the file where `fullSymbolName` is defined (`argFileAst`), needed if `AnotherConst` is itself qualified.
+						return resolveEvalResultToEnumString(ctx, argEvalResult, loader, symInfo.PackagePath, argFileAst)
+					}
+					slog.WarnContext(ctx, "[resolveEvalResultToEnumString] Const/var value is a CallExpr but not a recognized string() cast.", "fullSymbolName", fullSymbolName, "call", astutils.ExprToTypeName(callExpr))
+					return "", false
 				}
-				slog.WarnContext(ctx, "[resolveEvalResultToEnumString] Const/var is not a basic string literal.", "fullSymbolName", fullSymbolName, "valueNodeType", fmt.Sprintf("%T", valueNode))
+
+				slog.WarnContext(ctx, "[resolveEvalResultToEnumString] Const/var is not a basic string literal or string() cast.", "fullSymbolName", fullSymbolName, "valueNodeType", fmt.Sprintf("%T", valueNode))
 				return "", false
 			}
 			slog.WarnContext(ctx, "[resolveEvalResultToEnumString] Const/var spec has no corresponding value.", "fullSymbolName", fullSymbolName, "nameIndex", i)
@@ -558,17 +608,36 @@ func extractEnumValuesFromEvalResult(
 
 			for _, elt := range compLit.Elts {
 				eltStrForLog := astutils.ExprToTypeName(elt) // For logging
-				elementEvalResult := astutils.EvaluateArg(ctx, elt)
+				var strVal string
+				var success bool
 
-				// When resolving elements of a composite literal defined in `targetPkgPath` (symInfo.PackagePath),
-				// the `currentPkgPath` for `resolveEvalResultToEnumString` should be `symInfo.PackagePath`,
-				// and the `fileAstForContext` should be `definingFileAST`.
-				strVal, success := resolveEvalResultToEnumString(ctx, elementEvalResult, loader, symInfo.PackagePath, definingFileAST)
+				// Check if elt is string(IDENTIFIER)
+				if callExpr, ok := elt.(*ast.CallExpr); ok {
+					if funIdent, ok := callExpr.Fun.(*ast.Ident); ok && funIdent.Name == "string" && len(callExpr.Args) == 1 {
+						slog.DebugContext(ctx, fmt.Sprintf("Enum element '%s' in var '%s' is a string cast. Resolving argument.", eltStrForLog, fullSymbolName))
+						argAstNode := callExpr.Args[0]
+						argEvalResult := astutils.EvaluateArg(ctx, argAstNode)
+						// Resolve the argument of string() using the defining file's context
+						// symInfo.PackagePath is the package where 'fullSymbolName' (the slice var) is defined.
+						// definingFileAST is the AST of that file. This context is correct for resolving argEvalResult.
+						strVal, success = resolveEvalResultToEnumString(ctx, argEvalResult, loader, symInfo.PackagePath, definingFileAST)
+					} else {
+						// It's some other CallExpr, try to evaluate it directly and then resolve
+						elementEvalResult := astutils.EvaluateArg(ctx, elt)
+						strVal, success = resolveEvalResultToEnumString(ctx, elementEvalResult, loader, symInfo.PackagePath, definingFileAST)
+					}
+				} else {
+					// Not a CallExpr, proceed as before
+					elementEvalResult := astutils.EvaluateArg(ctx, elt)
+					strVal, success = resolveEvalResultToEnumString(ctx, elementEvalResult, loader, symInfo.PackagePath, definingFileAST)
+				}
+
 				if success {
 					tempValues = append(tempValues, strVal)
 					slog.DebugContext(ctx, fmt.Sprintf("Successfully resolved enum element '%s' for var '%s' to: \"%s\"", eltStrForLog, fullSymbolName, strVal))
 				} else {
-					slog.WarnContext(ctx, "Failed to resolve enum element for var.", "element", eltStrForLog, "var", fullSymbolName, "elementEvalResult", fmt.Sprintf("%+v", elementEvalResult))
+					originalElementEvalResult := astutils.EvaluateArg(ctx, elt) // Re-evaluate for logging if needed, or pass down
+					slog.WarnContext(ctx, "Failed to resolve enum element for var.", "element", eltStrForLog, "var", fullSymbolName, "elementEvalResult", fmt.Sprintf("%+v", originalElementEvalResult))
 					someElementsFailed = true
 				}
 			}

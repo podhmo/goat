@@ -329,6 +329,20 @@ func AnalyzeOptions( // Renamed from AnalyzeOptionsV3
 				}
 				opt.HelpText += strings.TrimSpace(fieldASTNode.Comment.Text())
 			}
+			opt.HelpText = strings.TrimSpace(opt.HelpText) // From AST comments
+
+			// Populate HelpText from struct tag "comment" or "description"
+			// Tag value overrides AST comments if present.
+			tagComment := fieldInfo.GetTag("comment")
+			if tagComment != "" {
+				opt.HelpText = tagComment
+			} else {
+				tagDescription := fieldInfo.GetTag("description")
+				if tagDescription != "" {
+					opt.HelpText = tagDescription
+				}
+			}
+			// Ensure HelpText is trimmed one last time after potentially using tags
 			opt.HelpText = strings.TrimSpace(opt.HelpText)
 		}
 
