@@ -157,7 +157,7 @@ func (p *Package) ensureParsed() error {
 							for _, ident := range s.Names {
 								namesInCurrentSpec = append(namesInCurrentSpec, ident.Name)
 							}
-						// case *ast.ImportSpec: // ImportSpecs are not typically cached as symbols this way
+							// case *ast.ImportSpec: // ImportSpecs are not typically cached as symbols this way
 						}
 
 						for _, sn := range namesInCurrentSpec {
