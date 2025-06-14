@@ -432,7 +432,8 @@ func TestHelpGenerateHelpOutput(t *testing.T) {
 	// and ensure it matches the exact output of help.GenerateHelp.
 	// The original test might have had slightly different spacing or details.
 	// This is effectively re-baselining based on current help.GenerateHelp output.
-	if !strings.Contains(got, "testcmdmodule - Run the test application.") { // Updated to testcmdmodule
+	// Updated to testcmdmodule and also checking for "It does something."
+	if !strings.Contains(got, "testcmdmodule - Run the test application.\n         It does something.") {
 		t.Errorf("Generated help output does not contain command description.\nGot:\n%s", got)
 	}
 	if !strings.Contains(got, "--name            string   Name of the user. (default: \"anonymous\")") {
@@ -689,18 +690,121 @@ func TestHelpMessageWithEnums(t *testing.T) {
 		t.Errorf("Help message does not contain --my-enum-field flag.\nGot:\n%s", gotHelp)
 	}
 
-	expectedMyEnumFieldLine := `My enum field. (default: "val-b") (allowed: "val-a", "val-b", "val-c")` // Corrected order
-	if !strings.Contains(gotHelp, expectedMyEnumFieldLine) {
-		t.Errorf("Help message for MyEnumField does not contain correct enum values and default.\nWant substring: %q\nGot:\n%s", expectedMyEnumFieldLine, gotHelp)
+	// Using HasSubsequence for more robust checking of segments, rather than one long exact string.
+	expectedMyEnumFieldSegments := []string{
+		"--my-enum-field", "myclienum", "My enum field.", `(default: "val-b")`, `(allowed: "val-a", "val-b", "val-c")`,
+	}
+	if !hasSubsequence(gotHelp, expectedMyEnumFieldSegments) {
+		t.Errorf("Help message for MyEnumField does not contain correct segments in order.\nWant segments: %v\nGot:\n%s", expectedMyEnumFieldSegments, gotHelp)
 	}
 
 	// Assertions for MyOtherEnumField
-	// Expected: --my-other-enum-field   MyCLIEnum   My other enum field with different default. (default: "val-a") (allowed: "val-a", "val-b", "val-c")
+	// Expected: --my-other-enum-field   myclienum   My other enum field with different default. (default: "val-a") (allowed: "val-a", "val-b", "val-c")
 	if !strings.Contains(gotHelp, "--my-other-enum-field") {
 		t.Errorf("Help message does not contain --my-other-enum-field flag.\nGot:\n%s", gotHelp)
 	}
-	expectedMyOtherEnumFieldLine := `My other enum field with different default. (default: "val-a") (allowed: "val-a", "val-b", "val-c")` // Corrected order
-	if !strings.Contains(gotHelp, expectedMyOtherEnumFieldLine) {
-		t.Errorf("Help message for MyOtherEnumField does not contain correct enum values and default.\nWant substring: %q\nGot:\n%s", expectedMyOtherEnumFieldLine, gotHelp)
+	expectedMyOtherEnumFieldSegments := []string{
+		"--my-other-enum-field", "myclienum", "My other enum field with different default.", `(default: "val-a")`, `(allowed: "val-a", "val-b", "val-c")`,
 	}
+	if !hasSubsequence(gotHelp, expectedMyOtherEnumFieldSegments) {
+		t.Errorf("Help message for MyOtherEnumField does not contain correct segments in order.\nWant segments: %v\nGot:\n%s", expectedMyOtherEnumFieldSegments, gotHelp)
+	}
+}
+
+// hasSubsequence checks if all subsequences are present in s in the given order.
+func hasSubsequence(s string, subsequences []string) bool {
+	remaining := s
+	for _, sub := range subsequences {
+		idx := strings.Index(remaining, sub)
+		if idx == -1 {
+			return false
+		}
+		remaining = remaining[idx+len(sub):]
+	}
+	return true
+}
+
+// TestGoatScanEndToEnd replicates the original bash script's functionality:
+// 1. Build the goat executable.
+// 2. Run scan on enum example.
+// 3. Run scan on fullset example.
+func TestGoatScanEndToEnd(t *testing.T) {
+	// Determine project root. This logic assumes the test is run from 'cmd/goat' or project root.
+	// More robust project root detection might be needed if tests are run from other locations.
+	originalWD, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("Failed to get current working directory: %v", err)
+	}
+
+	projectRoot := originalWD
+	// Attempt to find project root by looking for go.mod
+	// This is a common strategy. Go up until go.mod is found or root is hit.
+	for {
+		if _, err := os.Stat(filepath.Join(projectRoot, "go.mod")); err == nil {
+			break // Found go.mod, so this is the project root
+		}
+		parent := filepath.Dir(projectRoot)
+		if parent == projectRoot { // Reached filesystem root
+			// Fallback or error if go.mod is not found. For this test, assume originalWD might be it or relative paths will work.
+			// This might happen if the test is not part of a module, though unlikely for this project.
+			projectRoot = originalWD // Reset to originalWD if go.mod not found upwards
+			t.Logf("go.mod not found in parent directories, assuming project root is: %s", projectRoot)
+			break
+		}
+		projectRoot = parent
+	}
+	t.Logf("Determined project root: %s", projectRoot)
+
+
+	// Create .gobin directory if it doesn't exist
+	goBinDir := filepath.Join(projectRoot, ".gobin")
+	if err := os.MkdirAll(goBinDir, 0755); err != nil {
+		t.Fatalf("Failed to create .gobin directory '%s': %v", goBinDir, err)
+	}
+
+	goatBinPath := filepath.Join(goBinDir, "goat")
+	// if runtime.GOOS == "windows" { // runtime import is not added yet, will add later if needed
+	// 	goatBinPath += ".exe"
+	// }
+	// For now, let's rely on PATH or simple "goat" if building to a PATH-included dir.
+	// The build command specifies the output path explicitly.
+
+	// Build the goat executable
+	t.Log("Building goat...")
+	// The path to main.go for build should be relative to projectRoot
+	buildCmdSourcePath := filepath.Join(projectRoot, "cmd/goat") // Path to the package to build
+	cmd := exec.Command("go", "build", "-o", goatBinPath, buildCmdSourcePath)
+	cmd.Dir = projectRoot // Run 'go build' from project root for consistent module resolution
+	buildOutput, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("Failed to build goat: %v\nOutput:\n%s", err, string(buildOutput))
+	}
+	t.Log("Goat built successfully.")
+
+	// Run scan on enum example
+	t.Log("Running scan on examples/enum/main.go...")
+	enumExamplePath := filepath.Join(projectRoot, "examples/enum/main.go")
+	// Ensure command is executable: use the absolute path or ./ from the correct CWD
+	scanEnumCmd := exec.Command(goatBinPath, "scan", "--initializer", "NewOptions", "-run", "run", enumExamplePath)
+	scanEnumCmd.Dir = projectRoot // Run 'goat scan' from project root
+	outputEnum, err := scanEnumCmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("Failed to run scan on enum example: %v\nEnum scan output (if any):\n%s", err, string(outputEnum))
+	}
+	t.Logf("Enum scan output:\n%s", string(outputEnum))
+	// TODO: Add assertions on outputEnum if specific content is expected, beyond just successful execution.
+
+	// Run scan on fullset example
+	t.Log("Running scan on examples/fullset/main.go...")
+	fullsetExamplePath := filepath.Join(projectRoot, "examples/fullset/main.go")
+	scanFullsetCmd := exec.Command(goatBinPath, "scan", "--initializer", "NewOptions", "--run", "run", fullsetExamplePath)
+	scanFullsetCmd.Dir = projectRoot // Run 'goat scan' from project root
+	outputFullset, err := scanFullsetCmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("Failed to run scan on fullset example: %v\nFullset scan output (if any):\n%s", err, string(outputFullset))
+	}
+	t.Logf("Fullset scan output:\n%s", string(outputFullset))
+	// TODO: Add assertions on outputFullset if specific content is expected.
+
+	t.Log("TestGoatScanEndToEnd completed successfully.")
 }
