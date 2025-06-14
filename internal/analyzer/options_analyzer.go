@@ -349,6 +349,7 @@ func AnalyzeOptions( // Renamed from AnalyzeOptionsV3
 		if tagVal := fieldInfo.GetTag("env"); tagVal != "" {
 			opt.EnvVar = tagVal
 		}
+
 		extractedOptions = append(extractedOptions, opt)
 	}
 	return extractedOptions, actualStructName, nil
