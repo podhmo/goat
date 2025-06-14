@@ -13,7 +13,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/podhmo/goat/internal/help"
+	help "github.com/podhmo/goat/internal/helpgen"
 	"github.com/podhmo/goat/internal/metadata"
 )
 
