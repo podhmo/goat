@@ -118,17 +118,3 @@ To enhance performance and avoid redundant computations during package loading a
     *   This cache allows for quick lookups of symbol definitions across all loaded packages, which is useful for features like "go to definition" or cross-package type analysis without repeatedly traversing ASTs.
 
 All caches within the `Loader` (`cache`, `fileASTCache`, `symbolCache`) are protected by a single `sync.Mutex` (`Loader.mu`) to ensure thread-safe access and modification. The `Package.ensureParsed()` method, which is responsible for populating the new `fileASTCache` and `symbolCache`, interacts with these loader-level caches in a thread-safe manner.
-
-## Implemented string utility functions
-
-- **Context:** During a `fix tests` task, it was found that `stringutils.ToCamelCase` and `stringutils.ToTitle` were called by `internal/codegen/option_handlers.go` but not defined.
-- **Decision:** Implemented `ToCamelCase` and `ToTitle` in `internal/utils/stringutils/stringutils.go`.
-    - `ToCamelCase` converts a snake_case string to camelCase.
-    - `ToTitle` converts a snake_case string to TitleCase.
-- **Reasoning:** These functions are necessary for code generation logic within `option_handlers.go`.
-
-## Corrected code generation logic in option_handlers.go
-
-- **Context:** During a `fix tests` task, `make test` reported unused `logic` variables in `internal/codegen/option_handlers.go` within `GenerateRequiredCheckCode` methods for `BoolHandler` and `TextUnmarshalerHandler`.
-- **Decision:** Modified these methods to return the `logic` variable, which contained partially implemented code for required checks, instead of a `// TODO` comment.
-- **Reasoning:** This enables the partially implemented check logic, allowing tests to pass and moving closer to a complete implementation.
