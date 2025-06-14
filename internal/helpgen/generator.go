@@ -1,4 +1,4 @@
-package help
+package helpgen
 
 import (
 	"fmt"
