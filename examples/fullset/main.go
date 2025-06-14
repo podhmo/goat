@@ -250,41 +250,50 @@ Flags:
 
 	// 3. Set flags.
 	flag.StringVar(&options.Name, "name", options.Name, "Name of the person to greet. This is a mandatory field." /* Original Default: World, Env: SIMPLE_NAME */)
+	isAgeNilInitially := options.Age == nil
+	var tempAgeVal int
 	var defaultAgeValForFlag int
 	if options.Age != nil {
 		defaultAgeValForFlag = *options.Age
 	}
-	if options.Age == nil {
-		options.Age = new(int)
+	if isAgeNilInitially {
+		flag.IntVar(&tempAgeVal, "age", 0, "Age of the person. This is an optional field." /* Env: SIMPLE_AGE */)
+	} else {
+		flag.IntVar(options.Age, "age", defaultAgeValForFlag, "Age of the person. This is an optional field." /* Env: SIMPLE_AGE */)
 	}
-	flag.IntVar(options.Age, "age", defaultAgeValForFlag, "Age of the person. This is an optional field." /* Env: SIMPLE_AGE */)
 	flag.StringVar(&options.LogLevel, "log-level", options.LogLevel, `LogLevel for the application output.
 It can be one of: debug, info, warning, error.` /* Original Default: info, Env: SIMPLE_LOG_LEVEL */)
 	flag.StringVar(&options.OutputDir, "output-dir", options.OutputDir, `OutputDir for any generated files or reports.
 Defaults to "output" if not specified by the user.` /* Original Default: output, Env:  */)
 	flag.StringVar(&options.Mode, "mode", options.Mode, "Mode of operation for the tool, affecting its behavior." /* Original Default: standard, Env: SIMPLE_MODE */)
 	flag.BoolVar(&options.SuperVerbose, "super-verbose", options.SuperVerbose, "Enable extra verbose output." /* Env: SIMPLE_SUPER_VERBOSE */)
+	isOptionalToggleNilInitially := options.OptionalToggle == nil
+	var tempOptionalToggleVal bool
 	var defaultOptionalToggleValForFlag bool
 	if options.OptionalToggle != nil {
 		defaultOptionalToggleValForFlag = *options.OptionalToggle
 	}
-	if options.OptionalToggle == nil {
-		options.OptionalToggle = new(bool)
+	if isOptionalToggleNilInitially {
+		flag.BoolVar(&tempOptionalToggleVal, "optional-toggle", false, "An optional boolean flag with no default, should be nil if not set.")
+	} else {
+		flag.BoolVar(options.OptionalToggle, "optional-toggle", defaultOptionalToggleValForFlag, "An optional boolean flag with no default, should be nil if not set.")
 	}
-	flag.BoolVar(options.OptionalToggle, "optional-toggle", defaultOptionalToggleValForFlag, "An optional boolean flag with no default, should be nil if not set.")
 	flag.StringVar(&options.ConfigFile, "config-file", options.ConfigFile, "Path to a configuration file. Must exist. (env:\"FULLSET_CONFIG_FILE\")" /* Original Default: config.json, Env: FULLSET_CONFIG_FILE */)
 	flag.StringVar(&options.Pattern, "pattern", options.Pattern, "A glob pattern for input files. (env:\"FULLSET_PATTERN\")" /* Original Default: *.go, Env: FULLSET_PATTERN */)
 	var EnableFeatureX_NoFlagIsPresent bool
 	flag.BoolVar(&EnableFeatureX_NoFlagIsPresent, "no-enable-feature-x", false, "Set enable-feature-x to false")
 	flag.TextVar(&options.HostIP, "host-ip", options.HostIP, "The host IP address for the service. (env:\"FULLSET_HOST_IP\")" /* Env: FULLSET_HOST_IP */)
+	isExistingFieldToMakeOptionalNilInitially := options.ExistingFieldToMakeOptional == nil
+	var tempExistingFieldToMakeOptionalVal string
 	var defaultExistingFieldToMakeOptionalValForFlag string
 	if options.ExistingFieldToMakeOptional != nil {
 		defaultExistingFieldToMakeOptionalValForFlag = *options.ExistingFieldToMakeOptional
 	}
-	if options.ExistingFieldToMakeOptional == nil {
-		options.ExistingFieldToMakeOptional = new(string)
+	if isExistingFieldToMakeOptionalNilInitially {
+		flag.StringVar(&tempExistingFieldToMakeOptionalVal, "existing-field-to-make-optional", "", "Example of an existing field made optional. (env:\"FULLSET_OPTIONAL_EXISTING\")" /* Env: FULLSET_OPTIONAL_EXISTING */)
+	} else {
+		flag.StringVar(options.ExistingFieldToMakeOptional, "existing-field-to-make-optional", defaultExistingFieldToMakeOptionalValForFlag, "Example of an existing field made optional. (env:\"FULLSET_OPTIONAL_EXISTING\")" /* Env: FULLSET_OPTIONAL_EXISTING */)
 	}
-	flag.StringVar(options.ExistingFieldToMakeOptional, "existing-field-to-make-optional", defaultExistingFieldToMakeOptionalValForFlag, "Example of an existing field made optional. (env:\"FULLSET_OPTIONAL_EXISTING\")" /* Env: FULLSET_OPTIONAL_EXISTING */)
 
 	// 4. Parse.
 	flag.Parse()
@@ -292,6 +301,17 @@ Defaults to "output" if not specified by the user.` /* Original Default: output,
 
 	if EnableFeatureX_NoFlagIsPresent {
 		options.EnableFeatureX = false
+	}
+
+	// 6. Assign values for initially nil pointers if flags were explicitly set
+	if isAgeNilInitially && isFlagExplicitlySet["age"] {
+		options.Age = &tempAgeVal
+	}
+	if isOptionalToggleNilInitially && isFlagExplicitlySet["optional-toggle"] {
+		options.OptionalToggle = &tempOptionalToggleVal
+	}
+	if isExistingFieldToMakeOptionalNilInitially && isFlagExplicitlySet["existing-field-to-make-optional"] {
+		options.ExistingFieldToMakeOptional = &tempExistingFieldToMakeOptionalVal
 	}
 
 	// 5. Perform required checks (excluding booleans).

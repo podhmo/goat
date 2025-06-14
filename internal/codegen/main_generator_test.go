@@ -60,6 +60,62 @@ func assertCodeContains(t *testing.T, actualGeneratedCode, expectedSnippet strin
 	}
 }
 
+func TestGenerateMain_PointerFlagsNilHandling(t *testing.T) {
+	cmdMeta := &metadata.CommandMetadata{
+		Name: "ptrflagsnilcmd",
+		RunFunc: &metadata.RunFuncInfo{
+			Name:                       "RunPointerTest",
+			PackageName:                "main",
+			OptionsArgTypeNameStripped: "PointerTestOptions",
+			OptionsArgIsPointer:        true,
+			InitializerFunc:            "NewPointerTestOptions", // Assumed initializer
+		},
+		Options: []*metadata.OptionMetadata{
+			{
+				Name:     "OptionalAge",
+				TypeName: "*int",
+				HelpText: "Optional age",
+				// DefaultValue is nil (omitted)
+			},
+			{
+				Name:     "ExtraToggle",
+				TypeName: "*bool",
+				HelpText: "Extra toggle",
+				// DefaultValue is nil (omitted)
+			},
+		},
+	}
+
+	actualCode, err := GenerateMain(cmdMeta, "Test Pointer Flags Nil Handling", true)
+	if err != nil {
+		t.Fatalf("GenerateMain for pointer flags nil handling failed: %v", err)
+	}
+
+	// Assertions for *int option (OptionalAge)
+	t.Run("*int option (OptionalAge)", func(t *testing.T) {
+		assertCodeContains(t, actualCode, "isOptionalAgeNilInitially := options.OptionalAge == nil")
+		assertCodeContains(t, actualCode, "var tempOptionalAgeVal int")
+		assertCodeContains(t, actualCode, "var defaultOptionalAgeValForFlag int")
+		assertCodeContains(t, actualCode, "if options.OptionalAge != nil { defaultOptionalAgeValForFlag = *options.OptionalAge }")
+		assertCodeContains(t, actualCode, "if isOptionalAgeNilInitially { flag.IntVar(&tempOptionalAgeVal, \"optional-age\", 0, \"Optional age\")")      // Removed trailing space in help text
+		assertCodeContains(t, actualCode, "} else { flag.IntVar(options.OptionalAge, \"optional-age\", defaultOptionalAgeValForFlag, \"Optional age\")") // Removed trailing space
+		assertCodeContains(t, actualCode, "if isOptionalAgeNilInitially && isFlagExplicitlySet[\"optional-age\"] { options.OptionalAge = &tempOptionalAgeVal }")
+		assertCodeNotContains(t, actualCode, "if options.OptionalAge == nil { options.OptionalAge = new(int) }")
+	})
+
+	// Assertions for *bool option (ExtraToggle)
+	t.Run("*bool option (ExtraToggle)", func(t *testing.T) {
+		assertCodeContains(t, actualCode, "isExtraToggleNilInitially := options.ExtraToggle == nil")
+		assertCodeContains(t, actualCode, "var tempExtraToggleVal bool")
+		assertCodeContains(t, actualCode, "var defaultExtraToggleValForFlag bool")
+		assertCodeContains(t, actualCode, "if options.ExtraToggle != nil { defaultExtraToggleValForFlag = *options.ExtraToggle }")
+		assertCodeContains(t, actualCode, "if isExtraToggleNilInitially { flag.BoolVar(&tempExtraToggleVal, \"extra-toggle\", false, \"Extra toggle\")")  // Removed trailing space
+		assertCodeContains(t, actualCode, "} else { flag.BoolVar(options.ExtraToggle, \"extra-toggle\", defaultExtraToggleValForFlag, \"Extra toggle\")") // Removed trailing space
+		assertCodeContains(t, actualCode, "if isExtraToggleNilInitially && isFlagExplicitlySet[\"extra-toggle\"] { options.ExtraToggle = &tempExtraToggleVal }")
+		assertCodeNotContains(t, actualCode, "if options.ExtraToggle == nil { options.ExtraToggle = new(bool) }")
+	})
+}
+
 func TestGenerateMain_WithTextVarOptions(t *testing.T) {
 	runFuncInfo := &metadata.RunFuncInfo{
 		Name:                       "RunTextVarTest",
@@ -551,15 +607,16 @@ func TestGenerateMain_EnvVarPrecendenceStrategy(t *testing.T) {
 			PackageName:                "main",
 			OptionsArgTypeNameStripped: "StrategyOptions",
 			OptionsArgIsPointer:        true,
+			// InitializerFunc is NOT specified, so options will be new'd and zero-value defaults applied first
 		},
 		Options: []*metadata.OptionMetadata{
 			{Name: "StringOpt", TypeName: "string", DefaultValue: "original_string", EnvVar: "ENV_STRING", HelpText: "String option"},
 			{Name: "IntOpt", TypeName: "int", DefaultValue: 123, EnvVar: "ENV_INT", HelpText: "Int option"},
 			{Name: "BoolOpt", TypeName: "bool", DefaultValue: false, EnvVar: "ENV_BOOL", HelpText: "Bool option"},
 			{Name: "BoolTrueOpt", TypeName: "bool", DefaultValue: true, EnvVar: "ENV_BOOL_TRUE", IsRequired: true, HelpText: "Bool true option"},
-			{Name: "StringPtrOpt", TypeName: "*string", EnvVar: "ENV_STRING_PTR", HelpText: "String pointer option"},
-			{Name: "IntPtrOpt", TypeName: "*int", EnvVar: "ENV_INT_PTR", HelpText: "Int pointer option"},
-			{Name: "BoolPtrOpt", TypeName: "*bool", EnvVar: "ENV_BOOL_PTR", HelpText: "Bool pointer option"},
+			{Name: "StringPtrOpt", TypeName: "*string", EnvVar: "ENV_STRING_PTR", HelpText: "String pointer option"}, // No DefaultValue in metadata
+			{Name: "IntPtrOpt", TypeName: "*int", EnvVar: "ENV_INT_PTR", HelpText: "Int pointer option"},             // No DefaultValue in metadata
+			{Name: "BoolPtrOpt", TypeName: "*bool", EnvVar: "ENV_BOOL_PTR", HelpText: "Bool pointer option"},         // No DefaultValue in metadata
 		},
 	}
 
@@ -569,6 +626,8 @@ func TestGenerateMain_EnvVarPrecendenceStrategy(t *testing.T) {
 	}
 	assertCodeContains(t, actualCode, `isFlagExplicitlySet := make(map[string]bool)`)
 	assertCodeContains(t, actualCode, `flag.Visit(func(f *flag.Flag) { isFlagExplicitlySet[f.Name] = true })`)
+
+	// Non-pointer types (existing assertions should be fine)
 	assertCodeContains(t, actualCode, `options.StringOpt = "original_string"`)
 	assertCodeContains(t, actualCode, `if val, ok := os.LookupEnv("ENV_STRING"); ok { options.StringOpt = val }`)
 	assertCodeContains(t, actualCode, `flag.StringVar(&options.StringOpt, "string-opt", options.StringOpt, "String option" /* Original Default: original_string, Env: ENV_STRING */)`)
@@ -583,61 +642,79 @@ func TestGenerateMain_EnvVarPrecendenceStrategy(t *testing.T) {
 	assertCodeContains(t, actualCode, `var BoolTrueOpt_NoFlagIsPresent bool`)
 	assertCodeContains(t, actualCode, `flag.BoolVar(&BoolTrueOpt_NoFlagIsPresent, "no-bool-true-opt", false, "Set bool-true-opt to false")`)
 	assertCodeContains(t, actualCode, `if BoolTrueOpt_NoFlagIsPresent { options.BoolTrueOpt = false }`)
-	assertCodeContains(t, actualCode, `options.StringPtrOpt = new(string)`)
+
+	// Pointer types - asserting new logic
+	// StringPtrOpt
+	assertCodeContains(t, actualCode, `options.StringPtrOpt = new(string)`) // Initialized to new(string) because no InitializerFunc
 	stringPtrEnvLogic := `
 	if val, ok := os.LookupEnv("ENV_STRING_PTR"); ok {
-		if options.StringPtrOpt == nil { options.StringPtrOpt = new(string) }
+		if options.StringPtrOpt == nil { options.StringPtrOpt = new(string) } // This check is fine for env vars
 		*options.StringPtrOpt = val
 	}
 `
 	assertCodeContains(t, actualCode, stringPtrEnvLogic)
-	stringPtrFlagLogic := `
-	var defaultStringPtrOptValForFlag string
-	if options.StringPtrOpt != nil { defaultStringPtrOptValForFlag = *options.StringPtrOpt }
-	if options.StringPtrOpt == nil { options.StringPtrOpt = new(string) }
-	flag.StringVar(options.StringPtrOpt, "string-ptr-opt", defaultStringPtrOptValForFlag, "String pointer option" /* Env: ENV_STRING_PTR */)
+	assertCodeContains(t, actualCode, "isStringPtrOptNilInitially := options.StringPtrOpt == nil")
+	assertCodeContains(t, actualCode, "var tempStringPtrOptVal string")
+	assertCodeContains(t, actualCode, "var defaultStringPtrOptValForFlag string")
+	assertCodeContains(t, actualCode, "if options.StringPtrOpt != nil { defaultStringPtrOptValForFlag = *options.StringPtrOpt }")
+	assertCodeNotContains(t, actualCode, "if options.StringPtrOpt == nil { options.StringPtrOpt = new(string) } flag.StringVar(options.StringPtrOpt, ") // Ensure old flag-specific init is gone
+	newStringPtrFlagLogic := `
+	if isStringPtrOptNilInitially {
+		flag.StringVar(&tempStringPtrOptVal, "string-ptr-opt", "", "String pointer option" /* Env: ENV_STRING_PTR */)
+	} else {
+		flag.StringVar(options.StringPtrOpt, "string-ptr-opt", defaultStringPtrOptValForFlag, "String pointer option" /* Env: ENV_STRING_PTR */)
+	}
 `
-	assertCodeContains(t, actualCode, stringPtrFlagLogic)
-	assertCodeContains(t, actualCode, `options.IntPtrOpt = new(int)`)
+	assertCodeContains(t, actualCode, newStringPtrFlagLogic)
+	assertCodeContains(t, actualCode, "if isStringPtrOptNilInitially && isFlagExplicitlySet[\"string-ptr-opt\"] { options.StringPtrOpt = &tempStringPtrOptVal }")
+
+	// IntPtrOpt
+	assertCodeContains(t, actualCode, `options.IntPtrOpt = new(int)`) // Initialized to new(int)
 	intPtrEnvLogic := `
 	if val, ok := os.LookupEnv("ENV_INT_PTR"); ok {
 		if options.IntPtrOpt == nil { options.IntPtrOpt = new(int) }
-		if v, err := strconv.Atoi(val); err == nil {
-			*options.IntPtrOpt = v
-		} else {
-			slog.WarnContext(ctx, "Could not parse environment variable as *int for option", "envVar", "ENV_INT_PTR", "option", "IntPtrOpt", "value", val, "error", err)
-		}
+		if v, err := strconv.Atoi(val); err == nil { *options.IntPtrOpt = v
+		} else { slog.WarnContext(ctx, "Could not parse environment variable as *int for option", "envVar", "ENV_INT_PTR", "option", "IntPtrOpt", "value", val, "error", err) }
 	}
 `
 	assertCodeContains(t, actualCode, intPtrEnvLogic)
-	intPtrFlagLogic := `
-	var defaultIntPtrOptValForFlag int
-	if options.IntPtrOpt != nil { defaultIntPtrOptValForFlag = *options.IntPtrOpt }
-	if options.IntPtrOpt == nil { options.IntPtrOpt = new(int) }
-	flag.IntVar(options.IntPtrOpt, "int-ptr-opt", defaultIntPtrOptValForFlag, "Int pointer option" /* Env: ENV_INT_PTR */)
+	assertCodeContains(t, actualCode, "isIntPtrOptNilInitially := options.IntPtrOpt == nil")
+	assertCodeContains(t, actualCode, "var tempIntPtrOptVal int")
+	assertCodeNotContains(t, actualCode, "if options.IntPtrOpt == nil { options.IntPtrOpt = new(int) } flag.IntVar(options.IntPtrOpt, ")
+	newIntPtrFlagLogic := `
+	if isIntPtrOptNilInitially {
+		flag.IntVar(&tempIntPtrOptVal, "int-ptr-opt", 0, "Int pointer option" /* Env: ENV_INT_PTR */)
+	} else {
+		flag.IntVar(options.IntPtrOpt, "int-ptr-opt", defaultIntPtrOptValForFlag, "Int pointer option" /* Env: ENV_INT_PTR */)
+	}
 `
-	assertCodeContains(t, actualCode, intPtrFlagLogic)
-	assertCodeContains(t, actualCode, `options.BoolPtrOpt = new(bool)`)
+	assertCodeContains(t, actualCode, newIntPtrFlagLogic)
+	assertCodeContains(t, actualCode, "if isIntPtrOptNilInitially && isFlagExplicitlySet[\"int-ptr-opt\"] { options.IntPtrOpt = &tempIntPtrOptVal }")
+
+	// BoolPtrOpt
+	assertCodeContains(t, actualCode, `options.BoolPtrOpt = new(bool)`) // Initialized to new(bool)
 	boolPtrEnvLogic := `
 	if val, ok := os.LookupEnv("ENV_BOOL_PTR"); ok {
 		if options.BoolPtrOpt == nil { options.BoolPtrOpt = new(bool) }
-		if v, err := strconv.ParseBool(val); err == nil {
-			*options.BoolPtrOpt = v
-		} else {
-			slog.WarnContext(ctx, "Could not parse environment variable as *bool for option", "envVar", "ENV_BOOL_PTR", "option", "BoolPtrOpt", "value", val, "error", err)
-		}
+		if v, err := strconv.ParseBool(val); err == nil { *options.BoolPtrOpt = v
+		} else { slog.WarnContext(ctx, "Could not parse environment variable as *bool for option", "envVar", "ENV_BOOL_PTR", "option", "BoolPtrOpt", "value", val, "error", err) }
 	}
 `
 	assertCodeContains(t, actualCode, boolPtrEnvLogic)
-	boolPtrFlagLogic := `
-	var defaultBoolPtrOptValForFlag bool
-	if options.BoolPtrOpt != nil { defaultBoolPtrOptValForFlag = *options.BoolPtrOpt }
-	if options.BoolPtrOpt == nil { options.BoolPtrOpt = new(bool) }
-	flag.BoolVar(options.BoolPtrOpt, "bool-ptr-opt", defaultBoolPtrOptValForFlag, "Bool pointer option" /* Env: ENV_BOOL_PTR */)
+	assertCodeContains(t, actualCode, "isBoolPtrOptNilInitially := options.BoolPtrOpt == nil")
+	assertCodeContains(t, actualCode, "var tempBoolPtrOptVal bool")
+	assertCodeNotContains(t, actualCode, "if options.BoolPtrOpt == nil { options.BoolPtrOpt = new(bool) } flag.BoolVar(options.BoolPtrOpt, ")
+	newBoolPtrFlagLogic := `
+	if isBoolPtrOptNilInitially {
+		flag.BoolVar(&tempBoolPtrOptVal, "bool-ptr-opt", false, "Bool pointer option" /* Env: ENV_BOOL_PTR */)
+	} else {
+		flag.BoolVar(options.BoolPtrOpt, "bool-ptr-opt", defaultBoolPtrOptValForFlag, "Bool pointer option" /* Env: ENV_BOOL_PTR */)
+	}
 `
-	assertCodeContains(t, actualCode, boolPtrFlagLogic)
-	assertCodeNotContains(t, actualCode, `var defaultStringOpt string =`)
-	assertCodeNotContains(t, actualCode, `if !isFlagExplicitlySet["string-ptr-opt"] { if val, ok := os.LookupEnv("ENV_STRING_PTR"); ok {`)
+	assertCodeContains(t, actualCode, newBoolPtrFlagLogic)
+	assertCodeContains(t, actualCode, "if isBoolPtrOptNilInitially && isFlagExplicitlySet[\"bool-ptr-opt\"] { options.BoolPtrOpt = &tempBoolPtrOptVal }")
+
+	assertCodeNotContains(t, actualCode, `var defaultStringOpt string =`) // This assertion is still valid
 }
 
 func TestGenerateMain_StringFlagWithQuotesInDefault(t *testing.T) {

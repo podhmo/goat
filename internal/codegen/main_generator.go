@@ -289,29 +289,49 @@ func main() {
 					sb.WriteString(fmt.Sprintf("	flag.BoolVar(&options.%s, %q, options.%s, %s %s)\n", opt.Name, kebabCaseName, opt.Name, formatHelpText(opt.HelpText), helpComment))
 				}
 			case "*string":
+				sb.WriteString(fmt.Sprintf("	is%sNilInitially := options.%s == nil\n", opt.Name, opt.Name))
+				sb.WriteString(fmt.Sprintf("	var temp%sVal %s\n", opt.Name, strings.TrimPrefix(opt.TypeName, "*")))
 				sb.WriteString(fmt.Sprintf("	var default%sValForFlag string\n", opt.Name))
 				sb.WriteString(fmt.Sprintf("	if options.%s != nil { default%sValForFlag = *options.%s }\n", opt.Name, opt.Name, opt.Name))
-				sb.WriteString(fmt.Sprintf("	if options.%s == nil { options.%s = new(string) }\n", opt.Name, opt.Name))
-				sb.WriteString(fmt.Sprintf("	flag.StringVar(options.%s, %q, default%sValForFlag, %s %s)\n", opt.Name, kebabCaseName, opt.Name, formatHelpText(opt.HelpText), helpComment))
+				// Line removed: sb.WriteString(fmt.Sprintf("	if options.%s == nil { options.%s = new(string) }\n", opt.Name, opt.Name))
+				sb.WriteString(fmt.Sprintf("	if is%sNilInitially {\n", opt.Name))
+				sb.WriteString(fmt.Sprintf("		flag.StringVar(&temp%sVal, %q, \"\", %s %s)\n", opt.Name, kebabCaseName, formatHelpText(opt.HelpText), helpComment))
+				sb.WriteString(fmt.Sprintf("	} else {\n"))
+				sb.WriteString(fmt.Sprintf("		flag.StringVar(options.%s, %q, default%sValForFlag, %s %s)\n", opt.Name, kebabCaseName, opt.Name, formatHelpText(opt.HelpText), helpComment))
+				sb.WriteString(fmt.Sprintf("	}\n"))
 			case "*int":
+				sb.WriteString(fmt.Sprintf("	is%sNilInitially := options.%s == nil\n", opt.Name, opt.Name))
+				sb.WriteString(fmt.Sprintf("	var temp%sVal %s\n", opt.Name, strings.TrimPrefix(opt.TypeName, "*")))
 				sb.WriteString(fmt.Sprintf("	var default%sValForFlag int\n", opt.Name))
 				sb.WriteString(fmt.Sprintf("	if options.%s != nil { default%sValForFlag = *options.%s }\n", opt.Name, opt.Name, opt.Name))
-				sb.WriteString(fmt.Sprintf("	if options.%s == nil { options.%s = new(int) }\n", opt.Name, opt.Name))
-				sb.WriteString(fmt.Sprintf("	flag.IntVar(options.%s, %q, default%sValForFlag, %s %s)\n", opt.Name, kebabCaseName, opt.Name, formatHelpText(opt.HelpText), helpComment))
+				// Line removed: sb.WriteString(fmt.Sprintf("	if options.%s == nil { options.%s = new(int) }\n", opt.Name, opt.Name))
+				sb.WriteString(fmt.Sprintf("	if is%sNilInitially {\n", opt.Name))
+				sb.WriteString(fmt.Sprintf("		flag.IntVar(&temp%sVal, %q, 0, %s %s)\n", opt.Name, kebabCaseName, formatHelpText(opt.HelpText), helpComment))
+				sb.WriteString(fmt.Sprintf("	} else {\n"))
+				sb.WriteString(fmt.Sprintf("		flag.IntVar(options.%s, %q, default%sValForFlag, %s %s)\n", opt.Name, kebabCaseName, opt.Name, formatHelpText(opt.HelpText), helpComment))
+				sb.WriteString(fmt.Sprintf("	}\n"))
 			case "*bool":
+				sb.WriteString(fmt.Sprintf("	is%sNilInitially := options.%s == nil\n", opt.Name, opt.Name))
+				sb.WriteString(fmt.Sprintf("	var temp%sVal %s\n", opt.Name, strings.TrimPrefix(opt.TypeName, "*")))
 				sb.WriteString(fmt.Sprintf("	var default%sValForFlag bool\n", opt.Name))
 				sb.WriteString(fmt.Sprintf("	if options.%s != nil { default%sValForFlag = *options.%s }\n", opt.Name, opt.Name, opt.Name))
-				sb.WriteString(fmt.Sprintf("	if options.%s == nil { options.%s = new(bool) }\n", opt.Name, opt.Name))
-				sb.WriteString(fmt.Sprintf("	flag.BoolVar(options.%s, %q, default%sValForFlag, %s %s)\n", opt.Name, kebabCaseName, opt.Name, formatHelpText(opt.HelpText), helpComment))
+				// Line removed: sb.WriteString(fmt.Sprintf("	if options.%s == nil { options.%s = new(bool) }\n", opt.Name, opt.Name))
+				sb.WriteString(fmt.Sprintf("	if is%sNilInitially {\n", opt.Name))
+				sb.WriteString(fmt.Sprintf("		flag.BoolVar(&temp%sVal, %q, false, %s %s)\n", opt.Name, kebabCaseName, formatHelpText(opt.HelpText), helpComment))
+				sb.WriteString(fmt.Sprintf("	} else {\n"))
+				sb.WriteString(fmt.Sprintf("		flag.BoolVar(options.%s, %q, default%sValForFlag, %s %s)\n", opt.Name, kebabCaseName, opt.Name, formatHelpText(opt.HelpText), helpComment))
+				sb.WriteString(fmt.Sprintf("	}\n"))
 			default:
 				if opt.IsTextUnmarshaler && opt.IsTextMarshaler {
 					if opt.IsPointer {
-						sb.WriteString(fmt.Sprintf(`
-	if options.%s == nil {
-		options.%s = new(%s)
-	}
-	flag.TextVar(options.%s, %q, options.%s, %s %s)
-`, opt.Name, opt.Name, strings.TrimPrefix(opt.TypeName, "*"), opt.Name, opt.CliName, opt.Name, formatHelpText(opt.HelpText), helpComment))
+						sb.WriteString(fmt.Sprintf("	is%sNilInitially := options.%s == nil\n", opt.Name, opt.Name))
+						sb.WriteString(fmt.Sprintf("	var temp%sVal %s\n", opt.Name, strings.TrimPrefix(opt.TypeName, "*")))
+						// Old block removed
+						sb.WriteString(fmt.Sprintf("	if is%sNilInitially {\n", opt.Name))
+						sb.WriteString(fmt.Sprintf("		flag.TextVar(&temp%sVal, %q, &temp%sVal, %s %s)\n", opt.Name, opt.CliName, opt.Name, formatHelpText(opt.HelpText), helpComment))
+						sb.WriteString(fmt.Sprintf("	} else {\n"))
+						sb.WriteString(fmt.Sprintf("		flag.TextVar(options.%s, %q, options.%s, %s %s)\n", opt.Name, opt.CliName, opt.Name, formatHelpText(opt.HelpText), helpComment))
+						sb.WriteString(fmt.Sprintf("	}\n"))
 					} else {
 						sb.WriteString(fmt.Sprintf("	flag.TextVar(&options.%s, %q, options.%s, %s %s)\n", opt.Name, opt.CliName, opt.Name, formatHelpText(opt.HelpText), helpComment))
 					}
@@ -338,6 +358,40 @@ func main() {
 		options.%s = false
 	}
 `, opt.Name, opt.Name))
+			}
+		}
+
+		sb.WriteString(`
+
+	// 6. Assign values for initially nil pointers if flags were explicitly set
+`)
+		// This loop iterates through cmdMeta.Options to generate the assignment logic
+		for _, opt := range cmdMeta.Options {
+			flagKeyForCheck := ""
+			isRelevantPointer := false
+
+			if opt.IsPointer && opt.IsTextUnmarshaler {
+				flagKeyForCheck = opt.CliName
+				if flagKeyForCheck == "" { // Fallback if CliName was empty
+					flagKeyForCheck = stringutils.ToKebabCase(opt.Name)
+				}
+				isRelevantPointer = true
+			} else {
+				switch opt.TypeName {
+				case "*string", "*int", "*bool":
+					flagKeyForCheck = stringutils.ToKebabCase(opt.Name)
+					isRelevantPointer = true
+				default:
+					// Not a pointer type this logic handles
+					isRelevantPointer = false // Explicitly
+				}
+			}
+
+			if isRelevantPointer { // Check isRelevantPointer
+				// Ensure is%sNilInitially and temp%sVal are in scope from flag setup
+				sb.WriteString(fmt.Sprintf("	if is%sNilInitially && isFlagExplicitlySet[%q] {\n", opt.Name, flagKeyForCheck))
+				sb.WriteString(fmt.Sprintf("		options.%s = &temp%sVal\n", opt.Name, opt.Name))
+				sb.WriteString(fmt.Sprintf("	}\n"))
 			}
 		}
 
