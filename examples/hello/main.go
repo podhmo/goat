@@ -66,6 +66,8 @@ Flags:
 	flag.Parse()
 	flag.Visit(func(f *flag.Flag) { isFlagExplicitlySet[f.Name] = true })
 
+	// 6. Assign values for initially nil pointers if flags were explicitly set
+
 	// 5. Perform required checks (excluding booleans).
 
 	initialDefaultConfigFile := ""
