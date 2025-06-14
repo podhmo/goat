@@ -268,7 +268,7 @@ func TestGenerateMain_KebabCaseFlagNames(t *testing.T) {
 	}
 	assertCodeContains(t, actualCode, "options := new(DataProcOptions)")
 	assertCodeNotContains(t, actualCode, "options = new(DataProcOptions)")
-	assertCodeContains(t, actualCode, `options.InputFile = ""`)
+	assertCodeNotContains(t, actualCode, `options.InputFile =`)
 	assertCodeContains(t, actualCode, `options.OutputDirectory = "/tmp"`)
 	assertCodeContains(t, actualCode, `options.MaximumRetries = 3`)
 	expectedFlagParsing := `
@@ -300,7 +300,7 @@ func TestGenerateMain_RequiredFlags(t *testing.T) {
 	}
 	assertCodeContains(t, actualCode, "options := new(Config)")
 	assertCodeNotContains(t, actualCode, "options = new(Config)")
-	assertCodeContains(t, actualCode, `options.ConfigFile = ""`)
+	assertCodeNotContains(t, actualCode, `options.ConfigFile =`)
 	assertCodeContains(t, actualCode, `options.Retries = 0`)
 	assertCodeNotContains(t, actualCode, `os.LookupEnv("CONFIG_FILE")`)
 	assertCodeNotContains(t, actualCode, `os.LookupEnv("RETRIES")`)
@@ -374,7 +374,7 @@ func TestGenerateMain_EnvironmentVariables(t *testing.T) {
 	}
 	assertCodeContains(t, actualCode, "options := new(AppSettings)")
 	assertCodeNotContains(t, actualCode, "options = new(AppSettings)")
-	assertCodeContains(t, actualCode, `options.APIKey = ""`)
+	assertCodeNotContains(t, actualCode, `options.APIKey =`)
 	assertCodeContains(t, actualCode, `options.Timeout = 60`)
 	assertCodeContains(t, actualCode, `options.EnableFeature = false`)
 	expectedApiKeyEnv := `
