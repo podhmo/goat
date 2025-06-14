@@ -219,20 +219,62 @@ if v, err := strconv.ParseBool(%s); err == nil {
 func (h *BoolHandler) GenerateFlagRegistrationCode(opt *metadata.OptionMetadata, optionsVarName string, isFlagExplicitlySetMapName string, globalTempVarPrefix string) OptionCodeSnippets {
 	helpDetail := constructFlagHelpDetail(opt.HelpText, opt.DefaultValue, GetEffectiveEnumValues(opt), true)
 	formattedHelpText := formatHelpText(helpDetail)
+	kebabCaseName := opt.CliName // Assuming CliName is already kebab-case
 
-	defaultValue := false
-	if val, ok := opt.DefaultValue.(bool); ok {
-		defaultValue = val
+	declarations := ""
+	logic := ""
+
+	effectiveDefault := false
+	if dv, ok := opt.DefaultValue.(bool); ok {
+		effectiveDefault = dv
 	}
 
-	cliName := opt.CliName
-	logic := fmt.Sprintf("flag.BoolVar(&%s.%s, %q, %t, %s)\n",
-		optionsVarName, opt.Name, cliName, defaultValue, formattedHelpText)
-	return OptionCodeSnippets{Logic: logic}
+	// Handle the special case for required bools defaulting to true, needing a --no-XXX flag
+	if opt.IsRequired && effectiveDefault {
+		noFlagVarName := globalTempVarPrefix + stringutils.ToTitle(opt.Name) + "NoFlagPresent"
+		declarations += fmt.Sprintf("var %s bool\n", noFlagVarName)
+		logic += fmt.Sprintf("flag.BoolVar(&%s, \"no-%s\", false, %s)\n",
+			noFlagVarName, kebabCaseName, formatHelpText("Set "+kebabCaseName+" to false, overriding default true"))
+		// The actual options field will remain true unless this --no-XXX flag is set.
+		// The GenerateFlagPostParseAssignmentCode will handle setting it to false.
+		// Also register the normal flag, but make it behave such that if only --option is given, it's true.
+		// If options.MyBool is true (default), and user says --my-bool=false, it becomes false.
+		// If options.MyBool is true (default), and user says nothing, it's true.
+		// If options.MyBool is true (default), and user says --no-my-bool, it becomes false.
+		// This means the flag.BoolVar should point to the options field.
+		logic += fmt.Sprintf("flag.BoolVar(&%s.%s, %q, %t, %s)\n",
+			optionsVarName, opt.Name, kebabCaseName, effectiveDefault, formattedHelpText)
+
+	} else {
+		logic = fmt.Sprintf("flag.BoolVar(&%s.%s, %q, %t, %s)\n",
+			optionsVarName, opt.Name, kebabCaseName, effectiveDefault, formattedHelpText)
+	}
+
+	return OptionCodeSnippets{Declarations: declarations, Logic: logic}
 }
 
 func (h *BoolHandler) GenerateFlagPostParseAssignmentCode(opt *metadata.OptionMetadata, optionsVarName string, isFlagExplicitlySetMapName string, globalTempVarPrefix string) OptionCodeSnippets {
-	_ = opt
+	effectiveDefault := false
+	if dv, ok := opt.DefaultValue.(bool); ok {
+		effectiveDefault = dv
+	}
+
+	if opt.IsRequired && effectiveDefault {
+		noFlagVarName := globalTempVarPrefix + stringutils.ToTitle(opt.Name) + "NoFlagPresent"
+		// isFlagExplicitlySetMapName here should refer to the "no-XXX" flag.
+		// The map key for `no-XXX` would be `no-` + opt.CliName.
+		noFlagCliName := "no-" + opt.CliName
+		logic := fmt.Sprintf(`if %s[%q] { // If --no-XXX flag was explicitly set
+	%s.%s = false
+}
+`, isFlagExplicitlySetMapName, noFlagCliName, optionsVarName, opt.Name)
+		// If the main flag (--XXX) was set to false, e.g. --mybool=false, that takes precedence.
+		// flag.BoolVar directly modifies optionsVarName.opt.Name.
+		// If --no-XXX is present, AND --XXX=true is present, the last one parsed wins or flag pkg errors.
+		// Standard library flag parsing: last flag wins. So if --no-foo then --foo, foo is true.
+		// This post-parse assignment ensures --no-foo makes it false even if --foo was also present (if it defaulted to true).
+		return OptionCodeSnippets{Logic: logic}
+	}
 	return OptionCodeSnippets{}
 }
 
@@ -600,15 +642,44 @@ func (h *StringSliceHandler) GenerateFlagRegistrationCode(opt *metadata.OptionMe
 	helpDetail := constructFlagHelpDetail(opt.HelpText, opt.DefaultValue, GetEffectiveEnumValues(opt), false)
 	formattedHelpText := formatHelpText(helpDetail)
 
-	logic := fmt.Sprintf(`flag.Func(%q, %s, func(s string) error {
-	if s != "" {
-		%s[%q] = true
-		%s.%s = strings.Split(s, ",")
+	// Default value for string slice flag description.
+	// If opt.DefaultValue is "a,b,c", it will be displayed as such.
+	// The flag parsing logic will split it.
+	defaultValStr := ""
+	if opt.DefaultValue != nil {
+		if dv, ok := opt.DefaultValue.(string); ok {
+			defaultValStr = dv
+		} else {
+			// This case should ideally not happen if metadata is well-formed.
+			// Fallback to string representation.
+			defaultValStr = fmt.Sprintf("%v", opt.DefaultValue)
+		}
 	}
+
+	// The flag package doesn't have a direct StringSliceVar that also gives us default value string representation easily.
+	// We use flag.Func to handle parsing and to mark the flag as set.
+	// The options.<field> is usually pre-populated with default values (if any)
+	// or will be an empty slice. The flag.Func will override it if the flag is provided.
+
+	logic := fmt.Sprintf(`flag.Func(%q, %s, func(s string) error {
+	// No need to check if s is empty string, flag package calls this func only if flag is present.
+	// If flag is present with an empty value (e.g. --my-slice=""), s will be ""
+	// and we should treat it as explicitly setting the slice to empty or a slice with one empty string.
+	// strings.Split("", ",") -> []string{""}
+	// strings.Split("a,,b", ",") -> []string{"a", "", "b"}
+	%s[%q] = true // Mark as explicitly set
+	%s.%s = strings.Split(s, ",")
 	return nil
 })
 `, opt.CliName, formattedHelpText, isFlagExplicitlySetMapName, opt.CliName, optionsVarName, opt.Name)
-	return OptionCodeSnippets{Logic: "// TODO: Implement proper stringSliceFlag logic from main_generator.go\n" + logic}
+
+	// Note: The 'defaultValStr' is used by constructFlagHelpDetail to show the default in help.
+	// The actual initial value of optionsVarName.opt.Name should be set by GenerateDefaultValueInitializationCode.
+	// flag.Func does not take a "default value" argument in the same way flag.StringVar does for its value storage.
+	// The third argument to flag.Func is the help text.
+	// The initial value of the slice in the options struct serves as the "default" if the flag isn't used.
+
+	return OptionCodeSnippets{Logic: logic}
 }
 
 func (h *StringSliceHandler) GenerateFlagPostParseAssignmentCode(opt *metadata.OptionMetadata, optionsVarName string, isFlagExplicitlySetMapName string, globalTempVarPrefix string) OptionCodeSnippets {
@@ -616,11 +687,23 @@ func (h *StringSliceHandler) GenerateFlagPostParseAssignmentCode(opt *metadata.O
 }
 
 func (h *StringSliceHandler) GenerateRequiredCheckCode(opt *metadata.OptionMetadata, optionsVarName string, isFlagExplicitlySetMapName string, initialDefaultVarName string, envWasSetVarName string, ctxVarName string) OptionCodeSnippets {
-	logic := fmt.Sprintf(`if (len(%s.%s) == 0 || (%s.%s == nil && %s == "nil")) && !%s[%q] && !%s {
-	slog.ErrorContext(%s, "Missing required option", "option", %q)
+	kebabCaseName := stringutils.ToKebabCase(opt.Name)
+	envVarLogIfPresent := ""
+	if opt.EnvVar != "" {
+		envVarLogIfPresent = fmt.Sprintf(`, "envVar", %q`, opt.EnvVar)
+	}
+
+	// For a slice, "empty" typically means len == 0.
+	// initialDefaultVarName is not directly comparable for slices like for simple types.
+	// The condition focuses on whether the slice is empty AND was not explicitly set by flag or env var.
+	condition := fmt.Sprintf("len(%s.%s) == 0 && !%s[%q] && !%s",
+		optionsVarName, opt.Name, isFlagExplicitlySetMapName, kebabCaseName, envWasSetVarName)
+
+	logic := fmt.Sprintf(`if %s {
+	slog.ErrorContext(%s, "Missing required option", "flag", %q%s, "option", %q)
 	return fmt.Errorf("missing required option: --%s / %s")
 }
-`, optionsVarName, opt.Name, optionsVarName, opt.Name, initialDefaultVarName, isFlagExplicitlySetMapName, opt.CliName, envWasSetVarName, ctxVarName, opt.CliName, opt.CliName, opt.EnvVar)
+`, condition, ctxVarName, kebabCaseName, envVarLogIfPresent, opt.Name, kebabCaseName, opt.EnvVar)
 	return OptionCodeSnippets{Logic: logic}
 }
 
@@ -639,7 +722,7 @@ func (h *TextUnmarshalerHandler) GenerateDefaultValueInitializationCode(opt *met
 if err := %s.%s.UnmarshalText([]byte(%q)); err != nil {
 	slog.WarnContext(%s, "Failed to unmarshal default value for TextUnmarshaler option", "option", %q, "default", %q, "error", err)
 }
-`, optionsVarName, opt.Name, valStr, "context.Background()", opt.CliName, valStr)
+`, optionsVarName, opt.Name, valStr, ctxVarName, opt.CliName, valStr) // Use ctxVarName
 			return OptionCodeSnippets{Logic: logic}
 		}
 	}
@@ -673,13 +756,39 @@ func (h *TextUnmarshalerHandler) GenerateFlagPostParseAssignmentCode(opt *metada
 }
 
 func (h *TextUnmarshalerHandler) GenerateRequiredCheckCode(opt *metadata.OptionMetadata, optionsVarName string, isFlagExplicitlySetMapName string, initialDefaultVarName string, envWasSetVarName string, ctxVarName string) OptionCodeSnippets {
+	kebabCaseName := stringutils.ToKebabCase(opt.Name)
+	envVarLogIfPresent := ""
+	if opt.EnvVar != "" {
+		envVarLogIfPresent = fmt.Sprintf(`, "envVar", %q`, opt.EnvVar)
+	}
+
+	// initialDefaultVarName holds the string representation of the default value.
+	// We need to marshal the current value back to text to compare.
+	currentValTextVar := stringutils.ToCamelCase(opt.Name) + "CurrentTextVal"
+	declarations := fmt.Sprintf("var %s []byte\n", currentValTextVar)
 	logic := fmt.Sprintf(`
-// Required check for TextUnmarshaler %s - this is a placeholder
-if !%s[%q] && !%s {
-	// Complex check needed here involving current value vs initialDefaultVarName
+%s, err := %s.%s.MarshalText()
+if err != nil {
+	slog.WarnContext(%s, "Failed to marshal current value for TextUnmarshaler option for required check", "option", %q, "error", err)
+	// If marshaling fails, we can't reliably compare. Assume it's different from default or proceed with caution.
+	// Depending on strictness, one might choose to error here or allow proceeding.
+	// For now, let's assume if it fails to marshal, it's problematic for a required check.
+	return fmt.Errorf("failed to marshal current value for option %s for required check: %%w", err)
 }
-`, opt.Name, isFlagExplicitlySetMapName, opt.CliName, envWasSetVarName)
-	return OptionCodeSnippets{Logic: logic}
+`, currentValTextVar, optionsVarName, opt.Name, ctxVarName, opt.CliName, opt.CliName)
+
+	// Condition: current value (as text) is same as initial default text, AND flag not set, AND env var not set.
+	condition := fmt.Sprintf("string(%s) == %s && !%s[%q] && !%s",
+		currentValTextVar, initialDefaultVarName, isFlagExplicitlySetMapName, kebabCaseName, envWasSetVarName)
+
+	logic += fmt.Sprintf(`
+if %s {
+	slog.ErrorContext(%s, "Missing required option", "flag", %q%s, "option", %q)
+	return fmt.Errorf("missing required option: --%s / %s")
+}
+`, condition, ctxVarName, kebabCaseName, envVarLogIfPresent, opt.Name, kebabCaseName, opt.EnvVar)
+
+	return OptionCodeSnippets{Declarations: declarations, Logic: logic}
 }
 
 func (h *TextUnmarshalerHandler) GenerateEnumValidationCode(opt *metadata.OptionMetadata, optionsVarName string, ctxVarName string) OptionCodeSnippets {
@@ -695,79 +804,115 @@ func (h *TextUnmarshalerPtrHandler) GenerateDefaultValueInitializationCode(opt *
 		if ok {
 			logic := fmt.Sprintf(`
 if %s.%s == nil {
-	slog.DebugContext(%s, "Default value for pointer TextUnmarshaler %s skipped as field is nil and type instantiation is complex here.")
-} else {
-	if err := %s.%s.UnmarshalText([]byte(%q)); err != nil {
-		slog.WarnContext(%s, "Failed to unmarshal default value for *TextUnmarshaler option", "option", %q, "default", %q, "error", err)
-	}
+	%s.%s = new(%s) // Initialize if nil
 }
-`, optionsVarName, opt.Name, "context.Background()", opt.CliName, optionsVarName, opt.Name, valStr, "context.Background()", opt.CliName, valStr)
-			return OptionCodeSnippets{Logic: "// TODO: Address *TextUnmarshaler default init complexity\n" + logic}
+if err := %s.%s.UnmarshalText([]byte(%q)); err != nil {
+	slog.WarnContext(%s, "Failed to unmarshal default value for *TextUnmarshaler option", "option", %q, "default", %q, "error", err)
+}
+`, optionsVarName, opt.Name, optionsVarName, opt.Name, strings.TrimPrefix(opt.TypeName, "*"), optionsVarName, opt.Name, valStr, ctxVarName, opt.CliName, valStr)
+			return OptionCodeSnippets{Logic: logic}
 		}
 	}
 	return OptionCodeSnippets{}
 }
 
 func (h *TextUnmarshalerPtrHandler) GenerateEnvVarProcessingCode(opt *metadata.OptionMetadata, optionsVarName string, envValVarName string, ctxVarName string) OptionCodeSnippets {
+	actualType := strings.TrimPrefix(opt.TypeName, "*")
 	logic := fmt.Sprintf(`
 if %s.%s == nil {
-	slog.DebugContext(%s, "Env var for pointer TextUnmarshaler %s skipped for actual assignment if field is nil and type instantiation is complex here. Value was: %s", %s)
+	%s.%s = new(%s) // Initialize if nil
 }
-if %s.%s != nil {
-	if err := %s.%s.UnmarshalText([]byte(%s)); err != nil {
-		slog.WarnContext(%s, "Failed to unmarshal environment variable for *TextUnmarshaler option", "variable", %q, "value", %s, "error", err)
-	}
-} else {
-	slog.WarnContext(%s, "Cannot process env var for nil *TextUnmarshaler option without instantiation", "variable", %q, "value", %s)
+if err := %s.%s.UnmarshalText([]byte(%s)); err != nil {
+	slog.WarnContext(%s, "Failed to unmarshal environment variable for *TextUnmarshaler option", "variable", %q, "value", %s, "error", err)
 }
-`, optionsVarName, opt.Name, ctxVarName, opt.CliName, envValVarName, opt.EnvVar,
-		optionsVarName, opt.Name, optionsVarName, opt.Name, envValVarName, ctxVarName, opt.EnvVar, envValVarName,
-		ctxVarName, opt.EnvVar, envValVarName)
-	return OptionCodeSnippets{Logic: "// TODO: Address *TextUnmarshaler env var processing for nil fields\n" + logic}
+`, optionsVarName, opt.Name, optionsVarName, opt.Name, actualType,
+		optionsVarName, opt.Name, envValVarName, ctxVarName, opt.EnvVar, envValVarName)
+	return OptionCodeSnippets{Logic: logic}
 }
 
 func (h *TextUnmarshalerPtrHandler) GenerateFlagRegistrationCode(opt *metadata.OptionMetadata, optionsVarName string, isFlagExplicitlySetMapName string, globalTempVarPrefix string) OptionCodeSnippets {
 	tempFlagVar := globalTempVarPrefix + stringutils.ToTitle(opt.Name) + "Str"
 	declarations := fmt.Sprintf("var %s string\n", tempFlagVar)
+
+	// Use constructFlagHelpDetail for consistent help text formatting
 	helpDetail := constructFlagHelpDetail(opt.HelpText, opt.DefaultValue, GetEffectiveEnumValues(opt), false)
 	formattedHelpText := formatHelpText(helpDetail)
-	defaultStrVal := ""
+
+	defaultStrVal := "" // Default for the temporary string flag variable is empty
 	if opt.DefaultValue != nil {
 		if ds, ok := opt.DefaultValue.(string); ok {
-			defaultStrVal = ds
+			// This default is for the help text via constructFlagHelpDetail.
+			// The actual default for the flag variable itself should be empty,
+			// so we only set it if the flag is NOT provided.
+			// However, flag.StringVar needs a default value for its string var.
+			// If options.Field is already non-nil and has a value, that value isn't directly usable here
+			// unless we marshal it. For simplicity, flag string default is empty, matching if user provides `--opt=""`.
+			// The actual options.Field default is handled by GenerateDefaultValueInitializationCode.
+			// For the purpose of flag parsing, if the user has a default value like "defval" for the *MyType,
+			// and they DON'T provide the flag, options.MyField should retain its "defval" (after UnmarshalText).
+			// If they DO provide the flag e.g. --my-flag "newval", then "newval" is used.
+			// If they provide --my-flag "" then "" is used.
+			// So, for the flag.StringVar, the default for its temporary string variable should be ""
+			// unless we want to reflect the field's initial default in the flag's empty case, which is complex.
+			// Let's keep defaultStrVal for the flag as empty string for now.
+			// The help text will show the intended default via `constructFlagHelpDetail`.
 		}
 	}
 
 	logic := fmt.Sprintf("flag.StringVar(&%s, %q, %s, %s)\n",
 		tempFlagVar, opt.CliName, formatHelpText(defaultStrVal), formattedHelpText)
 
-	return OptionCodeSnippets{Declarations: declarations, Logic: logic, PostProcessing: "// PostProcessing needed for " + tempFlagVar}
+	// PostProcessing is handled by GenerateFlagPostParseAssignmentCode, so no specific comment needed here.
+	return OptionCodeSnippets{Declarations: declarations, Logic: logic}
 }
 
 func (h *TextUnmarshalerPtrHandler) GenerateFlagPostParseAssignmentCode(opt *metadata.OptionMetadata, optionsVarName string, isFlagExplicitlySetMapName string, globalTempVarPrefix string) OptionCodeSnippets {
 	tempFlagVar := globalTempVarPrefix + stringutils.ToTitle(opt.Name) + "Str"
+	actualType := strings.TrimPrefix(opt.TypeName, "*")
 
 	logic := fmt.Sprintf(`
-if %s[%q] {
+if %s[%q] { // Check if the flag was explicitly set
 	if %s.%s == nil {
-		slog.WarnContext(ctx, "Attempting to set nil pointer TextUnmarshaler from flag. Instantiation is complex.", "option", %q)
+		%s.%s = new(%s) // Initialize if nil
 	}
-	if %s.%s != nil {
-		if err := %s.%s.UnmarshalText([]byte(%s)); err != nil {
-			slog.ErrorContext(ctx, "Failed to unmarshal flag value for *TextUnmarshaler option", "option", %q, "value", %s, "error", err)
-		}
-	} else {
-		slog.ErrorContext(ctx, "Cannot apply flag to nil *TextUnmarshaler without instantiation", "option", %q, "value", %s)
+	if err := %s.%s.UnmarshalText([]byte(%s)); err != nil {
+		slog.ErrorContext(%s, "Failed to unmarshal flag value for *TextUnmarshaler option", "option", %q, "value", %s, "error", err)
+		// Potentially return an error here if strict parsing is required:
+		// return fmt.Errorf("failed to unmarshal flag value for --%s ('%%s'): %%w", %s, err)
 	}
 }
-`, isFlagExplicitlySetMapName, opt.CliName, optionsVarName, opt.Name, opt.CliName,
-		optionsVarName, opt.Name, optionsVarName, opt.Name, tempFlagVar, opt.CliName, tempFlagVar,
-		opt.CliName, tempFlagVar)
-	return OptionCodeSnippets{Logic: logic} // Simplified return
+`, isFlagExplicitlySetMapName, opt.CliName, optionsVarName, opt.Name, optionsVarName, opt.Name, actualType,
+		optionsVarName, opt.Name, tempFlagVar, ctxVarName, opt.CliName, tempFlagVar,
+		// For errorf: opt.CliName, tempFlagVar
+	)
+	return OptionCodeSnippets{Logic: logic}
 }
 
 func (h *TextUnmarshalerPtrHandler) GenerateRequiredCheckCode(opt *metadata.OptionMetadata, optionsVarName string, isFlagExplicitlySetMapName string, initialDefaultVarName string, envWasSetVarName string, ctxVarName string) OptionCodeSnippets {
-	return (&StringPtrHandler{}).GenerateRequiredCheckCode(opt, optionsVarName, isFlagExplicitlySetMapName, initialDefaultVarName, envWasSetVarName, ctxVarName)
+	// For a *TextUnmarshaler, "required" means the pointer must not be nil
+	// after considering defaults, env vars, and flags.
+	// The StringPtrHandler's check for `options.MyField == nil` is appropriate.
+	// Whether the unmarshaled value itself is "empty" or "default" is specific to the type's implementation
+	// and generally not checked at this generic level, unlike non-pointer TextUnmarshaler.
+	kebabCaseName := stringutils.ToKebabCase(opt.Name)
+	envVarLogIfPresent := ""
+	if opt.EnvVar != "" {
+		envVarLogIfPresent = fmt.Sprintf(`, "envVar", %q`, opt.EnvVar)
+	}
+
+	// Condition: field is nil AND it wasn't set by a flag AND it wasn't set by an env var.
+	// Note: initialDefaultVarName is for the string representation of the default, not directly useful for nil check here.
+	// Default initialization, env processing, and flag processing should have already attempted to initialize the pointer.
+	// So, we just check if it's still nil.
+	condition := fmt.Sprintf("%s.%s == nil && !%s[%q] && !%s",
+		optionsVarName, opt.Name, isFlagExplicitlySetMapName, kebabCaseName, envWasSetVarName)
+
+	logic := fmt.Sprintf(`if %s {
+	slog.ErrorContext(%s, "Missing required option (must be non-nil)", "flag", %q%s, "option", %q)
+	return fmt.Errorf("missing required option (must be non-nil): --%s / %s")
+}
+`, condition, ctxVarName, kebabCaseName, envVarLogIfPresent, opt.Name, kebabCaseName, opt.EnvVar)
+	return OptionCodeSnippets{Logic: logic}
 }
 
 func (h *TextUnmarshalerPtrHandler) GenerateEnumValidationCode(opt *metadata.OptionMetadata, optionsVarName string, ctxVarName string) OptionCodeSnippets {
@@ -824,4 +969,4 @@ func constructFlagHelpDetail(baseHelpText string, defaultValue any, enumValues [
 
 // TODO: Define and implement stringSliceFlag and textUnmarshalerFlag types if they are to be used
 // as they were in the original main_generator.go for proper slice/TextUnmarshaler flag handling.
-// For now, StringSliceHandler and TextUnmarshaler(Ptr)Handler have simplified flag logic.
+// StringSliceHandler uses flag.Func. TextUnmarshaler(Ptr)Handler logic has been expanded.
