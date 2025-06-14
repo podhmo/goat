@@ -16,3 +16,12 @@ During the development and testing of `internal/loader/locator.go` and its assoc
     *   `GoModLocator.Locate` was updated to use this helper when determining the package name for relative paths, module root packages, and dependency root packages. This fixed the failing tests and ensures more accurate package name resolution.
 
 **Status:** All issues were resolved.
+
+## `make test` fails with undefined functions and unused variables
+
+- **Symptom:** `make test` fails with errors like `undefined: stringutils.ToCamelCase`, `undefined: stringutils.ToTitle`, and `logic declared and not used`.
+- **Cause:**
+    1. The functions `stringutils.ToCamelCase` and `stringutils.ToTitle` were missing from `internal/utils/stringutils/stringutils.go`.
+    2. In `internal/codegen/option_handlers.go`, the `GenerateRequiredCheckCode` methods for `BoolHandler` (around line 247) and `TextUnmarshalerHandler` (around line 664) were populating a `logic` variable but then returning a `// TODO` comment string instead of the `logic` variable itself.
+- **Resolution:** Implemented the missing functions in `stringutils.go` and modified the `GenerateRequiredCheckCode` methods in `option_handlers.go` to return the `logic` variable. This resolved the test failures.
+- **Status:** Resolved.
