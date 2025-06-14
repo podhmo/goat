@@ -394,11 +394,8 @@ Defaults to "output" if not specified by the user.` /* Original Default: output,
 		slog.ErrorContext(ctx, "Missing required flag or environment variable not set", errors.New("Missing required flag or environment variable not set"), "flag", "pattern", "envVar", "FULLSET_PATTERN", "option", "Pattern")
 		os.Exit(1)
 	}
+	if err := run(ctx, options); err != nil {
 
-	var err error
-	err = run(ctx, options)
-
-	if err != nil {
 		slog.ErrorContext(ctx, "Runtime error", "error", err)
 		os.Exit(1)
 	}

@@ -627,9 +627,6 @@ func main() {
 		}
 	}
 
-	sb.WriteString(`
-	var err error
-`)
 	runFuncCall := ""
 	if cmdMeta.RunFunc.ContextArgName != "" {
 		if cmdMeta.RunFunc.OptionsArgTypeNameStripped != "" {
@@ -652,10 +649,11 @@ func main() {
 			runFuncCall = fmt.Sprintf("err = %s()", cmdMeta.RunFunc.Name)
 		}
 	}
-	sb.WriteString(fmt.Sprintf("	%s\n", runFuncCall))
+	// The \n was removed from the format string as the if statement will be on the same line.
+	// The duplicated "err =" is removed from the line below.
+	sb.WriteString(fmt.Sprintf("	if err := %s; err != nil {\n", strings.TrimPrefix(runFuncCall, "err = ")))
 
 	sb.WriteString(`
-	if err != nil {
 		slog.ErrorContext(ctx, "Runtime error", "error", err)
 		os.Exit(1)
 	}

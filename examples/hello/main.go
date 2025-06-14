@@ -71,11 +71,8 @@ Flags:
 		slog.ErrorContext(ctx, "Missing required flag or environment variable not set", errors.New("Missing required flag or environment variable not set"), "flag", "config-file", "option", "ConfigFile")
 		os.Exit(1)
 	}
+	if err := run(*options); err != nil {
 
-	var err error
-	err = run(*options)
-
-	if err != nil {
 		slog.ErrorContext(ctx, "Runtime error", "error", err)
 		os.Exit(1)
 	}

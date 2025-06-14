@@ -181,11 +181,8 @@ imported from another package.`)
 		slog.ErrorContext(ctx, "Invalid value for flag", errors.New("Invalid value for flag"), "flag", "optional-imported-enum-field", "value", currentValueForMsg, "allowedChoices", strings.Join(allowedChoices_OptionalImportedEnumField, ", "))
 		os.Exit(1)
 	}
+	if err := run(*options); err != nil {
 
-	var err error
-	err = run(*options)
-
-	if err != nil {
 		slog.ErrorContext(ctx, "Runtime error", "error", err)
 		os.Exit(1)
 	}
