@@ -54,6 +54,14 @@ type OptionHandler interface {
 // GetOptionHandler is a factory function that returns the appropriate OptionHandler
 // based on the characteristics of the OptionMetadata.
 func GetOptionHandler(opt *metadata.OptionMetadata) OptionHandler {
+	// Check for Enum types first, as this is a specific override.
+	if opt.IsEnum {
+		if opt.IsPointer {
+			return &EnumPtrHandler{}
+		}
+		return &EnumHandler{}
+	}
+
 	if opt.IsTextUnmarshaler {
 		if opt.IsPointer {
 			return &TextUnmarshalerPtrHandler{}
