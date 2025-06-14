@@ -170,7 +170,9 @@ func (h *IntHandler) GenerateEnumValidationCode(opt *metadata.OptionMetadata, op
 			enumValuesInts = append(enumValuesInts, evStr)
 		}
 	}
-	if len(enumValuesInts) == 0 { return OptionCodeSnippets{} }
+	if len(enumValuesInts) == 0 {
+		return OptionCodeSnippets{}
+	}
 
 	declarations := fmt.Sprintf("var %s = []int{%s}\n", enumValuesVar, strings.Join(enumValuesInts, ", "))
 	logic := fmt.Sprintf(`
@@ -249,7 +251,7 @@ func (h *BoolHandler) GenerateRequiredCheckCode(opt *metadata.OptionMetadata, op
 	return fmt.Errorf("missing or not explicitly set required option: --%s / %s")
 }
 `, condition, ctxVarName, kebabCaseName, envVarLogIfPresent, opt.Name, kebabCaseName, opt.EnvVar)
-	return OptionCodeSnippets{Logic: "// TODO: Refine Bool required check, esp. for those defaulting to true.\n"}
+	return OptionCodeSnippets{Logic: logic}
 }
 
 func (h *BoolHandler) GenerateEnumValidationCode(opt *metadata.OptionMetadata, optionsVarName string, ctxVarName string) OptionCodeSnippets {
@@ -292,8 +294,12 @@ func (h *StringPtrHandler) GenerateFlagRegistrationCode(opt *metadata.OptionMeta
 	formattedHelpText := formatHelpText(helpDetail)
 
 	defaultFlagCliValue := ""
-	if baseType == "int" { defaultFlagCliValue = "0" }
-	if baseType == "bool" { defaultFlagCliValue = "false" }
+	if baseType == "int" {
+		defaultFlagCliValue = "0"
+	}
+	if baseType == "bool" {
+		defaultFlagCliValue = "false"
+	}
 
 	flagRegLogic := fmt.Sprintf("if %s {\n", isNilInitiallyVar)
 	flagRegLogic += fmt.Sprintf("	flag.StringVar(&%s, %q, %s, %s)\n", tempValVar, opt.CliName, formatHelpText(defaultFlagCliValue), formattedHelpText)
@@ -406,7 +412,9 @@ func (h *IntPtrHandler) GenerateFlagRegistrationCode(opt *metadata.OptionMetadat
 
 	defaultFlagCliValue := 0
 	if opt.DefaultValue != nil {
-		if f, ok := opt.DefaultValue.(float64); ok { defaultFlagCliValue = int(f) }
+		if f, ok := opt.DefaultValue.(float64); ok {
+			defaultFlagCliValue = int(f)
+		}
 	}
 
 	flagRegLogic := fmt.Sprintf("if %s {\n", isNilInitiallyVar)
@@ -455,7 +463,9 @@ func (h *IntPtrHandler) GenerateEnumValidationCode(opt *metadata.OptionMetadata,
 			enumValuesInts = append(enumValuesInts, evStr)
 		}
 	}
-	if len(enumValuesInts) == 0 { return OptionCodeSnippets{} }
+	if len(enumValuesInts) == 0 {
+		return OptionCodeSnippets{}
+	}
 
 	declarations := fmt.Sprintf("var %s = []int{%s}\n", enumValuesVar, strings.Join(enumValuesInts, ", "))
 	logic := fmt.Sprintf(`
@@ -480,20 +490,20 @@ if %s.%s != nil {
 type BoolPtrHandler struct{}
 
 func (h *BoolPtrHandler) GenerateDefaultValueInitializationCode(opt *metadata.OptionMetadata, optionsVarName string) OptionCodeSnippets {
-    if opt.DefaultValue != nil {
-        valBool, ok := opt.DefaultValue.(bool)
-        if ok {
-            tempVar := stringutils.ToCamelCase(opt.Name) + "DefaultVal"
-            declarations := fmt.Sprintf("%s := %t\n", tempVar, valBool)
-            logic := fmt.Sprintf("%s.%s = &%s\n", optionsVarName, opt.Name, tempVar)
-            return OptionCodeSnippets{Declarations: declarations, Logic: logic}
-        }
-    }
-    return OptionCodeSnippets{}
+	if opt.DefaultValue != nil {
+		valBool, ok := opt.DefaultValue.(bool)
+		if ok {
+			tempVar := stringutils.ToCamelCase(opt.Name) + "DefaultVal"
+			declarations := fmt.Sprintf("%s := %t\n", tempVar, valBool)
+			logic := fmt.Sprintf("%s.%s = &%s\n", optionsVarName, opt.Name, tempVar)
+			return OptionCodeSnippets{Declarations: declarations, Logic: logic}
+		}
+	}
+	return OptionCodeSnippets{}
 }
 
 func (h *BoolPtrHandler) GenerateEnvVarProcessingCode(opt *metadata.OptionMetadata, optionsVarName string, envValVarName string, ctxVarName string) OptionCodeSnippets {
-    logic := fmt.Sprintf(`
+	logic := fmt.Sprintf(`
 if v, err := strconv.ParseBool(%s); err == nil {
     valCopy := v
     %s.%s = &valCopy
@@ -501,7 +511,7 @@ if v, err := strconv.ParseBool(%s); err == nil {
     slog.WarnContext(%s, "Invalid boolean value for environment variable", "variable", %q, "value", %s, "error", err)
 }
 `, envValVarName, optionsVarName, opt.Name, ctxVarName, opt.EnvVar, envValVarName)
-    return OptionCodeSnippets{Logic: logic}
+	return OptionCodeSnippets{Logic: logic}
 }
 
 func (h *BoolPtrHandler) GenerateFlagRegistrationCode(opt *metadata.OptionMetadata, optionsVarName string, isFlagExplicitlySetMapName string, globalTempVarPrefix string) OptionCodeSnippets {
@@ -520,7 +530,9 @@ func (h *BoolPtrHandler) GenerateFlagRegistrationCode(opt *metadata.OptionMetada
 
 	defaultFlagCliValue := false
 	if opt.DefaultValue != nil {
-		if b, ok := opt.DefaultValue.(bool); ok { defaultFlagCliValue = b }
+		if b, ok := opt.DefaultValue.(bool); ok {
+			defaultFlagCliValue = b
+		}
 	}
 
 	flagRegLogic := fmt.Sprintf("if %s {\n", isNilInitiallyVar)
@@ -621,16 +633,16 @@ type TextUnmarshalerHandler struct{}
 
 func (h *TextUnmarshalerHandler) GenerateDefaultValueInitializationCode(opt *metadata.OptionMetadata, optionsVarName string) OptionCodeSnippets {
 	if opt.DefaultValue != nil {
-        valStr, ok := opt.DefaultValue.(string)
-        if ok {
-            logic := fmt.Sprintf(`
+		valStr, ok := opt.DefaultValue.(string)
+		if ok {
+			logic := fmt.Sprintf(`
 if err := %s.%s.UnmarshalText([]byte(%q)); err != nil {
 	slog.WarnContext(%s, "Failed to unmarshal default value for TextUnmarshaler option", "option", %q, "default", %q, "error", err)
 }
 `, optionsVarName, opt.Name, valStr, "context.Background()", opt.CliName, valStr)
-            return OptionCodeSnippets{Logic: logic}
-        }
-    }
+			return OptionCodeSnippets{Logic: logic}
+		}
+	}
 	return OptionCodeSnippets{}
 }
 
@@ -666,23 +678,22 @@ func (h *TextUnmarshalerHandler) GenerateRequiredCheckCode(opt *metadata.OptionM
 if !%s[%q] && !%s {
 	// Complex check needed here involving current value vs initialDefaultVarName
 }
-`, opt.Name, isFlagExplicitlySetMapName, opt.CliName, envWasSetVarName )
-	return OptionCodeSnippets{Logic: "// TODO: Refine TextUnmarshaler required check\n"}
+`, opt.Name, isFlagExplicitlySetMapName, opt.CliName, envWasSetVarName)
+	return OptionCodeSnippets{Logic: logic}
 }
 
 func (h *TextUnmarshalerHandler) GenerateEnumValidationCode(opt *metadata.OptionMetadata, optionsVarName string, ctxVarName string) OptionCodeSnippets {
 	return OptionCodeSnippets{}
 }
 
-
 // TextUnmarshalerPtrHandler handles code generation for *MyType where MyType implements encoding.TextUnmarshaler.
 type TextUnmarshalerPtrHandler struct{}
 
 func (h *TextUnmarshalerPtrHandler) GenerateDefaultValueInitializationCode(opt *metadata.OptionMetadata, optionsVarName string) OptionCodeSnippets {
-    if opt.DefaultValue != nil {
-        valStr, ok := opt.DefaultValue.(string)
-        if ok {
-            logic := fmt.Sprintf(`
+	if opt.DefaultValue != nil {
+		valStr, ok := opt.DefaultValue.(string)
+		if ok {
+			logic := fmt.Sprintf(`
 if %s.%s == nil {
 	slog.DebugContext(%s, "Default value for pointer TextUnmarshaler %s skipped as field is nil and type instantiation is complex here.")
 } else {
@@ -691,10 +702,10 @@ if %s.%s == nil {
 	}
 }
 `, optionsVarName, opt.Name, "context.Background()", opt.CliName, optionsVarName, opt.Name, valStr, "context.Background()", opt.CliName, valStr)
-            return OptionCodeSnippets{Logic: "// TODO: Address *TextUnmarshaler default init complexity\n" + logic}
-        }
-    }
-    return OptionCodeSnippets{}
+			return OptionCodeSnippets{Logic: "// TODO: Address *TextUnmarshaler default init complexity\n" + logic}
+		}
+	}
+	return OptionCodeSnippets{}
 }
 
 func (h *TextUnmarshalerPtrHandler) GenerateEnvVarProcessingCode(opt *metadata.OptionMetadata, optionsVarName string, envValVarName string, ctxVarName string) OptionCodeSnippets {
@@ -710,9 +721,9 @@ if %s.%s != nil {
 	slog.WarnContext(%s, "Cannot process env var for nil *TextUnmarshaler option without instantiation", "variable", %q, "value", %s)
 }
 `, optionsVarName, opt.Name, ctxVarName, opt.CliName, envValVarName, opt.EnvVar,
-optionsVarName, opt.Name, optionsVarName, opt.Name, envValVarName, ctxVarName, opt.EnvVar, envValVarName,
-ctxVarName, opt.EnvVar, envValVarName)
-    return OptionCodeSnippets{Logic: "// TODO: Address *TextUnmarshaler env var processing for nil fields\n" + logic}
+		optionsVarName, opt.Name, optionsVarName, opt.Name, envValVarName, ctxVarName, opt.EnvVar, envValVarName,
+		ctxVarName, opt.EnvVar, envValVarName)
+	return OptionCodeSnippets{Logic: "// TODO: Address *TextUnmarshaler env var processing for nil fields\n" + logic}
 }
 
 func (h *TextUnmarshalerPtrHandler) GenerateFlagRegistrationCode(opt *metadata.OptionMetadata, optionsVarName string, isFlagExplicitlySetMapName string, globalTempVarPrefix string) OptionCodeSnippets {
@@ -750,8 +761,8 @@ if %s[%q] {
 	}
 }
 `, isFlagExplicitlySetMapName, opt.CliName, optionsVarName, opt.Name, opt.CliName,
-optionsVarName, opt.Name, optionsVarName, opt.Name, tempFlagVar, opt.CliName, tempFlagVar,
-opt.CliName, tempFlagVar)
+		optionsVarName, opt.Name, optionsVarName, opt.Name, tempFlagVar, opt.CliName, tempFlagVar,
+		opt.CliName, tempFlagVar)
 	return OptionCodeSnippets{Logic: logic} // Simplified return
 }
 
@@ -762,7 +773,6 @@ func (h *TextUnmarshalerPtrHandler) GenerateRequiredCheckCode(opt *metadata.Opti
 func (h *TextUnmarshalerPtrHandler) GenerateEnumValidationCode(opt *metadata.OptionMetadata, optionsVarName string, ctxVarName string) OptionCodeSnippets {
 	return OptionCodeSnippets{}
 }
-
 
 // UnsupportedTypeHandler handles types for which specific code generation is not yet implemented.
 type UnsupportedTypeHandler struct{}

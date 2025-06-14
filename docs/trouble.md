@@ -16,3 +16,4 @@ During the development and testing of `internal/loader/locator.go` and its assoc
     *   `GoModLocator.Locate` was updated to use this helper when determining the package name for relative paths, module root packages, and dependency root packages. This fixed the failing tests and ensures more accurate package name resolution.
 
 **Status:** All issues were resolved.
+
