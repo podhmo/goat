@@ -121,60 +121,61 @@ func (p *Package) ensureParsed() error {
 		for goFile, fileAST := range p.parsedFiles {
 			canonicalFilePath := filepath.Join(p.Dir, goFile)
 			if !filepath.IsAbs(canonicalFilePath) {
-				// Ensure canonicalFilePath is absolute for SymbolInfo
 				absPath, err := filepath.Abs(canonicalFilePath)
 				if err != nil {
-					// Log or handle error if absolute path is critical for symbol info
-					// For now, proceed with potentially relative path if Abs fails,
-					// or consider this a part of p.parseErr.
-					// To be safe, let's assume ensureParsed might fail here.
-					p.parseErr = fmt.Errorf("failed to get absolute path for symbol %s in %s: %w", goFile, p.ImportPath, err)
+					p.parseErr = fmt.Errorf("failed to get absolute path for symbol processing in %s for file %s: %w", p.ImportPath, goFile, err)
 					return
 				}
 				canonicalFilePath = absPath
 			}
 
 			for _, decl := range fileAST.Decls {
-				var symbolName string
-				var node ast.Node
-				var symbolNames []string // For ValueSpec
-
 				switch d := decl.(type) {
 				case *ast.FuncDecl:
-					symbolName = d.Name.Name
-					node = d
-					symbolNames = append(symbolNames, symbolName)
-				case *ast.GenDecl:
-					for _, spec := range d.Specs {
-						switch s := spec.(type) {
-						case *ast.TypeSpec:
-							symbolName = s.Name.Name
-							node = s // Store TypeSpec node
-							symbolNames = append(symbolNames, symbolName)
-						case *ast.ValueSpec: // For variables and constants
-							node = s // Common node for all idents in this ValueSpec
-							for _, ident := range s.Names {
-								symbolNames = append(symbolNames, ident.Name)
-							}
-						}
-					}
-				}
-
-				for _, sn := range symbolNames {
-					if sn != "" && sn != "_" { // Ignore blank identifier
-						fullSymbolName := p.ImportPath + ":" + sn
-						symbolInfo := SymbolInfo{ // Assuming SymbolInfo is defined in the same package
+					symbolName := d.Name.Name
+					if symbolName != "" && symbolName != "_" {
+						fullSymbolName := p.ImportPath + ":" + symbolName
+						symbolInfo := SymbolInfo{
 							PackagePath: p.ImportPath,
-							SymbolName:  sn,
+							SymbolName:  symbolName,
 							FilePath:    canonicalFilePath,
-							Node:        node, // Use the specific decl/spec node
+							Node:        d, // Node is FuncDecl
 						}
 						p.loader.mu.Lock()
 						p.loader.symbolCache[fullSymbolName] = symbolInfo
 						p.loader.mu.Unlock()
 					}
+				case *ast.GenDecl:
+					for _, spec := range d.Specs { // Iterate over specs in GenDecl
+						currentSpecNode := spec // Capture the current spec node (TypeSpec or ValueSpec)
+						var namesInCurrentSpec []string
+
+						switch s := spec.(type) {
+						case *ast.TypeSpec:
+							namesInCurrentSpec = append(namesInCurrentSpec, s.Name.Name)
+						case *ast.ValueSpec: // For variables and constants
+							for _, ident := range s.Names {
+								namesInCurrentSpec = append(namesInCurrentSpec, ident.Name)
+							}
+						// case *ast.ImportSpec: // ImportSpecs are not typically cached as symbols this way
+						}
+
+						for _, sn := range namesInCurrentSpec {
+							if sn != "" && sn != "_" { // Ignore blank identifier
+								fullSymbolName := p.ImportPath + ":" + sn
+								symbolInfo := SymbolInfo{
+									PackagePath: p.ImportPath,
+									SymbolName:  sn,
+									FilePath:    canonicalFilePath,
+									Node:        currentSpecNode, // Associate with the correct TypeSpec or ValueSpec
+								}
+								p.loader.mu.Lock()
+								p.loader.symbolCache[fullSymbolName] = symbolInfo
+								p.loader.mu.Unlock()
+							}
+						}
+					}
 				}
-				symbolNames = symbolNames[:0] // Reset for next decl
 			}
 		}
 	})
