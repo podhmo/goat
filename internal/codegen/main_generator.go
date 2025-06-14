@@ -109,37 +109,38 @@ func main() {
 			for _, opt := range cmdMeta.Options {
 				switch opt.TypeName {
 				case "string":
-					defaultValueStr := `""`
+					// If opt.DefaultValue is nil, this assignment is skipped.
+					// options.FieldName will retain its zero value ("") from new(OptionsType).
 					if opt.DefaultValue != nil {
-						valStr := fmt.Sprintf("%v", opt.DefaultValue) // Get string representation
-						if valStr != "" {                             // Only quote if not empty after string conversion
+						valStr := fmt.Sprintf("%v", opt.DefaultValue)
+						defaultValueStr := `""` // Default for empty string after conversion
+						if valStr != "" {
 							defaultValueStr = fmt.Sprintf("%q", valStr)
 						}
-						// If opt.DefaultValue was nil or an empty string, defaultValueStr remains `""`
+						sb.WriteString(fmt.Sprintf("	options.%s = %s\n", opt.Name, defaultValueStr))
 					}
-					sb.WriteString(fmt.Sprintf("	options.%s = %s\n", opt.Name, defaultValueStr))
 				case "int":
-					defaultValueStr := "0"
 					if opt.DefaultValue != nil {
+						defaultValueStr := "0" // Default to 0
 						if dvInt, ok := opt.DefaultValue.(int); ok {
-							defaultValueStr = fmt.Sprintf("%d", dvInt) // Use %d for int
-						} else { // Not an int but not nil - this path should ideally not be taken if metadata is correct
+							defaultValueStr = fmt.Sprintf("%d", dvInt)
+						} else {
+							// Attempt to format non-int default value, though this path is less ideal
 							defaultValueStr = fmt.Sprintf("%v", opt.DefaultValue)
 						}
+						sb.WriteString(fmt.Sprintf("	options.%s = %s\n", opt.Name, defaultValueStr))
 					}
-					// If opt.DefaultValue was nil, defaultValueStr remains "0"
-					sb.WriteString(fmt.Sprintf("	options.%s = %s\n", opt.Name, defaultValueStr))
 				case "bool":
-					defaultValueStr := "false"
 					if opt.DefaultValue != nil {
+						defaultValueStr := "false" // Default to false
 						if dvBool, ok := opt.DefaultValue.(bool); ok {
-							defaultValueStr = fmt.Sprintf("%t", dvBool) // Use %t for bool
-						} else { // Not a bool but not nil
+							defaultValueStr = fmt.Sprintf("%t", dvBool)
+						} else {
+							// Attempt to format non-bool default value
 							defaultValueStr = fmt.Sprintf("%v", opt.DefaultValue)
 						}
+						sb.WriteString(fmt.Sprintf("	options.%s = %s\n", opt.Name, defaultValueStr))
 					}
-					// If opt.DefaultValue was nil, defaultValueStr remains "false"
-					sb.WriteString(fmt.Sprintf("	options.%s = %s\n", opt.Name, defaultValueStr))
 				case "*string":
 					sb.WriteString(fmt.Sprintf("	options.%s = new(string)\n", opt.Name))
 					if opt.DefaultValue != nil {
