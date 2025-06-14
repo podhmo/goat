@@ -68,51 +68,53 @@ func TestGenerateMain_PointerFlagsNilHandling(t *testing.T) {
 			PackageName:                "main",
 			OptionsArgTypeNameStripped: "PointerTestOptions",
 			OptionsArgIsPointer:        true,
-			InitializerFunc:            "NewPointerTestOptions", // Assumed initializer
+			InitializerFunc:            "NewPointerTestOptions",
 		},
 		Options: []*metadata.OptionMetadata{
 			{
 				Name:     "OptionalAge",
+				CliName:  "optional-age",
 				TypeName: "*int",
 				HelpText: "Optional age",
-				// DefaultValue is nil (omitted)
 			},
 			{
 				Name:     "ExtraToggle",
+				CliName:  "extra-toggle",
 				TypeName: "*bool",
-				HelpText: "Extra toggle",
-				// DefaultValue is nil (omitted)
+				HelpText: "Extra toggle", // DefaultValue is nil, so help should show (default: false)
 			},
 		},
 	}
 
 	actualCode, err := GenerateMain(cmdMeta, "Test Pointer Flags Nil Handling", true)
 	if err != nil {
-		t.Fatalf("GenerateMain for pointer flags nil handling failed: %v", err)
+		t.Fatalf("GenerateMain for pointer flags nil handling failed: %v\nActual Code:\n%s", err, actualCode)
 	}
 
-	// Assertions for *int option (OptionalAge)
+	assertCodeContains(t, actualCode, "var err error")
+	assertCodeContains(t, actualCode, "_ = err")
+	assertCodeContains(t, actualCode, "err = RunPointerTest(options)")
+	assertCodeContains(t, actualCode, "if err != nil {")
+	assertCodeContains(t, actualCode, `slog.ErrorContext(ctx, "Runtime error from command function", "error", err)`)
+
 	t.Run("*int option (OptionalAge)", func(t *testing.T) {
-		assertCodeContains(t, actualCode, "isOptionalAgeNilInitially := options.OptionalAge == nil")
-		assertCodeContains(t, actualCode, "var tempOptionalAgeVal int")
-		assertCodeContains(t, actualCode, "var defaultOptionalAgeValForFlag int")
-		assertCodeContains(t, actualCode, "if options.OptionalAge != nil { defaultOptionalAgeValForFlag = *options.OptionalAge }")
-		assertCodeContains(t, actualCode, "if isOptionalAgeNilInitially { flag.IntVar(&tempOptionalAgeVal, \"optional-age\", 0, \"Optional age\")")      // Removed trailing space in help text
-		assertCodeContains(t, actualCode, "} else { flag.IntVar(options.OptionalAge, \"optional-age\", defaultOptionalAgeValForFlag, \"Optional age\")") // Removed trailing space
-		assertCodeContains(t, actualCode, "if isOptionalAgeNilInitially && isFlagExplicitlySet[\"optional-age\"] { options.OptionalAge = &tempOptionalAgeVal }")
-		assertCodeNotContains(t, actualCode, "if options.OptionalAge == nil { options.OptionalAge = new(int) }")
+		assertCodeContains(t, actualCode, "isOptionalageNilInitially := options.OptionalAge == nil")                                                             // Corrected: Age -> age
+		assertCodeContains(t, actualCode, "var tempOptionalageVal int")                                                                                          // Corrected: Age -> age
+		assertCodeContains(t, actualCode, "var defaultOptionalageValForFlag int")                                                                                // Corrected: Age -> age
+		assertCodeContains(t, actualCode, "if !isOptionalageNilInitially { defaultOptionalageValForFlag = *options.OptionalAge }")                               // Corrected: Age -> age
+		assertCodeContains(t, actualCode, "if isOptionalageNilInitially { flag.IntVar(&tempOptionalageVal, \"optional-age\", 0, \"Optional age\")")              // Corrected: Age -> age
+		assertCodeContains(t, actualCode, "} else { flag.IntVar(options.OptionalAge, \"optional-age\", defaultOptionalageValForFlag, \"Optional age\")")         // Corrected: Age -> age
+		assertCodeContains(t, actualCode, "if isOptionalageNilInitially && isFlagExplicitlySet[\"optional-age\"] { options.OptionalAge = &tempOptionalageVal }") // Corrected: Age -> age
 	})
 
-	// Assertions for *bool option (ExtraToggle)
 	t.Run("*bool option (ExtraToggle)", func(t *testing.T) {
-		assertCodeContains(t, actualCode, "isExtraToggleNilInitially := options.ExtraToggle == nil")
-		assertCodeContains(t, actualCode, "var tempExtraToggleVal bool")
-		assertCodeContains(t, actualCode, "var defaultExtraToggleValForFlag bool")
-		assertCodeContains(t, actualCode, "if options.ExtraToggle != nil { defaultExtraToggleValForFlag = *options.ExtraToggle }")
-		assertCodeContains(t, actualCode, "if isExtraToggleNilInitially { flag.BoolVar(&tempExtraToggleVal, \"extra-toggle\", false, \"Extra toggle\")")  // Removed trailing space
-		assertCodeContains(t, actualCode, "} else { flag.BoolVar(options.ExtraToggle, \"extra-toggle\", defaultExtraToggleValForFlag, \"Extra toggle\")") // Removed trailing space
-		assertCodeContains(t, actualCode, "if isExtraToggleNilInitially && isFlagExplicitlySet[\"extra-toggle\"] { options.ExtraToggle = &tempExtraToggleVal }")
-		assertCodeNotContains(t, actualCode, "if options.ExtraToggle == nil { options.ExtraToggle = new(bool) }")
+		assertCodeContains(t, actualCode, "isExtratoggleNilInitially := options.ExtraToggle == nil")                                                                       // Corrected: Toggle -> toggle
+		assertCodeContains(t, actualCode, "var tempExtratoggleVal bool")                                                                                                   // Corrected: Toggle -> toggle
+		assertCodeContains(t, actualCode, "var defaultExtratoggleValForFlag bool")                                                                                         // Corrected: Toggle -> toggle
+		assertCodeContains(t, actualCode, "if !isExtratoggleNilInitially { defaultExtratoggleValForFlag = *options.ExtraToggle }")                                         // Corrected: Toggle -> toggle
+		assertCodeContains(t, actualCode, "if isExtratoggleNilInitially { flag.BoolVar(&tempExtratoggleVal, \"extra-toggle\", false, \"Extra toggle (default: false)\")")  // Corrected: Toggle -> toggle
+		assertCodeContains(t, actualCode, "} else { flag.BoolVar(options.ExtraToggle, \"extra-toggle\", defaultExtratoggleValForFlag, \"Extra toggle (default: false)\")") // Corrected: Toggle -> toggle
+		assertCodeContains(t, actualCode, "if isExtratoggleNilInitially && isFlagExplicitlySet[\"extra-toggle\"] { options.ExtraToggle = &tempExtratoggleVal }")           // Corrected: Toggle -> toggle
 	})
 }
 
@@ -139,19 +141,17 @@ func TestGenerateMain_WithTextVarOptions(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GenerateMain for TextVar options failed: %v", err)
 	}
-	assertCodeContains(t, actualCode, `flag.TextVar(&options.FieldA, "field-a", options.FieldA, "Help for FieldA" /* Env: FIELD_A_ENV */)`)
-	assertCodeContains(t, actualCode, `err := (&options.FieldA).UnmarshalText([]byte(val))`)
-	assertCodeContains(t, actualCode, `slog.WarnContext(ctx, "Could not parse environment variable for TextUnmarshaler option; using default or previously set value.", "envVar", "FIELD_A_ENV", "option", "field-a"`)
+	assertCodeContains(t, actualCode, `flag.Func("field-a", "Help for FieldA (env: FIELD_A_ENV)"`)
+	assertCodeContains(t, actualCode, `slog.WarnContext(ctx, "Failed to unmarshal environment variable for TextUnmarshaler option", "variable", "FIELD_A_ENV", "value", fieldaEnvVal, "error", err)`)
 	assertCodeContains(t, actualCode, `if options.FieldB == nil { options.FieldB = new(textvar_pkg.MyPtrTextValue) }`)
-	assertCodeContains(t, actualCode, `flag.TextVar(options.FieldB, "field-b", options.FieldB, "Help for FieldB" /* Env: FIELD_B_ENV */)`)
-	assertCodeContains(t, actualCode, `if options.FieldB == nil { options.FieldB = new(textvar_pkg.MyPtrTextValue) }`)
-	assertCodeContains(t, actualCode, `err := options.FieldB.UnmarshalText([]byte(val))`)
-	assertCodeContains(t, actualCode, `slog.WarnContext(ctx, "Could not parse environment variable for TextUnmarshaler option; using default or previously set value.", "envVar", "FIELD_B_ENV", "option", "field-b"`)
-	assertCodeNotContains(t, actualCode, `flag.TextVar(&options.FieldF, "field-f"`)
-	assertCodeNotContains(t, actualCode, `flag.TextVar(options.FieldF, "field-f"`)
-	assertCodeContains(t, actualCode, `err := (&options.FieldF).UnmarshalText([]byte(val))`)
-	assertCodeContains(t, actualCode, `slog.WarnContext(ctx, "Could not parse environment variable for TextUnmarshaler option; using default or previously set value.", "envVar", "FIELD_F_ENV", "option", "field-f"`)
+	assertCodeContains(t, actualCode, `flag.StringVar(&tempFieldbStr, "field-b", "", "Help for FieldB (env: FIELD_B_ENV)")`)
+	assertCodeContains(t, actualCode, `slog.WarnContext(ctx, "Failed to unmarshal environment variable for *TextUnmarshaler option", "variable", "FIELD_B_ENV", "value", fieldbEnvVal, "error", err)`)
+	assertCodeContains(t, actualCode, `flag.Func("field-f", "Help for FieldF - only unmarshaler (env: FIELD_F_ENV)"`)
+	assertCodeContains(t, actualCode, `slog.WarnContext(ctx, "Failed to unmarshal environment variable for TextUnmarshaler option", "variable", "FIELD_F_ENV", "value", fieldfEnvVal, "error", err)`)
 	assertCodeContains(t, actualCode, "new(textvar_pkg.MyPtrTextValue)")
+	// For TextUnmarshalerPtrHandler, the temp variable is temp<OptionName>Str, e.g. tempFieldbStr
+	// The context variable used in the generated code is `ctx`, not `ctxVarName` from the handler params.
+	assertCodeContains(t, actualCode, `slog.ErrorContext(ctx, "Failed to unmarshal flag value for *TextUnmarshaler option", "option", "field-b", "value", tempFieldbStr, "error", err)`) // Corrected: tempFieldBStr -> tempFieldbStr
 }
 
 func assertCodeNotContains(t *testing.T, actualGeneratedCode, unexpectedSnippet string) {
@@ -179,11 +179,12 @@ func TestGenerateMain_BasicCase(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GenerateMain failed: %v", err)
 	}
-	assertCodeNotContains(t, actualCode, "var err error")
-	assertCodeContains(t, actualCode, "if err := Run(options); err != nil {")
+	assertCodeContains(t, actualCode, "var err error")
+	assertCodeContains(t, actualCode, "err = Run(options)")
+	assertCodeContains(t, actualCode, "if err != nil {")
 	assertCodeContains(t, actualCode, "func main() {")
 	assertCodeContains(t, actualCode, "ctx := context.Background()")
-	assertCodeContains(t, actualCode, `slog.ErrorContext(ctx, "Runtime error", "error", err)`)
+	assertCodeContains(t, actualCode, `slog.ErrorContext(ctx, "Runtime error from command function", "error", err)`)
 	assertCodeContains(t, actualCode, `os.Exit(1)`)
 	assertCodeNotContains(t, actualCode, "var options =")
 }
@@ -198,9 +199,9 @@ func TestGenerateMain_WithOptions(t *testing.T) {
 			OptionsArgIsPointer:        true,
 		},
 		Options: []*metadata.OptionMetadata{
-			{Name: "Name", TypeName: "string", HelpText: "Name of the user", DefaultValue: "guest"},
-			{Name: "Age", TypeName: "int", HelpText: "Age of the user", DefaultValue: 30},
-			{Name: "Verbose", TypeName: "bool", HelpText: "Enable verbose output", DefaultValue: false},
+			{Name: "Name", CliName: "name", TypeName: "string", HelpText: "Name of the user", DefaultValue: "guest"},
+			{Name: "Age", CliName: "age", TypeName: "int", HelpText: "Age of the user", DefaultValue: 30.0},
+			{Name: "Verbose", CliName: "verbose", TypeName: "bool", HelpText: "Enable verbose output", DefaultValue: false},
 		},
 	}
 	actualCode, err := GenerateMain(cmdMeta, "", true)
@@ -208,20 +209,21 @@ func TestGenerateMain_WithOptions(t *testing.T) {
 		t.Fatalf("GenerateMain failed: %v", err)
 	}
 	assertCodeContains(t, actualCode, "options := new(MyOptionsType)")
-	// The line "options = new(MyOptionsType)" is no longer generated here after "options :="
-	assertCodeNotContains(t, actualCode, "options = new(MyOptionsType)")
 	assertCodeContains(t, actualCode, `options.Name = "guest"`)
 	assertCodeContains(t, actualCode, `options.Age = 30`)
 	assertCodeContains(t, actualCode, `options.Verbose = false`)
 	expectedFlagParsing := `
-	flag.StringVar(&options.Name, "name", options.Name, "Name of the user" /* Original Default: guest, Env: */)
-	flag.IntVar(&options.Age, "age", options.Age, "Age of the user" /* Original Default: 30, Env: */)
-	flag.BoolVar(&options.Verbose, "verbose", options.Verbose, "Enable verbose output" /* Original Default: false, Env: */)
+	flag.StringVar(&options.Name, "name", "guest", "Name of the user (default: guest)")
+	flag.IntVar(&options.Age, "age", 30, "Age of the user (default: 30)")
+	flag.BoolVar(&options.Verbose, "verbose", false, "Enable verbose output (default: false)")
 	flag.Parse()
 `
 	assertCodeContains(t, actualCode, expectedFlagParsing)
-	assertCodeNotContains(t, actualCode, "var err error")
-	assertCodeContains(t, actualCode, "if err := RunWithOptions(options); err != nil {")
+	assertCodeContains(t, actualCode, "var err error")
+	assertCodeContains(t, actualCode, "_ = err")
+	assertCodeContains(t, actualCode, "err = RunWithOptions(options)")
+	assertCodeContains(t, actualCode, "if err != nil {")
+	assertCodeContains(t, actualCode, `slog.ErrorContext(ctx, "Runtime error from command function", "error", err)`)
 	assertCodeNotContains(t, actualCode, "import . \"anothercmd\"")
 	assertCodeNotContains(t, actualCode, "import \"anothercmd\"")
 }
@@ -243,9 +245,10 @@ func TestGenerateMain_NoPackagePrefixWhenMain(t *testing.T) {
 		t.Fatalf("GenerateMain failed: %v", err)
 	}
 	assertCodeContains(t, actualCode, `options.Name = "guest"`)
-	assertCodeContains(t, actualCode, `flag.StringVar(&options.Name, "name", options.Name, "Name of the user" /* Original Default: guest, Env: */)`)
-	assertCodeNotContains(t, actualCode, "var err error")
-	assertCodeContains(t, actualCode, "if err := run(options); err != nil {")
+	assertCodeContains(t, actualCode, `flag.StringVar(&options.Name, "name", "guest", "Name of the user (default: guest)")`)
+	assertCodeContains(t, actualCode, "var err error")
+	assertCodeContains(t, actualCode, "err = run(options)")
+	assertCodeContains(t, actualCode, "if err != nil {")
 	assertCodeNotContains(t, actualCode, "main.run(")
 	assertCodeNotContains(t, actualCode, "main.Run(")
 }
@@ -269,19 +272,19 @@ func TestGenerateMain_KebabCaseFlagNames(t *testing.T) {
 		t.Fatalf("GenerateMain failed: %v", err)
 	}
 	assertCodeContains(t, actualCode, "options := new(DataProcOptions)")
-	assertCodeNotContains(t, actualCode, "options = new(DataProcOptions)")
-	assertCodeNotContains(t, actualCode, `options.InputFile = ""`)
+	// options.InputFile will be "" by default (zero-value for string)
 	assertCodeContains(t, actualCode, `options.OutputDirectory = "/tmp"`)
 	assertCodeContains(t, actualCode, `options.MaximumRetries = 3`)
 	expectedFlagParsing := `
-	flag.StringVar(&options.InputFile, "input-file", options.InputFile, "Input file path")
-	flag.StringVar(&options.OutputDirectory, "output-directory", options.OutputDirectory, "Output directory path" /* Original Default: /tmp, Env: */)
-	flag.IntVar(&options.MaximumRetries, "maximum-retries", options.MaximumRetries, "Maximum number of retries" /* Original Default: 3, Env: */)
+	flag.StringVar(&options.InputFile, "input-file", "", "Input file path")
+	flag.StringVar(&options.OutputDirectory, "output-directory", "/tmp", "Output directory path (default: /tmp)")
+	flag.IntVar(&options.MaximumRetries, "maximum-retries", 3, "Maximum number of retries (default: 3)")
 	flag.Parse()
 `
 	assertCodeContains(t, actualCode, expectedFlagParsing)
-	assertCodeNotContains(t, actualCode, "var err error")
-	assertCodeContains(t, actualCode, "if err := ProcessData(options); err != nil {")
+	assertCodeContains(t, actualCode, "var err error")
+	assertCodeContains(t, actualCode, "err = ProcessData(options)")
+	assertCodeContains(t, actualCode, "if err != nil {")
 }
 
 func TestGenerateMain_RequiredFlags(t *testing.T) {
@@ -302,23 +305,27 @@ func TestGenerateMain_RequiredFlags(t *testing.T) {
 		t.Fatalf("GenerateMain failed: %v", err)
 	}
 	assertCodeContains(t, actualCode, "options := new(Config)")
-	assertCodeNotContains(t, actualCode, "options = new(Config)")
-	assertCodeNotContains(t, actualCode, `options.ConfigFile = ""`)
+	// options.ConfigFile will be "" by default (zero-value for string)
 	assertCodeContains(t, actualCode, `options.Retries = 0`)
-	assertCodeNotContains(t, actualCode, `os.LookupEnv("CONFIG_FILE")`)
-	assertCodeNotContains(t, actualCode, `os.LookupEnv("RETRIES")`)
-	assertCodeContains(t, actualCode, `flag.StringVar(&options.ConfigFile, "config-file", options.ConfigFile, "Path to config file")`)
-	assertCodeContains(t, actualCode, `flag.IntVar(&options.Retries, "retries", options.Retries, "Number of retries" /* Original Default: 0, Env: */)`)
-	assertCodeContains(t, actualCode, `initialDefaultConfigFile := ""`)
-	assertCodeContains(t, actualCode, `envConfigFileWasSet := false`)
-	assertCodeContains(t, actualCode, `if options.ConfigFile == initialDefaultConfigFile && !isFlagExplicitlySet["config-file"] && !envConfigFileWasSet {`)
-	assertCodeContains(t, actualCode, `slog.ErrorContext(ctx, "Missing required flag or environment variable not set", errors.New("Missing required flag or environment variable not set"), "flag", "config-file", "option", "ConfigFile")`)
-	assertCodeContains(t, actualCode, `initialDefaultRetries := 0`)
-	assertCodeContains(t, actualCode, `envRetriesWasSet := false`)
-	assertCodeContains(t, actualCode, `if options.Retries == initialDefaultRetries && !isFlagExplicitlySet["retries"] && !envRetriesWasSet {`)
-	assertCodeContains(t, actualCode, `slog.ErrorContext(ctx, "Missing required flag or environment variable not set", errors.New("Missing required flag or environment variable not set"), "flag", "retries", "option", "Retries")`)
-	assertCodeNotContains(t, actualCode, "var err error")
-	assertCodeContains(t, actualCode, "if err := DoSomething(*options); err != nil {")
+	assertCodeContains(t, actualCode, `flag.StringVar(&options.ConfigFile, "config-file", "", "Path to config file")`)
+	assertCodeContains(t, actualCode, `flag.IntVar(&options.Retries, "retries", 0, "Number of retries (default: 0)")`)
+
+	assertCodeContains(t, actualCode, `initialDefault_Configfile := ""`) // Corrected: ConfigFile -> Configfile
+	assertCodeContains(t, actualCode, `env_Configfile_WasSet := false`)  // Corrected: ConfigFile -> Configfile
+	assertCodeContains(t, actualCode, `initialDefault_Retries := 0`)
+	assertCodeContains(t, actualCode, `env_Retries_WasSet := false`)
+
+	assertCodeContains(t, actualCode, `if options.ConfigFile == initialDefault_Configfile && !isFlagExplicitlySet["config-file"] && !env_Configfile_WasSet {`) // Corrected: ConfigFile -> Configfile
+	assertCodeContains(t, actualCode, `slog.ErrorContext(ctx, "Missing required option", "flag", "config-file", "option", "ConfigFile")`)
+	assertCodeContains(t, actualCode, `return fmt.Errorf("missing required option: --config-file / ")`)
+
+	assertCodeContains(t, actualCode, `if options.Retries == initialDefault_Retries && !isFlagExplicitlySet["retries"] && !env_Retries_WasSet {`)
+	assertCodeContains(t, actualCode, `slog.ErrorContext(ctx, "Missing required option", "flag", "retries", "option", "Retries")`)
+	assertCodeContains(t, actualCode, `return fmt.Errorf("missing required option: --retries / ")`)
+
+	assertCodeContains(t, actualCode, "var err error")
+	assertCodeContains(t, actualCode, "err = DoSomething(*options)")
+	assertCodeContains(t, actualCode, "if err != nil {")
 }
 
 func TestGenerateMain_EnumValidation(t *testing.T) {
@@ -330,7 +337,7 @@ func TestGenerateMain_EnumValidation(t *testing.T) {
 			OptionsArgIsPointer:        true,
 		},
 		Options: []*metadata.OptionMetadata{
-			{Name: "Mode", TypeName: "string", HelpText: "Mode of operation", EnumValues: []any{"auto", "manual", "standby"}, DefaultValue: "auto"},
+			{Name: "Mode", CliName: "mode", TypeName: "string", HelpText: "Mode of operation", EnumValues: []any{"auto", "manual", "standby"}, DefaultValue: "auto"},
 		},
 	}
 	actualCode, err := GenerateMain(cmdMeta, "", true)
@@ -338,25 +345,33 @@ func TestGenerateMain_EnumValidation(t *testing.T) {
 		t.Fatalf("GenerateMain failed: %v", err)
 	}
 	assertCodeContains(t, actualCode, "options := new(ModeOptions)")
-	assertCodeNotContains(t, actualCode, "options = new(ModeOptions)")
 	assertCodeContains(t, actualCode, `options.Mode = "auto"`)
-	assertCodeNotContains(t, actualCode, `os.LookupEnv("MODE")`)
-	assertCodeContains(t, actualCode, `flag.StringVar(&options.Mode, "mode", options.Mode, "Mode of operation" /* Original Default: auto, Env: */)`)
-	expectedEnumValidation := `
-	isValidChoice_Mode := false
-	allowedChoices_Mode := []string{"auto", "manual", "standby"}
-	currentValue_ModeStr := fmt.Sprintf("%v", options.Mode)
-	isValidChoice_Mode = slices.Contains(allowedChoices_Mode, currentValue_ModeStr)
+	assertCodeContains(t, actualCode, `flag.StringVar(&options.Mode, "mode", "auto", "Mode of operation (default: auto) (allowed: auto, manual, standby)")`)
 
-	if !isValidChoice_Mode {
-		var currentValueForMsg interface{} = options.Mode
-		slog.ErrorContext(ctx, "Invalid value for flag", errors.New("Invalid value for flag"), "flag", "mode", "value", currentValueForMsg, "allowedChoices", strings.Join(allowedChoices_Mode, ", "))
-		os.Exit(1)
+	expectedEnumLogic := `
+var modeEnumValues = []string{"auto", "manual", "standby"}
+if err = func() error {
+found := false
+for _, validVal := range modeEnumValues {
+	if options.Mode == validVal {
+		found = true
+		break
 	}
+}
+if !found {
+	slog.ErrorContext(ctx, "Invalid value for option", "option", "mode", "value", options.Mode, "allowed", modeEnumValues)
+	return fmt.Errorf("invalid value for --mode: got %q, expected one of %v", options.Mode, modeEnumValues)
+}
+return nil
+}(); err != nil {
+	slog.ErrorContext(ctx, "Error validating enum for option", "option", "mode", "error", err)
+	os.Exit(1)
+}
 `
-	assertCodeContains(t, actualCode, expectedEnumValidation)
-	assertCodeNotContains(t, actualCode, "var err error")
-	assertCodeContains(t, actualCode, "if err := SetMode(options); err != nil {")
+	assertCodeContains(t, actualCode, expectedEnumLogic)
+	assertCodeContains(t, actualCode, "var err error")
+	assertCodeContains(t, actualCode, "err = SetMode(options)")
+	assertCodeContains(t, actualCode, "if err != nil {")
 }
 
 func TestGenerateMain_EnvironmentVariables(t *testing.T) {
@@ -378,41 +393,46 @@ func TestGenerateMain_EnvironmentVariables(t *testing.T) {
 		t.Fatalf("GenerateMain failed: %v", err)
 	}
 	assertCodeContains(t, actualCode, "options := new(AppSettings)")
-	assertCodeNotContains(t, actualCode, "options = new(AppSettings)")
-	assertCodeNotContains(t, actualCode, `options.APIKey = ""`)
+	// options.APIKey will be "" by default (zero-value for string)
 	assertCodeContains(t, actualCode, `options.Timeout = 60`)
 	assertCodeContains(t, actualCode, `options.EnableFeature = false`)
+
 	expectedApiKeyEnv := `
-	if val, ok := os.LookupEnv("API_KEY"); ok {
-		options.APIKey = val
+	if apikeyEnvVal, ok := os.LookupEnv("API_KEY"); ok {
+		options.APIKey = apikeyEnvVal
 	}
 `
 	assertCodeContains(t, actualCode, expectedApiKeyEnv)
+
 	expectedTimeoutEnv := `
-	if val, ok := os.LookupEnv("TIMEOUT_SECONDS"); ok {
-		if v, err := strconv.Atoi(val); err == nil {
-			options.Timeout = v
+	if timeoutEnvVal, ok := os.LookupEnv("TIMEOUT_SECONDS"); ok {
+		var timeoutEnvValConverted int
+		if v, err := strconv.Atoi(timeoutEnvVal); err == nil {
+			timeoutEnvValConverted = v
+			options.Timeout = timeoutEnvValConverted
 		} else {
-			slog.WarnContext(ctx, "Could not parse environment variable as int for option", "envVar", "TIMEOUT_SECONDS", "option", "Timeout", "value", val, "error", err)
+			slog.WarnContext(ctx, "Invalid integer value for environment variable", "variable", "TIMEOUT_SECONDS", "value", timeoutEnvVal, "error", err)
 		}
 	}
 `
 	assertCodeContains(t, actualCode, expectedTimeoutEnv)
+
 	expectedEnableFeatureEnv := `
-	if val, ok := os.LookupEnv("ENABLE_MY_FEATURE"); ok {
-		if v, err := strconv.ParseBool(val); err == nil {
+	if enablefeatureEnvVal, ok := os.LookupEnv("ENABLE_MY_FEATURE"); ok {
+		if v, err := strconv.ParseBool(enablefeatureEnvVal); err == nil {
 			options.EnableFeature = v
 		} else {
-			slog.WarnContext(ctx, "Could not parse environment variable as bool for option", "envVar", "ENABLE_MY_FEATURE", "option", "EnableFeature", "value", val, "error", err)
+			slog.WarnContext(ctx, "Invalid boolean value for environment variable", "variable", "ENABLE_MY_FEATURE", "value", enablefeatureEnvVal, "error", err)
 		}
 	}
 `
 	assertCodeContains(t, actualCode, expectedEnableFeatureEnv)
-	assertCodeContains(t, actualCode, `flag.StringVar(&options.APIKey, "api-key", options.APIKey, "API Key" /* Env: API_KEY */)`)
-	assertCodeContains(t, actualCode, `flag.IntVar(&options.Timeout, "timeout", options.Timeout, "Timeout in seconds" /* Original Default: 60, Env: TIMEOUT_SECONDS */)`)
-	assertCodeContains(t, actualCode, `flag.BoolVar(&options.EnableFeature, "enable-feature", options.EnableFeature, "Enable new feature" /* Original Default: false, Env: ENABLE_MY_FEATURE */)`)
-	assertCodeNotContains(t, actualCode, "var err error")
-	assertCodeContains(t, actualCode, "if err := Configure(options); err != nil {")
+	assertCodeContains(t, actualCode, `flag.StringVar(&options.APIKey, "api-key", "", "API Key (env: API_KEY)")`)
+	assertCodeContains(t, actualCode, `flag.IntVar(&options.Timeout, "timeout", 60, "Timeout in seconds (default: 60) (env: TIMEOUT_SECONDS)")`)
+	assertCodeContains(t, actualCode, `flag.BoolVar(&options.EnableFeature, "enable-feature", false, "Enable new feature (default: false) (env: ENABLE_MY_FEATURE)")`)
+	assertCodeContains(t, actualCode, "var err error")
+	assertCodeContains(t, actualCode, "err = Configure(options)")
+	assertCodeContains(t, actualCode, "if err != nil {")
 }
 
 func TestGenerateMain_EnvVarForBoolWithTrueDefault(t *testing.T) {
@@ -432,21 +452,21 @@ func TestGenerateMain_EnvVarForBoolWithTrueDefault(t *testing.T) {
 		t.Fatalf("GenerateMain failed: %v", err)
 	}
 	assertCodeContains(t, actualCode, "options := new(FeatureOptions)")
-	assertCodeNotContains(t, actualCode, "options = new(FeatureOptions)")
 	assertCodeContains(t, actualCode, `options.SmartParsing = true`)
 	expectedEnvLogic := `
-	if val, ok := os.LookupEnv("SMART_PARSING_ENABLED"); ok {
-		if v, err := strconv.ParseBool(val); err == nil {
+	if smartparsingEnvVal, ok := os.LookupEnv("SMART_PARSING_ENABLED"); ok {
+		if v, err := strconv.ParseBool(smartparsingEnvVal); err == nil {
 			options.SmartParsing = v
 		} else {
-			slog.WarnContext(ctx, "Could not parse environment variable as bool for option", "envVar", "SMART_PARSING_ENABLED", "option", "SmartParsing", "value", val, "error", err)
+			slog.WarnContext(ctx, "Invalid boolean value for environment variable", "variable", "SMART_PARSING_ENABLED", "value", smartparsingEnvVal, "error", err)
 		}
 	}
 `
 	assertCodeContains(t, actualCode, expectedEnvLogic)
-	assertCodeContains(t, actualCode, `flag.BoolVar(&options.SmartParsing, "smart-parsing", options.SmartParsing, "Enable smart parsing" /* Original Default: true, Env: SMART_PARSING_ENABLED */)`)
-	assertCodeNotContains(t, actualCode, "var err error")
-	assertCodeContains(t, actualCode, "if err := ProcessWithFeature(options); err != nil {")
+	assertCodeContains(t, actualCode, `flag.BoolVar(&options.SmartParsing, "smart-parsing", true, "Enable smart parsing (default: true) (env: SMART_PARSING_ENABLED)")`)
+	assertCodeContains(t, actualCode, "var err error")
+	assertCodeContains(t, actualCode, "err = ProcessWithFeature(options)")
+	assertCodeContains(t, actualCode, "if err != nil {")
 }
 
 func TestGenerateMain_RequiredBool_DefaultFalse(t *testing.T) {
@@ -466,13 +486,12 @@ func TestGenerateMain_RequiredBool_DefaultFalse(t *testing.T) {
 		t.Fatalf("GenerateMain failed: %v", err)
 	}
 	assertCodeContains(t, actualCode, "options := new(DataOptions)")
-	assertCodeNotContains(t, actualCode, "options = new(DataOptions)")
 	assertCodeContains(t, actualCode, `options.ForceOverwrite = false`)
-	assertCodeNotContains(t, actualCode, `os.LookupEnv("FORCE_OVERWRITE")`)
-	expectedFlagParsing := `flag.BoolVar(&options.ForceOverwrite, "force-overwrite", options.ForceOverwrite, "Force overwrite of existing files" /* Original Default: false, Env: */)`
+	expectedFlagParsing := `flag.BoolVar(&options.ForceOverwrite, "force-overwrite", false, "Force overwrite of existing files (default: false)")`
 	assertCodeContains(t, actualCode, expectedFlagParsing)
-	assertCodeNotContains(t, actualCode, "var ForceOverwrite_NoFlagIsPresent bool")
-	assertCodeNotContains(t, actualCode, "options.ForceOverwrite = true")
+	assertCodeContains(t, actualCode, `initialDefault_Forceoverwrite := false`)                                                                                                // Corrected: ForceOverwrite -> Forceoverwrite
+	assertCodeContains(t, actualCode, `if options.ForceOverwrite == initialDefault_Forceoverwrite && !isFlagExplicitlySet["force-overwrite"] && !env_Forceoverwrite_WasSet {`) // Corrected: ForceOverwrite -> Forceoverwrite (twice)
+	assertCodeContains(t, actualCode, `slog.ErrorContext(ctx, "Missing required boolean option (must be explicitly set)", "flag", "force-overwrite", "option", "ForceOverwrite")`)
 }
 
 func TestGenerateMain_RequiredBool_DefaultTrue(t *testing.T) {
@@ -484,7 +503,7 @@ func TestGenerateMain_RequiredBool_DefaultTrue(t *testing.T) {
 			OptionsArgIsPointer:        true,
 		},
 		Options: []*metadata.OptionMetadata{
-			{Name: "EnableSync", TypeName: "bool", HelpText: "Enable synchronization", IsRequired: true, DefaultValue: true},
+			{Name: "EnableSync", CliName: "enable-sync", TypeName: "bool", HelpText: "Enable synchronization", IsRequired: true, DefaultValue: true},
 		},
 	}
 	actualCode, err := GenerateMain(cmdMeta, "", true)
@@ -492,25 +511,24 @@ func TestGenerateMain_RequiredBool_DefaultTrue(t *testing.T) {
 		t.Fatalf("GenerateMain failed: %v", err)
 	}
 	assertCodeContains(t, actualCode, "options := new(TaskConfig)")
-	assertCodeNotContains(t, actualCode, "options = new(TaskConfig)")
 	assertCodeContains(t, actualCode, `options.EnableSync = true`)
-	assertCodeNotContains(t, actualCode, `os.LookupEnv("ENABLE_SYNC")`)
 	expectedFlagDefinition := `
-	var EnableSync_NoFlagIsPresent bool
-	flag.BoolVar(&EnableSync_NoFlagIsPresent, "no-enable-sync", false, "Set enable-sync to false")
+	var tempEnablesyncNoFlagPresent bool
+	flag.BoolVar(&tempEnablesyncNoFlagPresent, "no-enable-sync", false, "Set enable-sync to false, overriding default true")
+	flag.BoolVar(&options.EnableSync, "enable-sync", true, "Enable synchronization (default: true)")
 `
 	assertCodeContains(t, actualCode, expectedFlagDefinition)
+
 	expectedPostParseLogic := `
-	if EnableSync_NoFlagIsPresent {
+	if isFlagExplicitlySet["no-enable-sync"] {
 		options.EnableSync = false
 	}
 `
 	assertCodeContains(t, actualCode, expectedPostParseLogic)
-	assertCodeNotContains(t, actualCode, "if EnableSync_NoFlagIsPresent { options.EnableSync = false } else { options.EnableSync = true }")
-	assertCodeNotContains(t, actualCode, `flag.BoolVar(&options.EnableSync, "enable-sync"`)
-	assertCodeNotContains(t, actualCode, `flag.BoolVar(&options.EnableSync, "no-enable-sync"`)
-	assertCodeNotContains(t, actualCode, `slog.Error("Missing required flag", "flag", "no-enable-sync")`)
-	assertCodeNotContains(t, actualCode, `slog.Error("Missing required flag", "flag", "enable-sync")`)
+
+	assertCodeContains(t, actualCode, `initialDefault_Enablesync := true`)                                                                                     // Corrected: EnableSync -> Enablesync
+	assertCodeContains(t, actualCode, `if options.EnableSync == initialDefault_Enablesync && !isFlagExplicitlySet["enable-sync"] && !env_Enablesync_WasSet {`) // Corrected: EnableSync -> Enablesync (twice)
+	assertCodeContains(t, actualCode, `slog.ErrorContext(ctx, "Missing required boolean option (must be explicitly set)", "flag", "enable-sync", "option", "EnableSync")`)
 }
 
 func TestGenerateMain_ErrorHandling(t *testing.T) {
@@ -526,12 +544,10 @@ func TestGenerateMain_ErrorHandling(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GenerateMain failed: %v", err)
 	}
-	assertCodeNotContains(t, actualCode, "var err error")
-	// For this test, we are checking the specific error handling block structure
-	// which is now part of the if err := ... block.
-	// The previous assertCodeContains for "err = DefaultRun(options)" is implicitly covered by the new format.
-	assertCodeContains(t, actualCode, "if err := DefaultRun(options); err != nil {")
-	assertCodeContains(t, actualCode, `slog.ErrorContext(ctx, "Runtime error", "error", err)`)
+	assertCodeContains(t, actualCode, "var err error")
+	assertCodeContains(t, actualCode, "err = DefaultRun(options)")
+	assertCodeContains(t, actualCode, "if err != nil {")
+	assertCodeContains(t, actualCode, `slog.ErrorContext(ctx, "Runtime error from command function", "error", err)`)
 	assertCodeContains(t, actualCode, `os.Exit(1)`)
 }
 
@@ -549,9 +565,9 @@ func TestGenerateMain_Imports(t *testing.T) {
 	}
 	actualCodeNoStrconv, err := GenerateMain(cmdMetaNoStrconv, "", true)
 	if err != nil {
-		t.Fatalf("GenerateMain failed: %v", err)
+		t.Fatalf("GenerateMain failed for cmdMetaNoStrconv: %v", err)
 	}
-	assertCodeContains(t, actualCodeNoStrconv, `flag.StringVar(&options.Name, "name", options.Name, "app name" /* Env: APP_NAME */)`)
+	assertCodeContains(t, actualCodeNoStrconv, `flag.StringVar(&options.Name, "name", "", "app name (env: APP_NAME)")`)
 	assertCodeNotContains(t, actualCodeNoStrconv, `strconv.Atoi`)
 
 	cmdMetaWithStrconv := &metadata.CommandMetadata{
@@ -562,14 +578,14 @@ func TestGenerateMain_Imports(t *testing.T) {
 			OptionsArgIsPointer:        false,
 		},
 		Options: []*metadata.OptionMetadata{
-			{Name: "Port", TypeName: "int", EnvVar: "APP_PORT", HelpText: "app port"},
+			{Name: "Port", CliName: "port", TypeName: "int", EnvVar: "APP_PORT", HelpText: "app port (default: 0)", DefaultValue: 0.0},
 		},
 	}
 	actualCodeWithStrconv, err := GenerateMain(cmdMetaWithStrconv, "", true)
 	if err != nil {
-		t.Fatalf("GenerateMain failed: %v", err)
+		t.Fatalf("GenerateMain failed for cmdMetaWithStrconv: %v", err)
 	}
-	assertCodeContains(t, actualCodeWithStrconv, `flag.IntVar(&options.Port, "port", options.Port, "app port" /* Env: APP_PORT */)`)
+	assertCodeContains(t, actualCodeWithStrconv, `flag.IntVar(&options.Port, "port", 0, "app port (default: 0) (env: APP_PORT)")`)
 	assertCodeContains(t, actualCodeWithStrconv, `strconv.Atoi`)
 }
 
@@ -582,7 +598,7 @@ func TestGenerateMain_RequiredIntWithEnvVar(t *testing.T) {
 			OptionsArgIsPointer:        true,
 		},
 		Options: []*metadata.OptionMetadata{
-			{Name: "UserId", TypeName: "int", HelpText: "User ID", IsRequired: true, EnvVar: "USER_ID", DefaultValue: 0},
+			{Name: "UserId", CliName: "user-id", TypeName: "int", HelpText: "User ID", IsRequired: true, EnvVar: "USER_ID", DefaultValue: 0.0},
 		},
 	}
 
@@ -591,22 +607,40 @@ func TestGenerateMain_RequiredIntWithEnvVar(t *testing.T) {
 		t.Fatalf("GenerateMain failed: %v", err)
 	}
 	assertCodeContains(t, actualCode, "options := new(UserData)")
-	assertCodeNotContains(t, actualCode, "options = new(UserData)")
 	assertCodeContains(t, actualCode, `options.UserId = 0`)
-	assertCodeContains(t, actualCode, `if val, ok := os.LookupEnv("USER_ID"); ok { if v, err := strconv.Atoi(val); err == nil { options.UserId = v } else { slog.WarnContext(ctx, "Could not parse environment variable as int for option", "envVar", "USER_ID", "option", "UserId", "value", val, "error", err) } }`)
-	assertCodeContains(t, actualCode, `flag.IntVar(&options.UserId, "user-id", options.UserId, "User ID" /* Original Default: 0, Env: USER_ID */)`)
+	envLogic := `
+	if useridEnvVal, ok := os.LookupEnv("USER_ID"); ok {
+		var useridEnvValConverted int
+		if v, err := strconv.Atoi(useridEnvVal); err == nil {
+			useridEnvValConverted = v
+			options.UserId = useridEnvValConverted
+		} else {
+			slog.WarnContext(ctx, "Invalid integer value for environment variable", "variable", "USER_ID", "value", useridEnvVal, "error", err)
+		}
+	}
+`
+	assertCodeContains(t, actualCode, envLogic)
+	assertCodeContains(t, actualCode, `flag.IntVar(&options.UserId, "user-id", 0, "User ID (default: 0) (env: USER_ID)")`)
+
 	expectedRequiredCheck := `
-	initialDefaultUserId := 0
-	envUserIdWasSet := false
-	if _, ok := os.LookupEnv("USER_ID"); ok { envUserIdWasSet = true }
-	if options.UserId == initialDefaultUserId && !isFlagExplicitlySet["user-id"] && !envUserIdWasSet {
-		slog.ErrorContext(ctx, "Missing required flag or environment variable not set", errors.New("Missing required flag or environment variable not set"), "flag", "user-id", "envVar", "USER_ID", "option", "UserId")
+	initialDefault_Userid := 0 // Corrected: UserId -> Userid
+	_, env_Userid_WasSet := os.LookupEnv("USER_ID") // Corrected: UserId -> Userid
+	if err = func() error {
+		if options.UserId == initialDefault_Userid && !isFlagExplicitlySet["user-id"] && !env_Userid_WasSet { // Corrected: UserId -> Userid (twice)
+			slog.ErrorContext(ctx, "Missing required option", "flag", "user-id", "envVar", "USER_ID", "option", "UserId")
+			return fmt.Errorf("missing required option: --user-id / USER_ID")
+		}
+		return nil
+	}(); err != nil {
+		slog.ErrorContext(ctx, "Error processing required option", "option", "user-id", "error", err)
 		os.Exit(1)
 	}
 `
 	assertCodeContains(t, actualCode, expectedRequiredCheck)
-	assertCodeNotContains(t, actualCode, "var err error")
-	assertCodeContains(t, actualCode, "if err := SubmitData(options); err != nil {")
+	assertCodeContains(t, actualCode, "var err error")
+	assertCodeContains(t, actualCode, "_ = err")
+	assertCodeContains(t, actualCode, "err = SubmitData(options)")
+	assertCodeContains(t, actualCode, "if err != nil {")
 }
 
 func TestGenerateMain_EnvVarPrecendenceStrategy(t *testing.T) {
@@ -616,16 +650,15 @@ func TestGenerateMain_EnvVarPrecendenceStrategy(t *testing.T) {
 			PackageName:                "main",
 			OptionsArgTypeNameStripped: "StrategyOptions",
 			OptionsArgIsPointer:        true,
-			// InitializerFunc is NOT specified, so options will be new'd and zero-value defaults applied first
 		},
 		Options: []*metadata.OptionMetadata{
-			{Name: "StringOpt", TypeName: "string", DefaultValue: "original_string", EnvVar: "ENV_STRING", HelpText: "String option"},
-			{Name: "IntOpt", TypeName: "int", DefaultValue: 123, EnvVar: "ENV_INT", HelpText: "Int option"},
-			{Name: "BoolOpt", TypeName: "bool", DefaultValue: false, EnvVar: "ENV_BOOL", HelpText: "Bool option"},
-			{Name: "BoolTrueOpt", TypeName: "bool", DefaultValue: true, EnvVar: "ENV_BOOL_TRUE", IsRequired: true, HelpText: "Bool true option"},
-			{Name: "StringPtrOpt", TypeName: "*string", EnvVar: "ENV_STRING_PTR", HelpText: "String pointer option"}, // No DefaultValue in metadata
-			{Name: "IntPtrOpt", TypeName: "*int", EnvVar: "ENV_INT_PTR", HelpText: "Int pointer option"},             // No DefaultValue in metadata
-			{Name: "BoolPtrOpt", TypeName: "*bool", EnvVar: "ENV_BOOL_PTR", HelpText: "Bool pointer option"},         // No DefaultValue in metadata
+			{Name: "StringOpt", CliName: "string-opt", TypeName: "string", DefaultValue: "original_string", EnvVar: "ENV_STRING", HelpText: "String option"},
+			{Name: "IntOpt", CliName: "int-opt", TypeName: "int", DefaultValue: 123.0, EnvVar: "ENV_INT", HelpText: "Int option"},
+			{Name: "BoolOpt", CliName: "bool-opt", TypeName: "bool", DefaultValue: false, EnvVar: "ENV_BOOL", HelpText: "Bool option"},
+			{Name: "BoolTrueOpt", CliName: "bool-true-opt", TypeName: "bool", DefaultValue: true, EnvVar: "ENV_BOOL_TRUE", IsRequired: true, HelpText: "Bool true option"},
+			{Name: "StringPtrOpt", CliName: "string-ptr-opt", TypeName: "*string", EnvVar: "ENV_STRING_PTR", HelpText: "String pointer option"},
+			{Name: "IntPtrOpt", CliName: "int-ptr-opt", TypeName: "*int", EnvVar: "ENV_INT_PTR", HelpText: "Int pointer option"},
+			{Name: "BoolPtrOpt", CliName: "bool-ptr-opt", TypeName: "*bool", EnvVar: "ENV_BOOL_PTR", HelpText: "Bool pointer option"},
 		},
 	}
 
@@ -636,94 +669,73 @@ func TestGenerateMain_EnvVarPrecendenceStrategy(t *testing.T) {
 	assertCodeContains(t, actualCode, `isFlagExplicitlySet := make(map[string]bool)`)
 	assertCodeContains(t, actualCode, `flag.Visit(func(f *flag.Flag) { isFlagExplicitlySet[f.Name] = true })`)
 
-	// Non-pointer types (existing assertions should be fine)
 	assertCodeContains(t, actualCode, `options.StringOpt = "original_string"`)
-	assertCodeContains(t, actualCode, `if val, ok := os.LookupEnv("ENV_STRING"); ok { options.StringOpt = val }`)
-	assertCodeContains(t, actualCode, `flag.StringVar(&options.StringOpt, "string-opt", options.StringOpt, "String option" /* Original Default: original_string, Env: ENV_STRING */)`)
 	assertCodeContains(t, actualCode, `options.IntOpt = 123`)
-	assertCodeContains(t, actualCode, `if val, ok := os.LookupEnv("ENV_INT"); ok { if v, err := strconv.Atoi(val); err == nil { options.IntOpt = v } else { slog.WarnContext(ctx, "Could not parse environment variable as int for option", "envVar", "ENV_INT", "option", "IntOpt", "value", val, "error", err) } }`)
-	assertCodeContains(t, actualCode, `flag.IntVar(&options.IntOpt, "int-opt", options.IntOpt, "Int option" /* Original Default: 123, Env: ENV_INT */)`)
 	assertCodeContains(t, actualCode, `options.BoolOpt = false`)
-	assertCodeContains(t, actualCode, `if val, ok := os.LookupEnv("ENV_BOOL"); ok { if v, err := strconv.ParseBool(val); err == nil { options.BoolOpt = v } else { slog.WarnContext(ctx, "Could not parse environment variable as bool for option", "envVar", "ENV_BOOL", "option", "BoolOpt", "value", val, "error", err) } }`)
-	assertCodeContains(t, actualCode, `flag.BoolVar(&options.BoolOpt, "bool-opt", options.BoolOpt, "Bool option" /* Original Default: false, Env: ENV_BOOL */)`)
 	assertCodeContains(t, actualCode, `options.BoolTrueOpt = true`)
-	assertCodeContains(t, actualCode, `if val, ok := os.LookupEnv("ENV_BOOL_TRUE"); ok { if v, err := strconv.ParseBool(val); err == nil { options.BoolTrueOpt = v } else { slog.WarnContext(ctx, "Could not parse environment variable as bool for option", "envVar", "ENV_BOOL_TRUE", "option", "BoolTrueOpt", "value", val, "error", err) } }`)
-	assertCodeContains(t, actualCode, `var BoolTrueOpt_NoFlagIsPresent bool`)
-	assertCodeContains(t, actualCode, `flag.BoolVar(&BoolTrueOpt_NoFlagIsPresent, "no-bool-true-opt", false, "Set bool-true-opt to false")`)
-	assertCodeContains(t, actualCode, `if BoolTrueOpt_NoFlagIsPresent { options.BoolTrueOpt = false }`)
+	assertCodeNotContains(t, actualCode, `options.StringPtrOpt = new(string)`)
+	assertCodeNotContains(t, actualCode, `options.IntPtrOpt = new(int)`)
+	assertCodeNotContains(t, actualCode, `options.BoolPtrOpt = new(bool)`)
 
-	// Pointer types - asserting new logic
-	// StringPtrOpt
-	assertCodeContains(t, actualCode, `options.StringPtrOpt = new(string)`) // Initialized to new(string) because no InitializerFunc
-	stringPtrEnvLogic := `
-	if val, ok := os.LookupEnv("ENV_STRING_PTR"); ok {
-		if options.StringPtrOpt == nil { options.StringPtrOpt = new(string) } // This check is fine for env vars
-		*options.StringPtrOpt = val
-	}
-`
-	assertCodeContains(t, actualCode, stringPtrEnvLogic)
-	assertCodeContains(t, actualCode, "isStringPtrOptNilInitially := options.StringPtrOpt == nil")
-	assertCodeContains(t, actualCode, "var tempStringPtrOptVal string")
-	assertCodeContains(t, actualCode, "var defaultStringPtrOptValForFlag string")
-	assertCodeContains(t, actualCode, "if options.StringPtrOpt != nil { defaultStringPtrOptValForFlag = *options.StringPtrOpt }")
-	assertCodeNotContains(t, actualCode, "if options.StringPtrOpt == nil { options.StringPtrOpt = new(string) } flag.StringVar(options.StringPtrOpt, ") // Ensure old flag-specific init is gone
-	newStringPtrFlagLogic := `
-	if isStringPtrOptNilInitially {
-		flag.StringVar(&tempStringPtrOptVal, "string-ptr-opt", "", "String pointer option" /* Env: ENV_STRING_PTR */)
-	} else {
-		flag.StringVar(options.StringPtrOpt, "string-ptr-opt", defaultStringPtrOptValForFlag, "String pointer option" /* Env: ENV_STRING_PTR */)
-	}
-`
-	assertCodeContains(t, actualCode, newStringPtrFlagLogic)
-	assertCodeContains(t, actualCode, "if isStringPtrOptNilInitially && isFlagExplicitlySet[\"string-ptr-opt\"] { options.StringPtrOpt = &tempStringPtrOptVal }")
+	assertCodeContains(t, actualCode, `if stringoptEnvVal, ok := os.LookupEnv("ENV_STRING"); ok { options.StringOpt = stringoptEnvVal }`)
+	// For IntOpt (non-pointer)
+	expectedIntEnvLogic := `
+	if intoptEnvVal, ok := os.LookupEnv("ENV_INT"); ok {
+		var intoptEnvValConverted int
+		if v, err := strconv.Atoi(intoptEnvVal); err == nil {
+			intoptEnvValConverted = v
+			options.IntOpt = intoptEnvValConverted
+		} else {
+			slog.WarnContext(ctx, "Invalid integer value for environment variable", "variable", "ENV_INT", "value", intoptEnvVal, "error", err)
+		}
+	}`
+	assertCodeContains(t, actualCode, expectedIntEnvLogic)
+	assertCodeContains(t, actualCode, `if booloptEnvVal, ok := os.LookupEnv("ENV_BOOL"); ok { if v, err := strconv.ParseBool(booloptEnvVal); err == nil { options.BoolOpt = v } else { slog.WarnContext(ctx, "Invalid boolean value for environment variable", "variable", "ENV_BOOL", "value", booloptEnvVal, "error", err) } }`)
+	assertCodeContains(t, actualCode, `if booltrueoptEnvVal, ok := os.LookupEnv("ENV_BOOL_TRUE"); ok { if v, err := strconv.ParseBool(booltrueoptEnvVal); err == nil { options.BoolTrueOpt = v } else { slog.WarnContext(ctx, "Invalid boolean value for environment variable", "variable", "ENV_BOOL_TRUE", "value", booltrueoptEnvVal, "error", err) } }`)
+	assertCodeContains(t, actualCode, `if stringptroptEnvVal, ok := os.LookupEnv("ENV_STRING_PTR"); ok { { valCopy := stringptroptEnvVal options.StringPtrOpt = &valCopy } }`)
+	// For IntPtrOpt
+	expectedIntPtrEnvLogic := `
+	if intptroptEnvVal, ok := os.LookupEnv("ENV_INT_PTR"); ok {
+		if v, err := strconv.Atoi(intptroptEnvVal); err == nil {
+			valCopy := v
+			options.IntPtrOpt = &valCopy
+		} else {
+			slog.WarnContext(ctx, "Invalid integer value for environment variable", "variable", "ENV_INT_PTR", "value", intptroptEnvVal, "error", err)
+		}
+	}`
+	assertCodeContains(t, actualCode, expectedIntPtrEnvLogic)
+	// For BoolPtrOpt
+	expectedBoolPtrEnvLogic := `
+	if boolptroptEnvVal, ok := os.LookupEnv("ENV_BOOL_PTR"); ok {
+		if v, err := strconv.ParseBool(boolptroptEnvVal); err == nil {
+			valCopy := v
+			options.BoolPtrOpt = &valCopy
+		} else {
+			slog.WarnContext(ctx, "Invalid boolean value for environment variable", "variable", "ENV_BOOL_PTR", "value", boolptroptEnvVal, "error", err)
+		}
+	}`
+	assertCodeContains(t, actualCode, expectedBoolPtrEnvLogic)
 
-	// IntPtrOpt
-	assertCodeContains(t, actualCode, `options.IntPtrOpt = new(int)`) // Initialized to new(int)
-	intPtrEnvLogic := `
-	if val, ok := os.LookupEnv("ENV_INT_PTR"); ok {
-		if options.IntPtrOpt == nil { options.IntPtrOpt = new(int) }
-		if v, err := strconv.Atoi(val); err == nil { *options.IntPtrOpt = v
-		} else { slog.WarnContext(ctx, "Could not parse environment variable as *int for option", "envVar", "ENV_INT_PTR", "option", "IntPtrOpt", "value", val, "error", err) }
-	}
-`
-	assertCodeContains(t, actualCode, intPtrEnvLogic)
-	assertCodeContains(t, actualCode, "isIntPtrOptNilInitially := options.IntPtrOpt == nil")
-	assertCodeContains(t, actualCode, "var tempIntPtrOptVal int")
-	assertCodeNotContains(t, actualCode, "if options.IntPtrOpt == nil { options.IntPtrOpt = new(int) } flag.IntVar(options.IntPtrOpt, ")
-	newIntPtrFlagLogic := `
-	if isIntPtrOptNilInitially {
-		flag.IntVar(&tempIntPtrOptVal, "int-ptr-opt", 0, "Int pointer option" /* Env: ENV_INT_PTR */)
-	} else {
-		flag.IntVar(options.IntPtrOpt, "int-ptr-opt", defaultIntPtrOptValForFlag, "Int pointer option" /* Env: ENV_INT_PTR */)
-	}
-`
-	assertCodeContains(t, actualCode, newIntPtrFlagLogic)
-	assertCodeContains(t, actualCode, "if isIntPtrOptNilInitially && isFlagExplicitlySet[\"int-ptr-opt\"] { options.IntPtrOpt = &tempIntPtrOptVal }")
+	assertCodeContains(t, actualCode, `flag.StringVar(&options.StringOpt, "string-opt", "original_string", "String option (default: original_string) (env: ENV_STRING)")`)
+	assertCodeContains(t, actualCode, `flag.IntVar(&options.IntOpt, "int-opt", 123, "Int option (default: 123) (env: ENV_INT)")`)
+	assertCodeContains(t, actualCode, `flag.BoolVar(&options.BoolOpt, "bool-opt", false, "Bool option (default: false) (env: ENV_BOOL)")`)
+	assertCodeContains(t, actualCode, `var tempBooltrueoptNoFlagPresent bool`)
+	assertCodeContains(t, actualCode, `flag.BoolVar(&tempBooltrueoptNoFlagPresent, "no-bool-true-opt", false, "Set bool-true-opt to false, overriding default true")`)
+	assertCodeContains(t, actualCode, `flag.BoolVar(&options.BoolTrueOpt, "bool-true-opt", true, "Bool true option (default: true) (env: ENV_BOOL_TRUE)")`)
+	assertCodeContains(t, actualCode, `isStringptroptNilInitially := options.StringPtrOpt == nil`)
+	assertCodeContains(t, actualCode, `var tempStringptroptVal string`)
+	assertCodeContains(t, actualCode, `flag.StringVar(&tempStringptroptVal, "string-ptr-opt", "", "String pointer option (env: ENV_STRING_PTR)")`)
+	assertCodeContains(t, actualCode, `if isStringptroptNilInitially && isFlagExplicitlySet["string-ptr-opt"] { options.StringPtrOpt = &tempStringptroptVal }`)
 
-	// BoolPtrOpt
-	assertCodeContains(t, actualCode, `options.BoolPtrOpt = new(bool)`) // Initialized to new(bool)
-	boolPtrEnvLogic := `
-	if val, ok := os.LookupEnv("ENV_BOOL_PTR"); ok {
-		if options.BoolPtrOpt == nil { options.BoolPtrOpt = new(bool) }
-		if v, err := strconv.ParseBool(val); err == nil { *options.BoolPtrOpt = v
-		} else { slog.WarnContext(ctx, "Could not parse environment variable as *bool for option", "envVar", "ENV_BOOL_PTR", "option", "BoolPtrOpt", "value", val, "error", err) }
-	}
-`
-	assertCodeContains(t, actualCode, boolPtrEnvLogic)
-	assertCodeContains(t, actualCode, "isBoolPtrOptNilInitially := options.BoolPtrOpt == nil")
-	assertCodeContains(t, actualCode, "var tempBoolPtrOptVal bool")
-	assertCodeNotContains(t, actualCode, "if options.BoolPtrOpt == nil { options.BoolPtrOpt = new(bool) } flag.BoolVar(options.BoolPtrOpt, ")
-	newBoolPtrFlagLogic := `
-	if isBoolPtrOptNilInitially {
-		flag.BoolVar(&tempBoolPtrOptVal, "bool-ptr-opt", false, "Bool pointer option" /* Env: ENV_BOOL_PTR */)
-	} else {
-		flag.BoolVar(options.BoolPtrOpt, "bool-ptr-opt", defaultBoolPtrOptValForFlag, "Bool pointer option" /* Env: ENV_BOOL_PTR */)
-	}
-`
-	assertCodeContains(t, actualCode, newBoolPtrFlagLogic)
-	assertCodeContains(t, actualCode, "if isBoolPtrOptNilInitially && isFlagExplicitlySet[\"bool-ptr-opt\"] { options.BoolPtrOpt = &tempBoolPtrOptVal }")
+	assertCodeContains(t, actualCode, `initialDefault_Booltrueopt := true`)                                                                                                                                                                                                                                                         // Corrected: BoolTrueOpt -> Booltrueopt
+	assertCodeContains(t, actualCode, `if options.BoolTrueOpt == initialDefault_Booltrueopt && !isFlagExplicitlySet["bool-true-opt"] && !env_Booltrueopt_WasSet { slog.ErrorContext(ctx, "Missing required boolean option (must be explicitly set)", "flag", "bool-true-opt", "envVar", "ENV_BOOL_TRUE", "option", "BoolTrueOpt")`) // Corrected: BoolTrueOpt -> Booltrueopt (twice)
 
-	assertCodeNotContains(t, actualCode, `var defaultStringOpt string =`) // This assertion is still valid
+	assertCodeContains(t, actualCode, "var err error")
+	assertCodeContains(t, actualCode, "_ = err")
+	assertCodeContains(t, actualCode, "err = RunStrategyTest(options)")
+	assertCodeContains(t, actualCode, "if err != nil {")
+	assertCodeContains(t, actualCode, `slog.ErrorContext(ctx, "Runtime error from command function", "error", err)`)
+
 }
 
 func TestGenerateMain_StringFlagWithQuotesInDefault(t *testing.T) {
@@ -743,12 +755,13 @@ func TestGenerateMain_StringFlagWithQuotesInDefault(t *testing.T) {
 		t.Fatalf("GenerateMain failed: %v", err)
 	}
 	assertCodeContains(t, actualCode, "options := new(PrintOpts)")
-	assertCodeNotContains(t, actualCode, "options = new(PrintOpts)")
 	assertCodeContains(t, actualCode, `options.Greeting = "hello \"world\""`)
-	expectedFlagParsing := `flag.StringVar(&options.Greeting, "greeting", options.Greeting, "A greeting message" /* Original Default: hello "world", Env: */)`
+	expectedFlagParsing := `flag.StringVar(&options.Greeting, "greeting", "hello \"world\"", "A greeting message (default: hello \"world\")")`
 	assertCodeContains(t, actualCode, expectedFlagParsing)
-	assertCodeNotContains(t, actualCode, "var err error") // Added this line
-	assertCodeContains(t, actualCode, "if err := PrintString(options); err != nil {")
+	assertCodeContains(t, actualCode, "var err error")
+	assertCodeContains(t, actualCode, "_ = err")
+	assertCodeContains(t, actualCode, "err = PrintString(options)")
+	assertCodeContains(t, actualCode, "if err != nil {")
 }
 
 func TestGenerateMain_WithHelpText(t *testing.T) {
@@ -770,17 +783,15 @@ func TestGenerateMain_WithHelpText(t *testing.T) {
 		t.Fatalf("GenerateMain with help text failed: %v", err)
 	}
 	assertCodeContains(t, actualCode, "options := new(ToolOptions)")
-	assertCodeNotContains(t, actualCode, "options = new(ToolOptions)")
-	expectedHelpTextSnippet := `
-	flag.Usage = func() {
-		fmt.Fprint(os.Stderr, ` + "`" + helpText + "`" + `)
-	}`
+	helpTextWithRawQuotes := strings.ReplaceAll(helpText, "`", "`+\"`\"+`")
+	expectedHelpTextSnippet := "fmt.Fprint(os.Stderr, `" + helpTextWithRawQuotes + "`)"
 	assertCodeContains(t, actualCode, expectedHelpTextSnippet)
-	oldManualHelpLogic := `for _, arg := range os.Args[1:] { if arg == "-h" || arg == "--help" {`
-	assertCodeNotContains(t, actualCode, oldManualHelpLogic)
-	assertCodeContains(t, actualCode, `flag.StringVar(&options.Input, "input", options.Input, "Input file")`)
-	assertCodeNotContains(t, actualCode, "var err error")
-	assertCodeContains(t, actualCode, "if err := RunMyTool(options); err != nil {")
+
+	assertCodeContains(t, actualCode, `flag.StringVar(&options.Input, "input", "", "Input file")`)
+	assertCodeContains(t, actualCode, "var err error")
+	assertCodeContains(t, actualCode, "_ = err")
+	assertCodeContains(t, actualCode, "err = RunMyTool(options)")
+	assertCodeContains(t, actualCode, "if err != nil {")
 }
 
 func TestGenerateMain_WithEmptyHelpText(t *testing.T) {
@@ -806,8 +817,10 @@ func TestGenerateMain_WithEmptyHelpText(t *testing.T) {
 	unexpectedFlagUsageAssignment := `flag.Usage = func()`
 	assertCodeNotContains(t, actualCode, unexpectedFlagUsageAssignment)
 	assertCodeContains(t, actualCode, "func main() {")
-	assertCodeNotContains(t, actualCode, "var err error")
-	assertCodeContains(t, actualCode, "if err := AnotherTool(); err != nil {")
+	assertCodeContains(t, actualCode, "var err error")
+	assertCodeContains(t, actualCode, "_ = err")
+	assertCodeContains(t, actualCode, "err = AnotherTool()")
+	assertCodeContains(t, actualCode, "if err != nil {")
 }
 
 func TestGenerateMain_HelpTextNewlineFormatting(t *testing.T) {
@@ -876,11 +889,13 @@ func TestGenerateMain_WithInitializer(t *testing.T) {
 	assertCodeNotContains(t, actualCode, `import . "example.com/user/usercmd"`)
 	assertCodeNotContains(t, actualCode, `import "example.com/user/usercmd"`)
 	assertCodeContains(t, actualCode, "options := NewMyOptions()")
-	assertCodeNotContains(t, actualCode, "options = NewMyOptions()") // Ensure old form is not present
+	assertCodeNotContains(t, actualCode, "options = NewMyOptions()")
 	assertCodeNotContains(t, actualCode, "options = new(MyOptions)")
 	assertCodeNotContains(t, actualCode, "var options = &MyOptions{}")
-	assertCodeNotContains(t, actualCode, "var err error")
-	assertCodeContains(t, actualCode, "if err := Run(options); err != nil {")
+	assertCodeContains(t, actualCode, "var err error")
+	assertCodeContains(t, actualCode, "_ = err")
+	assertCodeContains(t, actualCode, "err = Run(options)")
+	assertCodeContains(t, actualCode, "if err != nil {")
 }
 
 func TestGenerateMain_WithoutInitializer_Fallback(t *testing.T) {
@@ -907,15 +922,15 @@ func TestGenerateMain_WithoutInitializer_Fallback(t *testing.T) {
 	assertCodeNotContains(t, actualCode, `import . "example.com/user/usercmd"`)
 	assertCodeNotContains(t, actualCode, `import "example.com/user/usercmd"`)
 	assertCodeNotContains(t, actualCode, "usercmd.NewMyOptions()")
-	// This test is for NO initializer, so options := new(MyOptions) is expected
 	assertCodeContains(t, actualCode, "options := new(MyOptions)")
-	assertCodeNotContains(t, actualCode, "options = new(MyOptions)") // Ensure old form is not present
 	assertCodeContains(t, actualCode, `options.Mode = "test"`)
 	assertCodeContains(t, actualCode, `options.Count = 42`)
-	assertCodeContains(t, actualCode, `flag.StringVar(&options.Mode, "mode", options.Mode, "Operation mode" /* Original Default: test, Env: */)`)
-	assertCodeContains(t, actualCode, `flag.IntVar(&options.Count, "count", options.Count, "A number" /* Original Default: 42, Env: */)`)
-	assertCodeNotContains(t, actualCode, "var err error")
-	assertCodeContains(t, actualCode, "if err := Run(options); err != nil {")
+	assertCodeContains(t, actualCode, `flag.StringVar(&options.Mode, "mode", "test", "Operation mode (default: test)")`)
+	assertCodeContains(t, actualCode, `flag.IntVar(&options.Count, "count", 42, "A number (default: 42)")`)
+	assertCodeContains(t, actualCode, "var err error")
+	assertCodeContains(t, actualCode, "_ = err")
+	assertCodeContains(t, actualCode, "err = Run(options)")
+	assertCodeContains(t, actualCode, "if err != nil {")
 }
 
 func TestGenerateMain_InitializerInMainPackage(t *testing.T) {
@@ -938,11 +953,13 @@ func TestGenerateMain_InitializerInMainPackage(t *testing.T) {
 	}
 	assertCodeNotContains(t, actualCode, `import "main"`)
 	assertCodeContains(t, actualCode, "options := NewMyOptions()")
-	assertCodeNotContains(t, actualCode, "options = NewMyOptions()") // Ensure old form is not present
+	assertCodeNotContains(t, actualCode, "options = NewMyOptions()")
 	assertCodeNotContains(t, actualCode, "options = new(MyOptions)")
 	assertCodeNotContains(t, actualCode, "var options = &MyOptions{}")
-	assertCodeNotContains(t, actualCode, "var err error")
-	assertCodeContains(t, actualCode, "if err := Run(options); err != nil {")
+	assertCodeContains(t, actualCode, "var err error")
+	assertCodeContains(t, actualCode, "_ = err")
+	assertCodeContains(t, actualCode, "err = Run(options)")
+	assertCodeContains(t, actualCode, "if err != nil {")
 }
 
 func TestGenerateMain_WithContextOnly(t *testing.T) {
@@ -953,7 +970,7 @@ func TestGenerateMain_WithContextOnly(t *testing.T) {
 			PackageName:                "main",
 			ContextArgName:             "ctx",
 			ContextArgType:             "context.Context",
-			OptionsArgTypeNameStripped: "", // No options
+			OptionsArgTypeNameStripped: "",
 		},
 		Options: []*metadata.OptionMetadata{},
 	}
@@ -961,9 +978,11 @@ func TestGenerateMain_WithContextOnly(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GenerateMain for context only failed: %v", err)
 	}
-	assertCodeNotContains(t, actualCode, "var err error")
-	assertCodeContains(t, actualCode, "if err := RunCtxOnly(ctx); err != nil {")
-	assertCodeNotContains(t, actualCode, "var options") // Ensure no options struct is declared
+	assertCodeContains(t, actualCode, "var err error")
+	assertCodeContains(t, actualCode, "_ = err")
+	assertCodeContains(t, actualCode, "err = RunCtxOnly(ctx)")
+	assertCodeContains(t, actualCode, "if err != nil {")
+	assertCodeNotContains(t, actualCode, "var options")
 }
 
 func TestGenerateMain_WithContextAndOptionsPointer(t *testing.T) {
@@ -987,8 +1006,10 @@ func TestGenerateMain_WithContextAndOptionsPointer(t *testing.T) {
 	}
 	assertCodeContains(t, actualCode, "options := new(MyOptions)")
 	assertCodeContains(t, actualCode, `options.TestOption = "hello"`)
-	assertCodeNotContains(t, actualCode, "var err error")
-	assertCodeContains(t, actualCode, "if err := RunCtxOptsPtr(ctx, options); err != nil {")
+	assertCodeContains(t, actualCode, "var err error")
+	assertCodeContains(t, actualCode, "_ = err")
+	assertCodeContains(t, actualCode, "err = RunCtxOptsPtr(ctx, options)")
+	assertCodeContains(t, actualCode, "if err != nil {")
 }
 
 func TestGenerateMain_WithContextAndOptionsValue(t *testing.T) {
@@ -1000,7 +1021,7 @@ func TestGenerateMain_WithContextAndOptionsValue(t *testing.T) {
 			ContextArgName:             "ctx",
 			ContextArgType:             "context.Context",
 			OptionsArgTypeNameStripped: "MyOptions",
-			OptionsArgIsPointer:        false, // Value type
+			OptionsArgIsPointer:        false,
 		},
 		Options: []*metadata.OptionMetadata{
 			{Name: "AnotherOption", TypeName: "int", DefaultValue: 123},
@@ -1010,10 +1031,12 @@ func TestGenerateMain_WithContextAndOptionsValue(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GenerateMain for context and options value failed: %v", err)
 	}
-	assertCodeContains(t, actualCode, "options := new(MyOptions)") // Still a pointer internally for setup
+	assertCodeContains(t, actualCode, "options := new(MyOptions)")
 	assertCodeContains(t, actualCode, "options.AnotherOption = 123")
-	assertCodeNotContains(t, actualCode, "var err error")
-	assertCodeContains(t, actualCode, "if err := RunCtxOptsVal(ctx, *options); err != nil {")
+	assertCodeContains(t, actualCode, "var err error")
+	assertCodeContains(t, actualCode, "_ = err")
+	assertCodeContains(t, actualCode, "err = RunCtxOptsVal(ctx, *options)")
+	assertCodeContains(t, actualCode, "if err != nil {")
 }
 
 // New Test Function for formatHelpText

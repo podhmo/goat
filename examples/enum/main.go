@@ -2,13 +2,10 @@ package main
 
 import (
 	"context"
-	"errors"
 	"flag"
 	"fmt"
 	"log/slog"
 	"os"
-	"slices"
-	"strings"
 
 	"github.com/podhmo/goat"
 	"github.com/podhmo/goat/examples/enum/customtypes"
@@ -82,6 +79,8 @@ func run(opts Options) error {
 func main() {
 	ctx := context.Background()
 	isFlagExplicitlySet := make(map[string]bool)
+	var err error
+	_ = err
 
 	flag.Usage = func() {
 		fmt.Fprint(os.Stderr, `enum - run is the main execution logic for the enum example CLI.
@@ -100,90 +99,68 @@ Flags:
 `)
 	}
 
-	// 1. Create Options using the initializer function.
+	// --- 1. Initialize Options Struct ---
 	options := NewOptions()
 
-	// 2. Override with environment variable values.
-	// This section assumes 'options' is already initialized.
-
-	if val, ok := os.LookupEnv("ENUM_LOCAL_ENUM"); ok {
-
-		options.LocalEnumField = MyLocalEnum(val)
+	// --- 2. Process Environment Variables ---
+	if localenumfieldEnvVal, ok := os.LookupEnv("ENUM_LOCAL_ENUM"); ok {
+		// Environment variable for unsupported type LocalEnumField (MyLocalEnum) not handled.
+	}
+	if importedenumfieldEnvVal, ok := os.LookupEnv("ENUM_IMPORTED_ENUM"); ok {
+		// Environment variable for unsupported type ImportedEnumField (customtypes.MyCustomEnum) not handled.
+	}
+	if optionalimportedenumfieldEnvVal, ok := os.LookupEnv("ENUM_OPTIONAL_IMPORTED_ENUM"); ok {
+		// Environment variable for unsupported type OptionalImportedEnumField (*customtypes.MyCustomEnum) not handled.
 	}
 
-	if val, ok := os.LookupEnv("ENUM_IMPORTED_ENUM"); ok {
+	// --- 3. Register Flags ---
+	// Flag registration for unsupported type LocalEnumField (MyLocalEnum) not handled.
+	// Flag registration for unsupported type ImportedEnumField (customtypes.MyCustomEnum) not handled.
+	// Flag registration for unsupported type OptionalImportedEnumField (*customtypes.MyCustomEnum) not handled.
 
-		options.ImportedEnumField = customtypes.MyCustomEnum(val)
-	}
-
-	if val, ok := os.LookupEnv("ENUM_OPTIONAL_IMPORTED_ENUM"); ok {
-
-		typedVal := customtypes.MyCustomEnum(val)
-		options.OptionalImportedEnumField = &typedVal
-	}
-
-	// 3. Set flags.
-
-	if options.OptionalImportedEnumField == nil {
-		options.OptionalImportedEnumField = new(customtypes.MyCustomEnum)
-	}
-	flag.Var(options.OptionalImportedEnumField, "optional-imported-enum-field", `OptionalImportedEnumField demonstrates an optional enum (pointer type)
-imported from another package.`)
-
-	// 4. Parse.
+	// --- 4. Parse Flags ---
 	flag.Parse()
 	flag.Visit(func(f *flag.Flag) { isFlagExplicitlySet[f.Name] = true })
 
-	// 6. Assign values for initially nil pointers if flags were explicitly set
+	// --- 5. Post-Parse Flag Assignments (for pointers, etc.) ---
 
-	// 5. Perform required checks (excluding booleans).
-
-	isValidChoice_LocalEnumField := false
-	allowedChoices_LocalEnumField := []string{"local-a", "local-b"}
-
-	currentValue_LocalEnumFieldStr := fmt.Sprintf("%v", options.LocalEnumField)
-	isValidChoice_LocalEnumField = slices.Contains(allowedChoices_LocalEnumField, currentValue_LocalEnumFieldStr)
-
-	if !isValidChoice_LocalEnumField {
-		var currentValueForMsg interface{} = options.LocalEnumField // options.OptName
-		slog.ErrorContext(ctx, "Invalid value for flag", errors.New("Invalid value for flag"), "flag", "local-enum-field", "value", currentValueForMsg, "allowedChoices", strings.Join(allowedChoices_LocalEnumField, ", "))
+	// --- 6. Perform Required Option Checks ---
+	initialDefault_Localenumfield := "local-a"
+	_, env_Localenumfield_WasSet := os.LookupEnv("ENUM_LOCAL_ENUM")
+	initialDefault_Importedenumfield := "option-x"
+	_, env_Importedenumfield_WasSet := os.LookupEnv("ENUM_IMPORTED_ENUM")
+	if err = func() error { // Required check for unsupported type LocalEnumField (MyLocalEnum) not handled.
+	}(); err != nil {
+		slog.ErrorContext(ctx, "Error processing required option", "option", "local-enum-field", "error", err)
+		os.Exit(1)
+	}
+	if err = func() error { // Required check for unsupported type ImportedEnumField (customtypes.MyCustomEnum) not handled.
+	}(); err != nil {
+		slog.ErrorContext(ctx, "Error processing required option", "option", "imported-enum-field", "error", err)
 		os.Exit(1)
 	}
 
-	isValidChoice_ImportedEnumField := false
-	allowedChoices_ImportedEnumField := []string{"option-x", "option-y", "option-z"}
-
-	currentValue_ImportedEnumFieldStr := fmt.Sprintf("%v", options.ImportedEnumField)
-	isValidChoice_ImportedEnumField = slices.Contains(allowedChoices_ImportedEnumField, currentValue_ImportedEnumFieldStr)
-
-	if !isValidChoice_ImportedEnumField {
-		var currentValueForMsg interface{} = options.ImportedEnumField // options.OptName
-		slog.ErrorContext(ctx, "Invalid value for flag", errors.New("Invalid value for flag"), "flag", "imported-enum-field", "value", currentValueForMsg, "allowedChoices", strings.Join(allowedChoices_ImportedEnumField, ", "))
+	// --- 7. Perform Enum Validations ---
+	if err = func() error { // Enum validation for unsupported type LocalEnumField (MyLocalEnum) not handled.
+	}(); err != nil {
+		slog.ErrorContext(ctx, "Error validating enum for option", "option", "local-enum-field", "error", err)
+		os.Exit(1)
+	}
+	if err = func() error { // Enum validation for unsupported type ImportedEnumField (customtypes.MyCustomEnum) not handled.
+	}(); err != nil {
+		slog.ErrorContext(ctx, "Error validating enum for option", "option", "imported-enum-field", "error", err)
+		os.Exit(1)
+	}
+	if err = func() error { // Enum validation for unsupported type OptionalImportedEnumField (*customtypes.MyCustomEnum) not handled.
+	}(); err != nil {
+		slog.ErrorContext(ctx, "Error validating enum for option", "option", "optional-imported-enum-field", "error", err)
 		os.Exit(1)
 	}
 
-	isValidChoice_OptionalImportedEnumField := false
-	allowedChoices_OptionalImportedEnumField := []string{"option-x", "option-y"}
-
-	if options.OptionalImportedEnumField != nil {
-		currentValue_OptionalImportedEnumFieldStr := fmt.Sprintf("%%v", *options.OptionalImportedEnumField)
-		isValidChoice_OptionalImportedEnumField = slices.Contains(allowedChoices_OptionalImportedEnumField, currentValue_OptionalImportedEnumFieldStr)
-	} else { // Field is nil
-
-		isValidChoice_OptionalImportedEnumField = true
-	}
-
-	if !isValidChoice_OptionalImportedEnumField {
-		var currentValueForMsg interface{} = options.OptionalImportedEnumField
-		if options.OptionalImportedEnumField != nil {
-			currentValueForMsg = *options.OptionalImportedEnumField
-		}
-		slog.ErrorContext(ctx, "Invalid value for flag", errors.New("Invalid value for flag"), "flag", "optional-imported-enum-field", "value", currentValueForMsg, "allowedChoices", strings.Join(allowedChoices_OptionalImportedEnumField, ", "))
-		os.Exit(1)
-	}
-	if err := run(*options); err != nil {
-
-		slog.ErrorContext(ctx, "Runtime error", "error", err)
+	// --- 8. Execute Run Function ---
+	err = run(*options)
+	if err != nil {
+		slog.ErrorContext(ctx, "Runtime error from command function", "error", err)
 		os.Exit(1)
 	}
 }

@@ -4,7 +4,6 @@ package main
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"flag"
 	"fmt"
 	"log/slog"
@@ -27,6 +26,8 @@ func run(opts Options) error { // Parameter type changed to Options, name to opt
 func main() {
 	ctx := context.Background()
 	isFlagExplicitlySet := make(map[string]bool)
+	var err error
+	_ = err
 
 	flag.Usage = func() {
 		fmt.Fprint(os.Stderr, `hello - run is the actual command logic.
@@ -43,37 +44,67 @@ Flags:
 `)
 	}
 
-	// 1. Create Options with default values (no initializer function provided).
-	options := new(Options) // options is now a valid pointer to a zeroed struct
+	// --- 1. Initialize Options Struct ---
+	options := new(Options)
+	// Apply default values from struct tags/types
 
-	// The following block populates the fields of the options struct.
-	// This logic is only executed if no InitializerFunc is provided.
+	// --- 2. Process Environment Variables ---
 
-	// 2. Override with environment variable values.
-	// This section assumes 'options' is already initialized.
+	// --- 3. Register Flags ---
+	flag.BoolVar(&options.Version, "version", false, "Print version information (default: false)")
+	flag.BoolVar(&options.Help, "help", false, "Show help message (default: false)")
+	flag.StringVar(&options.ConfigFile, "config-file", "", "Path to the configuration file")
 
-	// 3. Set flags.
-	flag.BoolVar(&options.Version, "version", options.Version, "Print version information")
-	flag.BoolVar(&options.Help, "help", options.Help, "Show help message")
-	flag.StringVar(&options.ConfigFile, "config-file", options.ConfigFile, "Path to the configuration file")
-
-	// 4. Parse.
+	// --- 4. Parse Flags ---
 	flag.Parse()
 	flag.Visit(func(f *flag.Flag) { isFlagExplicitlySet[f.Name] = true })
 
-	// 6. Assign values for initially nil pointers if flags were explicitly set
+	// --- 5. Post-Parse Flag Assignments (for pointers, etc.) ---
 
-	// 5. Perform required checks (excluding booleans).
-
-	initialDefaultConfigFile := ""
-	envConfigFileWasSet := false
-	if options.ConfigFile == initialDefaultConfigFile && !isFlagExplicitlySet["config-file"] && !envConfigFileWasSet {
-		slog.ErrorContext(ctx, "Missing required flag or environment variable not set", errors.New("Missing required flag or environment variable not set"), "flag", "config-file", "option", "ConfigFile")
+	// --- 6. Perform Required Option Checks ---
+	initialDefault_Version := false
+	env_Version_WasSet := false
+	initialDefault_Help := false
+	env_Help_WasSet := false
+	initialDefault_Configfile := ""
+	env_Configfile_WasSet := false
+	if err = func() error {
+		if options.Version == initialDefault_Version && !isFlagExplicitlySet["version"] && !env_Version_WasSet {
+			slog.ErrorContext(ctx, "Missing required boolean option (must be explicitly set)", "flag", "version", "option", "Version")
+			return fmt.Errorf("missing or not explicitly set required option: --version / ")
+		}
+		return nil
+	}(); err != nil {
+		slog.ErrorContext(ctx, "Error processing required option", "option", "version", "error", err)
 		os.Exit(1)
 	}
-	if err := run(*options); err != nil {
+	if err = func() error {
+		if options.Help == initialDefault_Help && !isFlagExplicitlySet["help"] && !env_Help_WasSet {
+			slog.ErrorContext(ctx, "Missing required boolean option (must be explicitly set)", "flag", "help", "option", "Help")
+			return fmt.Errorf("missing or not explicitly set required option: --help / ")
+		}
+		return nil
+	}(); err != nil {
+		slog.ErrorContext(ctx, "Error processing required option", "option", "help", "error", err)
+		os.Exit(1)
+	}
+	if err = func() error {
+		if options.ConfigFile == initialDefault_Configfile && !isFlagExplicitlySet["config-file"] && !env_Configfile_WasSet {
+			slog.ErrorContext(ctx, "Missing required option", "flag", "config-file", "option", "ConfigFile")
+			return fmt.Errorf("missing required option: --config-file / ")
+		}
+		return nil
+	}(); err != nil {
+		slog.ErrorContext(ctx, "Error processing required option", "option", "config-file", "error", err)
+		os.Exit(1)
+	}
 
-		slog.ErrorContext(ctx, "Runtime error", "error", err)
+	// --- 7. Perform Enum Validations ---
+
+	// --- 8. Execute Run Function ---
+	err = run(*options)
+	if err != nil {
+		slog.ErrorContext(ctx, "Runtime error from command function", "error", err)
 		os.Exit(1)
 	}
 }
