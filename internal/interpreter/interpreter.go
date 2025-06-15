@@ -117,6 +117,11 @@ func extractMarkerInfo(
 	loader *loader.Loader,
 	currentPkgPath string,
 ) {
+	// Unwrap TypeAssertExpr if present, e.g., goat.Default(...).(*string)
+	if typeAssert, ok := valueExpr.(*ast.TypeAssertExpr); ok {
+		valueExpr = typeAssert.X // Use the expression inside the type assertion
+	}
+
 	callExpr, ok := valueExpr.(*ast.CallExpr)
 	if !ok {
 		// Value is not a function call, could be a direct literal (TODO: handle direct literals as defaults)
@@ -156,22 +161,92 @@ func extractMarkerInfo(
 		slog.InfoContext(ctx, fmt.Sprintf("Interpreting goat.Default for field %s (current Pkg: %s)", optMeta.Name, currentPkgPath))
 		if len(callExpr.Args) > 0 {
 			// Default value is the first argument
-			defaultEvalResult := astutils.EvaluateArg(ctx, callExpr.Args[0])
-			if defaultEvalResult.IdentifierName == "" { // If it's a literal or directly evaluatable value
-				optMeta.DefaultValue = defaultEvalResult.Value
-				slog.InfoContext(ctx, fmt.Sprintf("  Default value: %v", optMeta.DefaultValue))
-			} else { // Default value is an identifier
-				slog.InfoContext(ctx, fmt.Sprintf("  Default value for field %s is an identifier '%s' (pkg '%s'). Attempting resolution.", optMeta.Name, defaultEvalResult.IdentifierName, defaultEvalResult.PkgName))
-				// defaultEvalResult already contains IdentifierName and PkgName
-				// fileAst is the AST of the file where goat.Default is called
-				// currentPkgPath is the import path of this file
-				resolvedStrVal, success := resolveEvalResultToEnumString(ctx, defaultEvalResult, loader, currentPkgPath, fileAst)
-				if success {
-					optMeta.DefaultValue = resolvedStrVal
-					slog.DebugContext(ctx, fmt.Sprintf("Successfully resolved identifier default value: %v", optMeta.DefaultValue))
+			defaultArgExpr := callExpr.Args[0]
+			defaultEvalResult := astutils.EvaluateArg(ctx, defaultArgExpr)
+
+			// Check if the option field itself is a pointer type
+			isPointerField := optMeta.IsPointer
+
+			if isPointerField {
+				slog.InfoContext(ctx, fmt.Sprintf("  Field %s is a pointer type (TypeName: %s). Attempting to extract underlying default value.", optMeta.Name, optMeta.TypeName))
+				// If the field is a pointer, we want the underlying value.
+				// Case 1: Argument is a call to a helper function, e.g., stringPtr("value")
+				if innerCall, ok := defaultArgExpr.(*ast.CallExpr); ok {
+					slog.InfoContext(ctx, fmt.Sprintf("  Default for pointer field %s is via helper call: %s", optMeta.Name, astutils.ExprToTypeName(innerCall.Fun)))
+					if len(innerCall.Args) > 0 {
+						innerArgEvalResult := astutils.EvaluateArg(ctx, innerCall.Args[0])
+						if innerArgEvalResult.IdentifierName == "" { // Literal or directly evaluatable
+							optMeta.DefaultValue = innerArgEvalResult.Value
+							slog.InfoContext(ctx, fmt.Sprintf("  Default value (from pointer helper call arg): %v for field %s", optMeta.DefaultValue, optMeta.Name))
+						} else { // Argument to helper is an identifier
+							slog.InfoContext(ctx, fmt.Sprintf("  Argument to pointer helper for field %s is identifier '%s' (pkg '%s'). Attempting resolution.", optMeta.Name, innerArgEvalResult.IdentifierName, innerArgEvalResult.PkgName))
+							resolvedVal, success := resolveEvalResultToEnumString(ctx, innerArgEvalResult, loader, currentPkgPath, fileAst) // Using existing resolver
+							if success {
+								optMeta.DefaultValue = resolvedVal
+								slog.InfoContext(ctx, fmt.Sprintf("  Successfully resolved identifier (from pointer helper arg) for field %s: %v", optMeta.Name, optMeta.DefaultValue))
+							} else {
+								slog.WarnContext(ctx, fmt.Sprintf("  Failed to resolve identifier (from pointer helper arg) '%s' for field %s. DefaultValue will be nil.", innerArgEvalResult.IdentifierName, optMeta.Name))
+								optMeta.DefaultValue = nil
+							}
+						}
+					} else {
+						slog.WarnContext(ctx, fmt.Sprintf("  Pointer helper call for field %s has no arguments. Using raw eval of the call itself: %v", optMeta.Name, defaultEvalResult.Value))
+						optMeta.DefaultValue = defaultEvalResult.Value // Fallback to whatever EvaluateArg made of the call itself
+					}
+				} else if unaryExpr, ok := defaultArgExpr.(*ast.UnaryExpr); ok && unaryExpr.Op == token.AND {
+					// Case 2: Argument is an address-of expression, e.g., &myVar or &"literal" (if "literal" was a const/var)
+					slog.InfoContext(ctx, fmt.Sprintf("  Default for pointer field %s is via address-of operator (&). Evaluating inner expression.", optMeta.Name))
+					valueInsideAddrOf := astutils.EvaluateArg(ctx, unaryExpr.X)
+					if valueInsideAddrOf.IdentifierName == "" { // Literal or directly evaluatable
+						optMeta.DefaultValue = valueInsideAddrOf.Value
+						slog.InfoContext(ctx, fmt.Sprintf("  Default value (from &expr): %v for field %s", optMeta.DefaultValue, optMeta.Name))
+					} else { // Inner part of &expr is an identifier
+						slog.InfoContext(ctx, fmt.Sprintf("  Inner expression of & for field %s is identifier '%s' (pkg '%s'). Attempting resolution.", optMeta.Name, valueInsideAddrOf.IdentifierName, valueInsideAddrOf.PkgName))
+						resolvedVal, success := resolveEvalResultToEnumString(ctx, valueInsideAddrOf, loader, currentPkgPath, fileAst) // Using existing resolver
+						if success {
+							optMeta.DefaultValue = resolvedVal
+							slog.InfoContext(ctx, fmt.Sprintf("  Successfully resolved identifier (from &expr) for field %s: %v", optMeta.Name, optMeta.DefaultValue))
+						} else {
+							slog.WarnContext(ctx, fmt.Sprintf("  Failed to resolve identifier (from &expr) '%s' for field %s. DefaultValue will be nil.", valueInsideAddrOf.IdentifierName, optMeta.Name))
+							optMeta.DefaultValue = nil
+						}
+					}
 				} else {
-					slog.DebugContext(ctx, fmt.Sprintf("Failed to resolve identifier default value for '%s'. DefaultValue will be nil.", defaultEvalResult.IdentifierName))
-					optMeta.DefaultValue = nil
+					// Case 3: Field is a pointer, but default arg is not a helper call or &expr.
+					// It might be a direct variable that is already a pointer, or a literal that EvaluateArg handled.
+					// The goal is to store the *dereferenced* value, but if it's just a variable, resolving its pointed-to value here is complex.
+					// Trust defaultEvalResult for now, which might be the pointer value itself or what EvaluateArg could determine.
+					// This path means we are not explicitly dereferencing a known pointer-creating pattern here.
+					slog.InfoContext(ctx, fmt.Sprintf("  Default for pointer field %s is (value: %v, ident: '%s', pkg: '%s'). Using direct evaluation or attempting resolution if identifier.", optMeta.Name, defaultEvalResult.Value, defaultEvalResult.IdentifierName, defaultEvalResult.PkgName))
+					if defaultEvalResult.IdentifierName == "" {
+						optMeta.DefaultValue = defaultEvalResult.Value // This might be nil if original was `var p *string; ... Default(p)`
+						slog.InfoContext(ctx, fmt.Sprintf("  Default value (direct for pointer field): %v for field %s", optMeta.DefaultValue, optMeta.Name))
+					} else {
+						slog.InfoContext(ctx, fmt.Sprintf("  Default value for pointer field %s is an identifier '%s' (pkg '%s'). Attempting resolution.", optMeta.Name, defaultEvalResult.IdentifierName, defaultEvalResult.PkgName))
+						resolvedVal, success := resolveEvalResultToEnumString(ctx, defaultEvalResult, loader, currentPkgPath, fileAst)
+						if success {
+							optMeta.DefaultValue = resolvedVal // This would be the string value if resolved.
+							slog.InfoContext(ctx, fmt.Sprintf("  Successfully resolved identifier for pointer field %s: %v", optMeta.Name, optMeta.DefaultValue))
+						} else {
+							slog.WarnContext(ctx, fmt.Sprintf("  Failed to resolve identifier '%s' for pointer field %s. DefaultValue will be nil.", defaultEvalResult.IdentifierName, optMeta.Name))
+							optMeta.DefaultValue = nil
+						}
+					}
+				}
+			} else { // Field is not a pointer type (original logic)
+				if defaultEvalResult.IdentifierName == "" { // If it's a literal or directly evaluatable value
+					optMeta.DefaultValue = defaultEvalResult.Value
+					slog.InfoContext(ctx, fmt.Sprintf("  Default value: %v for field %s", optMeta.DefaultValue, optMeta.Name))
+				} else { // Default value is an identifier
+					slog.InfoContext(ctx, fmt.Sprintf("  Default value for field %s is an identifier '%s' (pkg '%s'). Attempting resolution.", optMeta.Name, defaultEvalResult.IdentifierName, defaultEvalResult.PkgName))
+					resolvedStrVal, success := resolveEvalResultToEnumString(ctx, defaultEvalResult, loader, currentPkgPath, fileAst)
+					if success {
+						optMeta.DefaultValue = resolvedStrVal
+						slog.DebugContext(ctx, fmt.Sprintf("Successfully resolved identifier default value for field %s: %v", optMeta.Name, optMeta.DefaultValue))
+					} else {
+						slog.DebugContext(ctx, fmt.Sprintf("Failed to resolve identifier default value for '%s' (field %s). DefaultValue will be nil.", defaultEvalResult.IdentifierName, optMeta.Name))
+						optMeta.DefaultValue = nil
+					}
 				}
 			}
 

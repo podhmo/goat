@@ -225,6 +225,99 @@ func TestInterpretInitializer_EnumNewScenarios(t *testing.T) {
 	}
 }
 
+func TestPointerDefaultValue(t *testing.T) {
+	const testMarkerPkgImportPath = "github.com/podhmo/goat"
+	const pointerDefaultPkgImportPath = "pointerdefault_module/src/pointerdefault"
+	moduleRoot := "./testdata/pointerdefault_module"
+
+	// 1. Setup Loader
+	ld, fsetForLoader := newTestLoader(t, moduleRoot)
+	ctx := context.Background()
+
+	// 2. Pre-load the target package
+	packagesToPreload := []string{pointerDefaultPkgImportPath}
+	loadedPkgs, errLoad := ld.Load(ctx, packagesToPreload...)
+	if errLoad != nil || len(loadedPkgs) == 0 {
+		t.Fatalf("Failed to pre-load package %s: %v", pointerDefaultPkgImportPath, errLoad)
+	}
+	if _, errFiles := loadedPkgs[0].Files(); errFiles != nil {
+		t.Fatalf("Failed to pre-parse files for package %s: %v", pointerDefaultPkgImportPath, errFiles)
+	}
+	t.Logf("Successfully pre-loaded and parsed package: %s", pointerDefaultPkgImportPath)
+
+	// 3. Get AST for defs.go
+	// Assuming defs.go is the only file or the relevant file in the package.
+	// The loader.Package.Files() returns a map[string]*ast.File. We need to find the correct one.
+	// For simplicity, if there's only one file, use it.
+	// Or, construct the expected file path.
+	defsGoFilePath := moduleRoot + "/src/pointerdefault/defs.go"
+	// Use fsetForLoader which was used by the loader
+	fileAst, err := parser.ParseFile(fsetForLoader, defsGoFilePath, nil, parser.ParseComments)
+	if err != nil {
+		t.Fatalf("Failed to parse test file %s: %v", defsGoFilePath, err)
+	}
+
+	// 4. Prepare OptionMetadata (as if an analyzer had already populated parts of it)
+	optionsMeta := []*metadata.OptionMetadata{
+		{
+			Name:      "MyStringPtr",
+			CliName:   "ptr-field", // from struct tag `goat:"ptr-field"`
+			TypeName:  "*string",   // This would be determined by an analyzer
+			IsPointer: true,        // This would be determined by an analyzer
+		},
+		{
+			Name:      "AnotherPtr",
+			CliName:   "another-ptr-field",
+			TypeName:  "*int",
+			IsPointer: true,
+		},
+	}
+
+	// 5. Call InterpretInitializer
+	err = InterpretInitializer(ctx, fileAst,
+		"Config",        // optionsStructName
+		"DefaultConfig", // initializerFuncName
+		optionsMeta,
+		testMarkerPkgImportPath,     // markerPkgImportPath
+		pointerDefaultPkgImportPath, // currentPkgPath
+		ld)                          // loader
+	if err != nil {
+		t.Fatalf("InterpretInitializer failed: %v", err)
+	}
+
+	// 6. Assert Results
+	expectedValues := map[string]struct {
+		defaultValue any
+		isPointer    bool
+	}{
+		"MyStringPtr": {defaultValue: "expected_default", isPointer: true},
+		"AnotherPtr":  {defaultValue: int64(123), isPointer: true}, // Numbers are often int64 from parser/evaluator
+	}
+
+	if len(optionsMeta) != len(expectedValues) {
+		t.Fatalf("Expected %d options metadata, got %d", len(expectedValues), len(optionsMeta))
+	}
+
+	for _, opt := range optionsMeta {
+		t.Run(opt.Name, func(t *testing.T) {
+			expected, ok := expectedValues[opt.Name]
+			if !ok {
+				t.Fatalf("Unexpected option %s processed", opt.Name)
+			}
+
+			if opt.IsPointer != expected.isPointer {
+				t.Errorf("For option %s, expected IsPointer %t, got %t", opt.Name, expected.isPointer, opt.IsPointer)
+			}
+
+			// Check default value
+			if !reflect.DeepEqual(opt.DefaultValue, expected.defaultValue) {
+				t.Errorf("For option %s, expected DefaultValue %v (type %T), got %v (type %T)",
+					opt.Name, expected.defaultValue, expected.defaultValue, opt.DefaultValue, opt.DefaultValue)
+			}
+		})
+	}
+}
+
 func newTestLoader(t *testing.T, moduleRootRelPath string) (*loader.Loader, *token.FileSet) {
 	t.Helper()
 	fset := token.NewFileSet() // Create fset here
