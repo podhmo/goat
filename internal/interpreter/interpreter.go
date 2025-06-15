@@ -117,6 +117,11 @@ func extractMarkerInfo(
 	loader *loader.Loader,
 	currentPkgPath string,
 ) {
+	// Unwrap TypeAssertExpr if present, e.g., goat.Default(...).(*string)
+	if typeAssert, ok := valueExpr.(*ast.TypeAssertExpr); ok {
+		valueExpr = typeAssert.X // Use the expression inside the type assertion
+	}
+
 	callExpr, ok := valueExpr.(*ast.CallExpr)
 	if !ok {
 		// Value is not a function call, could be a direct literal (TODO: handle direct literals as defaults)
