@@ -215,19 +215,56 @@ func AnalyzeOptions( // Renamed from AnalyzeOptionsV3
 		opt := &metadata.OptionMetadata{
 			Name:       fieldName,
 			CliName:    stringutils.ToKebabCase(fieldName),
-			TypeName:   astutils.ExprToTypeName(fieldInfo.TypeExpr),
+			// TypeName and TypePackage will be set below
 			IsPointer:  astutils.IsPointerType(fieldInfo.TypeExpr),
 			IsRequired: !astutils.IsPointerType(fieldInfo.TypeExpr),
 		}
-		opt.UnderlyingKind = "" // Initialize
 
-		var typeExprForKindCheck ast.Expr = fieldInfo.TypeExpr
-		// Use opt.IsPointer as it's already determined by astutils.IsPointerType
+		// Determine TypeName and TypePackage
+		var baseTypeExpr ast.Expr = fieldInfo.TypeExpr
 		if opt.IsPointer {
 			if starExpr, ok := fieldInfo.TypeExpr.(*ast.StarExpr); ok {
-				typeExprForKindCheck = starExpr.X
+				baseTypeExpr = starExpr.X
 			}
 		}
+
+		switch actualTypeExpr := baseTypeExpr.(type) {
+		case *ast.Ident:
+			opt.TypeName = actualTypeExpr.Name
+			opt.TypePackage = "" // Local type
+		case *ast.SelectorExpr:
+			opt.TypeName = actualTypeExpr.Sel.Name
+			if pkgIdent, ok := actualTypeExpr.X.(*ast.Ident); ok {
+				// fileContainingOptionsStruct is in scope from AnalyzeOptions
+				opt.TypePackage = astutils.GetImportPath(fileContainingOptionsStruct, pkgIdent.Name)
+				if opt.TypePackage == "" {
+					// This might happen if the selector is for a type within a struct, which shouldn't be the case for field types.
+					// Or if GetImportPath fails to find the alias.
+					fmt.Printf("analyzer: warning: Could not resolve import path for package alias '%s' for field '%s'. TypePackage will be empty.\n", pkgIdent.Name, fieldName)
+				}
+			} else {
+				// This case should ideally not happen for valid Go code where a SelectorExpr implies X is an Ident (package).
+				fmt.Printf("analyzer: warning: Selector expression X for field '%s' is not an *ast.Ident: %T. TypePackage will be empty.\n", fieldName, actualTypeExpr.X)
+				opt.TypePackage = ""
+			}
+		default:
+			// For other types like []string, map[string]string, or built-in types not covered by Ident/SelectorExpr after pointer stripping.
+			// Also, astutils.ExprToTypeName handles these complex types appropriately.
+			opt.TypeName = astutils.ExprToTypeName(fieldInfo.TypeExpr) // Use the original full expression for TypeName
+			opt.TypePackage = ""
+		}
+
+		// If it's a pointer, TypeName should reflect that (e.g., *MyType, *pkg.MyType)
+		// The current logic sets the base name. The codegen handlers will use IsPointer with TypeName and TypePackage.
+		// However, the original opt.TypeName = astutils.ExprToTypeName(fieldInfo.TypeExpr) captured the "*"
+		// For consistency, let's ensure TypeName for pointers includes the "*" prefix if we are not using the raw baseTypeExpr for TypeName.
+		// The EnumHandlers were written expecting TypeName to be the base name and TypePackage to qualify it.
+		// Let's stick to TypeName being the base name (e.g. "MyEnum", not "*MyEnum") and TypePackage providing the package.
+		// IsPointer field will dictate the pointer nature.
+
+		opt.UnderlyingKind = "" // Initialize
+		// typeExprForKindCheck was for UnderlyingKind. We can reuse baseTypeExpr for it.
+		var typeExprForKindCheck ast.Expr = baseTypeExpr // baseTypeExpr is already pointer-stripped
 
 		var resolvedTypeSpec *ast.TypeSpec
 		var resolveErr error

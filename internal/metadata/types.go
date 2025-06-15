@@ -45,6 +45,7 @@ type OptionMetadata struct {
 	FileGlobPattern bool `json:"fileGlobPattern,omitempty"`
 
 	IsEnum bool `json:"isEnum,omitempty"` // True if this option is an enum (derived from EnumValues)
+	TypePackage string `json:"typePackage,omitempty"` // Package import path if TypeName is from an external package
 }
 
 // DefaultValueAsBool checks if the DefaultValue is a boolean and true.
