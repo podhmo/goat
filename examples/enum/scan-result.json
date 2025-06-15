@@ -1,0 +1,75 @@
+{
+  "Name": "github.com/podhmo/goat/examples/enum",
+  "Description": "run is the main execution logic for the enum example CLI.\nIt prints the selected enum values.",
+  "RunFunc": {
+    "Name": "run",
+    "PackageName": "enum",
+    "OptionsArgName": "opts",
+    "OptionsArgType": "Options",
+    "OptionsArgTypeNameStripped": "Options",
+    "OptionsArgIsPointer": false,
+    "ContextArgName": "",
+    "ContextArgType": "",
+    "InitializerFunc": "NewOptions"
+  },
+  "Options": [
+    {
+      "Name": "LocalEnumField",
+      "CliName": "local-enum-field",
+      "TypeName": "MyLocalEnum",
+      "HelpText": "LocalEnumField demonstrates a locally defined enum.",
+      "IsPointer": false,
+      "IsRequired": true,
+      "EnvVar": "ENUM_LOCAL_ENUM",
+      "DefaultValue": "local-a",
+      "EnumValues": [
+        "local-a",
+        "local-b"
+      ],
+      "IsTextUnmarshaler": false,
+      "IsTextMarshaler": false,
+      "UnderlyingKind": "string"
+    },
+    {
+      "Name": "ImportedEnumField",
+      "CliName": "imported-enum-field",
+      "TypeName": "customtypes.MyCustomEnum",
+      "HelpText": "ImportedEnumField demonstrates an enum imported from another package.",
+      "IsPointer": false,
+      "IsRequired": true,
+      "EnvVar": "ENUM_IMPORTED_ENUM",
+      "DefaultValue": "option-x",
+      "EnumValues": [
+        "option-x",
+        "option-y",
+        "option-z"
+      ],
+      "IsTextUnmarshaler": false,
+      "IsTextMarshaler": false,
+      "UnderlyingKind": "string"
+    },
+    {
+      "Name": "OptionalImportedEnumField",
+      "CliName": "optional-imported-enum-field",
+      "TypeName": "*customtypes.MyCustomEnum",
+      "HelpText": "OptionalImportedEnumField demonstrates an optional enum (pointer type)\nimported from another package.",
+      "IsPointer": true,
+      "IsRequired": false,
+      "EnvVar": "ENUM_OPTIONAL_IMPORTED_ENUM",
+      "DefaultValue": null,
+      "EnumValues": [
+        "option-x",
+        "option-y"
+      ],
+      "IsTextUnmarshaler": false,
+      "IsTextMarshaler": false,
+      "UnderlyingKind": "string"
+    }
+  ],
+  "MainFuncPosition": {
+    "Filename": "/app/examples/enum/main.go",
+    "Offset": 2556,
+    "Line": 82,
+    "Column": 1
+  }
+}
