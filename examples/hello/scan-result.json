@@ -1,0 +1,65 @@
+{
+  "Name": "github.com/podhmo/goat/examples/hello",
+  "Description": "run is the actual command logic.",
+  "RunFunc": {
+    "Name": "run",
+    "PackageName": "hello",
+    "OptionsArgName": "opts",
+    "OptionsArgType": "Options",
+    "OptionsArgTypeNameStripped": "Options",
+    "OptionsArgIsPointer": false,
+    "ContextArgName": "",
+    "ContextArgType": "",
+    "InitializerFunc": ""
+  },
+  "Options": [
+    {
+      "Name": "Version",
+      "CliName": "version",
+      "TypeName": "bool",
+      "HelpText": "Print version information",
+      "IsPointer": false,
+      "IsRequired": true,
+      "EnvVar": "",
+      "DefaultValue": null,
+      "EnumValues": null,
+      "IsTextUnmarshaler": false,
+      "IsTextMarshaler": false,
+      "UnderlyingKind": ""
+    },
+    {
+      "Name": "Help",
+      "CliName": "help",
+      "TypeName": "bool",
+      "HelpText": "Show help message",
+      "IsPointer": false,
+      "IsRequired": true,
+      "EnvVar": "",
+      "DefaultValue": null,
+      "EnumValues": null,
+      "IsTextUnmarshaler": false,
+      "IsTextMarshaler": false,
+      "UnderlyingKind": ""
+    },
+    {
+      "Name": "ConfigFile",
+      "CliName": "config-file",
+      "TypeName": "string",
+      "HelpText": "Path to the configuration file",
+      "IsPointer": false,
+      "IsRequired": true,
+      "EnvVar": "",
+      "DefaultValue": null,
+      "EnumValues": null,
+      "IsTextUnmarshaler": false,
+      "IsTextMarshaler": false,
+      "UnderlyingKind": ""
+    }
+  ],
+  "MainFuncPosition": {
+    "Filename": "/app/examples/hello/main.go",
+    "Offset": 554,
+    "Line": 27,
+    "Column": 1
+  }
+}
