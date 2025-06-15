@@ -28,16 +28,14 @@ The analysis was performed by comparing the `scan-result.json` output for the `e
     *   For example, for `net.IP` initialized with `net.ParseIP("127.0.0.1")`, the `DefaultValue` could become `"127.0.0.1"`.
 *   **Relevant Files**: `internal/interpreter/evaluator.go` (when resolving default values from `goat.Default`) and potentially `internal/metadata/types.go` (to ensure `DefaultValue` can store this string representation or clarify its type).
 
-### 3. Default Value for Pointer Fields Initialized with `goat.Default(<pointer_value>)`
+### 3. Default Value for Pointer Fields Initialized with `goat.Default(<pointer_value>)` (Resolved)
 
-*   **Observation**: When an option field is a pointer type (e.g., `*string` like `ExistingFieldToMakeOptional` in `examples/fullset/main.go`) and is initialized using `goat.Default()` with an actual pointer value (e.g., `goat.Default(stringPtr("was set by default"))`, where `stringPtr` returns `*string`), the `DefaultValue` in `scan-result.json` is `null`.
-*   **Current Behavior**: `DefaultValue` is `null`.
-*   **Impact**: This is a bug. The JSON output incorrectly suggests no default value was effectively set, whereas the code clearly provides one.
-*   **Potential Refinement**:
-    *   The interpreter, when evaluating `goat.Default(v)` for a pointer field, if `v` itself is a pointer to the type expected by the field (or a compatible type), should dereference `v` once to obtain the actual value to be stored as the default.
-    *   For example, if `ExistingFieldToMakeOptional` is `*string` and initialized with `goat.Default(stringPtr("hello"))`, the `DefaultValue` in JSON should be `"hello"`.
-*   **Relevant Files**: `internal/interpreter/evaluator.go` (specifically how it processes the argument to `goat.Default` for pointer type option fields).
+*   **Previous Observation**: Previously, when an option field was a pointer type (e.g., `*string` like `ExistingFieldToMakeOptional` in `examples/fullset/main.go`) and initialized using `goat.Default()` with an actual pointer value (e.g., `goat.Default(stringPtr("was set by default"))`, where `stringPtr` returns `*string`), the `DefaultValue` in `scan-result.json` was incorrectly reported as `null`.
+*   **Resolution**: This issue has been **resolved**. The interpreter (`internal/interpreter/interpreter.go`) has been updated.
+*   **Current Behavior**: The interpreter now correctly dereferences the pointer value provided to `goat.Default` if the corresponding option field is a pointer type and the provided default value is a pointer-creating expression (such as a call to a helper function like `stringPtr()` or an address-of expression like `&myVar`). The actual underlying value is stored as the `DefaultValue`.
+*   **Impact**: The `scan-result.json` now accurately reflects the default value for such pointer fields. For example, if `ExistingFieldToMakeOptional` is `*string` and initialized with `goat.Default(stringPtr("hello"))`, the `DefaultValue` in the JSON output is correctly `"hello"`.
+*   **Relevant Files**: The fix was implemented in `internal/interpreter/interpreter.go`.
 
 ## Summary
 
-The `goat scan` command provides valuable metadata. Addressing the points above, especially item 3, would improve the accuracy and completeness of the `scan-result.json` output, making it more reliable for debugging and for other tools that might consume this metadata.
+The `goat scan` command provides valuable metadata. With the resolution of item 3, the accuracy and completeness of the `scan-result.json` output have been significantly improved, making it more reliable for debugging and for other tools that might consume this metadata. The remaining points (1 and 2) are current known limitations or areas for future enhancement.
