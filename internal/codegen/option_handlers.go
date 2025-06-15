@@ -849,8 +849,8 @@ func (h *EnumHandler) GenerateEnumValidationCode(opt *metadata.OptionMetadata, o
 		return OptionCodeSnippets{} // No validation if no enum values defined
 	}
 
-	actualTypeName := h.getActualTypeName(opt)
-	enumValuesVar := stringutils.ToCamelCase(opt.Name) + "EnumValues"
+	// actualTypeName := h.getActualTypeName(opt) // Removed as it's not used in the string comparison logic below
+	// enumValuesVar := stringutils.ToCamelCase(opt.Name) + "EnumValues" // Removed as errorEnumListVar is used
 
 	var enumValuesFormatted []string
 	// We need to format them as strings for the "allowed" list in the error message.
@@ -940,7 +940,7 @@ func (h *EnumPtrHandler) GenerateEnvVarProcessingCode(opt *metadata.OptionMetada
 }
 
 func (h *EnumPtrHandler) GenerateFlagRegistrationCode(opt *metadata.OptionMetadata, optionsVarName string, isFlagExplicitlySetMapName string, globalTempVarPrefix string) OptionCodeSnippets {
-	actualBaseTypeName := h.getActualTypeName(opt) // e.g. MyEnum or pkg.MyEnum
+	// actualBaseTypeName := h.getActualTypeName(opt) // Removed as not directly used in this method; tempFlagStrVar is always string.
 	cliNameForFlag := opt.CliName
 	if cliNameForFlag == "" {
 		cliNameForFlag = stringutils.ToKebabCase(opt.Name)

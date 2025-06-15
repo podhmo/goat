@@ -107,16 +107,16 @@ Flags:
 		// Environment variable for unsupported type LocalEnumField (MyLocalEnum) not handled.
 	}
 	if importedenumfieldEnvVal, ok := os.LookupEnv("ENUM_IMPORTED_ENUM"); ok {
-		// Environment variable for unsupported type ImportedEnumField (customtypes.MyCustomEnum) not handled.
+		// Environment variable for unsupported type ImportedEnumField (MyCustomEnum) not handled.
 	}
 	if optionalimportedenumfieldEnvVal, ok := os.LookupEnv("ENUM_OPTIONAL_IMPORTED_ENUM"); ok {
-		// Environment variable for unsupported type OptionalImportedEnumField (*customtypes.MyCustomEnum) not handled.
+		// Environment variable for unsupported type OptionalImportedEnumField (MyCustomEnum) not handled.
 	}
 
 	// --- 3. Register Flags ---
 	// Flag registration for unsupported type LocalEnumField (MyLocalEnum) not handled.
-	// Flag registration for unsupported type ImportedEnumField (customtypes.MyCustomEnum) not handled.
-	// Flag registration for unsupported type OptionalImportedEnumField (*customtypes.MyCustomEnum) not handled.
+	// Flag registration for unsupported type ImportedEnumField (MyCustomEnum) not handled.
+	// Flag registration for unsupported type OptionalImportedEnumField (MyCustomEnum) not handled.
 
 	// --- 4. Parse Flags ---
 	flag.Parse()
@@ -134,7 +134,7 @@ Flags:
 		slog.ErrorContext(ctx, "Error processing required option", "option", "local-enum-field", "error", err)
 		os.Exit(1)
 	}
-	if err = func() error { // Required check for unsupported type ImportedEnumField (customtypes.MyCustomEnum) not handled.
+	if err = func() error { // Required check for unsupported type ImportedEnumField (MyCustomEnum) not handled.
 	}(); err != nil {
 		slog.ErrorContext(ctx, "Error processing required option", "option", "imported-enum-field", "error", err)
 		os.Exit(1)
@@ -146,12 +146,12 @@ Flags:
 		slog.ErrorContext(ctx, "Error validating enum for option", "option", "local-enum-field", "error", err)
 		os.Exit(1)
 	}
-	if err = func() error { // Enum validation for unsupported type ImportedEnumField (customtypes.MyCustomEnum) not handled.
+	if err = func() error { // Enum validation for unsupported type ImportedEnumField (MyCustomEnum) not handled.
 	}(); err != nil {
 		slog.ErrorContext(ctx, "Error validating enum for option", "option", "imported-enum-field", "error", err)
 		os.Exit(1)
 	}
-	if err = func() error { // Enum validation for unsupported type OptionalImportedEnumField (*customtypes.MyCustomEnum) not handled.
+	if err = func() error { // Enum validation for unsupported type OptionalImportedEnumField (MyCustomEnum) not handled.
 	}(); err != nil {
 		slog.ErrorContext(ctx, "Error validating enum for option", "option", "optional-imported-enum-field", "error", err)
 		os.Exit(1)
