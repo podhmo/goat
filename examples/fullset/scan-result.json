@@ -200,7 +200,7 @@ analyzer: warning: error checking TextMarshaler for field Features type []string
       "IsPointer": true,
       "IsRequired": false,
       "EnvVar": "FULLSET_OPTIONAL_EXISTING",
-      "DefaultValue": null,
+      "DefaultValue": "was set by default",
       "EnumValues": null,
       "IsTextUnmarshaler": false,
       "IsTextMarshaler": false,
